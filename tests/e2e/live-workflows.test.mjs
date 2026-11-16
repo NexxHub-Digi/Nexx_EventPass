@@ -84,6 +84,15 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/events',{cookie:wrong.cookie}),200,'cross-organiser public discovery works');
   expect(await req('/api/events/media?eventId='+event.id,{cookie:org.cookie}),200,'organiser can browse own media');
   expect(await req('/api/events',{cookie:adminCookie}),200,'platform can inspect events');
+  // Media uploaded after verification must remain private until approved or rejected.
+  const pendingForm=new FormData();pendingForm.set('eventId',event.id);
+  pendingForm.set('file',new Blob([artwork],{type:'image/png'}),'second-poster.png');
+  const pendingAsset=expect(await req('/api/events/media',{cookie:org.cookie,method:'POST',form:pendingForm}),201,'upload pending second poster').media;
+  assert.equal(expect(await req('/api/events/media?eventId='+event.id),200,'gallery excludes pending uploads').media.length,1);
+  expect(await post('/api/platform/events',adminCookie,{eventId:event.id,mediaId:pendingAsset.id,action:'reject_media'}),200,'admin rejects unapproved media');
+  assert.equal(expect(await req('/api/events/media?eventId='+event.id,{cookie:org.cookie}),200,'rejected media removed').media.length,1);
+  const patchResult=await req('/api/events',{cookie:org.cookie,method:'PATCH',body:{eventId:event.id,description:'Changed after paid tickets were issued',category:'Nightlife',ticketTheme:'aurora'}});
+  expect(patchResult,409,'issued ticket event cannot be silently unpublished by edits');
   const gateEmail=email('operator');
   const invite=expect(await post('/api/gates',org.cookie,{eventId:event.id,email:gateEmail,gateLabel:'Main Gate'}),200,'invite any email');
   const token=new URL(invite.invitationLink).searchParams.get('token');assert.equal(token?.length,43);
