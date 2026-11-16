@@ -11,7 +11,7 @@ type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string
 type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null};
 type Invite={id:string;event_id:string;invitee_email:string;gate_label:string;status:string};
 type Scan={id:string;outcome:string;operator?:string;gate_label:string;scanned_at:string};
-type EventMedia={id:string;media_type:string;file_name:string;approved?:boolean;url:string};
+type EventMedia={id:string;event_id?:string;media_type:string;file_name:string;approved?:boolean;url:string};
 type ModerationEvent={id:string;title:string;venue:string;starts_at:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;pending_media:number};
 const roles={user:'User',organiser:'Event Organiser',gate:'Gate Operator','platform-admin':'Platform Administrator'} as const;
 type Role=keyof typeof roles;
@@ -209,20 +209,55 @@ export default function RoleWorkspace(){
       {btn('Save organiser configuration',()=>{void configureOrganiser()})}
     </>:<p>This applicant is not approved. Approve before configuring the organiser profile.</p>}
    </div>)}
+  </section>  <section className="rw-panel rw-wide"><div className="eyebrow">EVENT AUTHENTICITY</div><h2>Review organiser listings and media</h2>
+   <p>Verify the identity, location, date, marketing materials and ticket promises before publishing an event to the public marketplace.</p>
+   {moderationEvents.map(ev=><div className="rw-review-card" key={ev.id}>
+     <div><strong>{ev.title}</strong><p>{ev.venue} · {nice(ev.starts_at)}</p><small>Submitted by {ev.organiser_name} ({ev.organiser_email})</small><p>Listing: {ev.verification_status} · {ev.pending_media} unreviewed assets</p></div>
+     <div className="rw-actions">{ev.verification_status!=='verified'&&<>{btn('Verify & publish',()=>{void moderateEvent(ev.id,'verify')})}{btn('Reject listing',()=>{void moderateEvent(ev.id,'reject')},true)}</>}</div>
+     <div className="rw-gallery">{moderationMedia.filter(m=>m.event_id===ev.id).map(m=><div className="rw-media-card" key={m.id}>
+       {m.media_type==='video'?<video src={m.url} playsInline controls preload="metadata"/>:<img src={m.url} alt={m.file_name}/>}
+       <small>{m.file_name}</small><div className="rw-actions">{btn('Approve',()=>{void moderateEvent(ev.id,'approve_media',m.id)})}{btn('Reject',()=>{void moderateEvent(ev.id,'reject_media',m.id)},true)}</div>
+     </div>)}</div>
+   </div>)}
+   {!moderationEvents.length&&<p>No pending event or media submissions.</p>}
   </section></div>}
  {role==='organiser'&&<div className="rw-layout">
   <section className="rw-panel"><h2>Bank transfer instructions</h2><p>Users see these account details on your published events. Only approve a ticket after confirming funds in your own bank records.</p>
     {input('Bank name',bankName,setBankName)}{input('Account name',accountName,setAccountName)}{input('Account number',accountNumber,setAccountNumber)}
     {btn('Save bank details',()=>{void saveBank()})}
   </section>
-  <section className="rw-panel"><h2>Create event</h2>{input('Event name',eventTitle,setEventTitle)}{input('Venue',venue,setVenue)}
-  {input('Date and time',startsAt,setStartsAt,'datetime-local')}{input('Price (NGN)',ticketPrice,setTicketPrice,'number')}{input('Capacity',capacity,setCapacity,'number')}{input('Private encrypted QR keyword',keyword,setKeyword,'password')}
-  {btn('Publish event',()=>{void createEvent()})}</section>
-  <section className="rw-panel rw-wide"><h2>Events and payment approvals</h2><label className="rw-field">Choose an event<select value={eventId} onChange={e=>setEventId(e.target.value)}><option value="">Select event</option>
+  <section className="rw-panel"><div className="eyebrow">EVENT STUDIO</div><h2>Create and design an event</h2><p>Create as many events as you need. Your listing is reviewed before it appears publicly.</p>
+  {input('Event name',eventTitle,setEventTitle)}{input('Venue',venue,setVenue)}
+  <label className="rw-field">Event description<textarea rows={4} maxLength={2500} value={eventDescription} onChange={e=>setEventDescription(e.target.value)} placeholder="Describe the experience, performers, attractions and ticket benefits"/></label>
+  <label className="rw-field">Event category<select value={eventCategory} onChange={e=>setEventCategory(e.target.value)}>{['Music','Nightlife','Festival','Business','Food','Sports','Arts','Education','Community','Other'].map(c=><option key={c}>{c}</option>)}</select></label>
+  {input('Date and time',startsAt,setStartsAt,'datetime-local')}{input('Price (NGN)',ticketPrice,setTicketPrice,'number')}{input('Capacity',capacity,setCapacity,'number')}{input('Private encrypted QR keyword (8+ characters)',keyword,setKeyword,'password')}
+  <h3>Ticket design collection</h3>
+  <div className="rw-theme-grid">{ticketThemes.map(t=><button key={t.id} type="button" className={'rw-theme-option '+(ticketTheme===t.id?'selected':'')} onClick={()=>setTicketTheme(t.id)} style={{background:t.gradient}}>
+  <span>{t.label}</span><strong>{t.name}</strong><small>{ticketTheme===t.id?'✓ Selected':'Preview theme'}</small></button>)}</div>
+  {btn('Create event for verification',()=>{void createEvent()})}
+  </section>
+  <section className="rw-panel rw-wide"><h2>Events and payment approvals</h2><label className="rw-field">Choose an event<select value={eventId} onChange={e=>{const id=e.target.value;setEventId(id);const selected=events.find(ev=>ev.id===id);if(selected){setEventDescription(selected.description||'');setEventCategory(selected.category||'Other');setTicketTheme(selected.ticket_theme||'aurora')}setLatestInvite('')}}><option value="">Select event</option>
   {events.filter(e=>e.organiser_id===me.id).map(e=><option value={e.id} key={e.id}>{e.title}</option>)}</select></label>
   {orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.buyer_name||o.buyer_email||'User'}</b><p>{o.quantity} tickets · {money(o.amount_ngn)} · {o.status}</p><small>Bank reference: {o.payment_reference}</small><p>{o.receipt_uploaded_at?<a href={'/api/orders/receipt?orderId='+o.id} target="_blank" rel="noreferrer">View submitted receipt</a>:'Receipt not submitted'}</p></div><div className="rw-actions">
   {o.status==='pending'&&<>{btn('Approve',()=>{void review(o.id,'approved')})}{btn('Reject',()=>{void review(o.id,'rejected')},true)}</>}</div></div>)}
   {!eventId&&<p>Select an event to review payments and assign gate staff.</p>}</section>
+  {eventId&&<section className="rw-panel rw-wide"><div className="eyebrow">CREATIVE MANAGER</div><h2>Event media & ticket designs</h2>
+    <p>Upload real event posters, image galleries, short videos, or your own ticket artwork. Media appears to Users only after platform review. Image limit 2 MB; video clips up to 8 MB.</p>
+    <div className="rw-media-inputs">
+      <label className="rw-file-label">Upload posters & photos<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{void uploadMedia(e.target.files?.[0]||null);e.currentTarget.value=''}}/></label>
+      <label className="rw-file-label">Upload short video<input type="file" accept="video/mp4,video/webm" onChange={e=>{void uploadMedia(e.target.files?.[0]||null);e.currentTarget.value=''}}/></label>
+      <label className="rw-file-label">Import custom ticket design<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{void uploadMedia(e.target.files?.[0]||null,'ticket_art');e.currentTarget.value=''}}/></label>
+    </div>
+    <div className="rw-gallery">{eventMedia.map(m=><div className="rw-media-card" key={m.id}>
+      {m.media_type==='video'?<video controls playsInline preload="metadata" src={m.url}/>:<img loading="lazy" src={m.url} alt={m.file_name}/>}
+      <small>{m.file_name} · {m.approved?'Approved':'Awaiting review'}</small>
+      {btn('Remove',()=>{void deleteMedia(m.id)},true)}
+    </div>)}</div>
+    <h3>Ticket theme</h3><div className="rw-theme-grid">{ticketThemes.map(t=><button type="button" key={t.id} className={'rw-theme-option '+(ticketTheme===t.id?'selected':'')} onClick={()=>setTicketTheme(t.id)} style={{background:t.gradient}}><strong>{t.name}</strong><small>{t.label}</small></button>)}</div>
+    <label className="rw-field">Event category<select value={eventCategory} onChange={e=>setEventCategory(e.target.value)}>{['Music','Nightlife','Festival','Business','Food','Sports','Arts','Education','Community','Other'].map(c=><option key={c}>{c}</option>)}</select></label>
+    <label className="rw-field">Public event description<textarea rows={3} maxLength={2500} value={eventDescription} onChange={e=>setEventDescription(e.target.value)}/></label>
+    {btn('Save design for review',()=>{void saveEventDesign()})}
+  </section>}
   {eventId&&<section className="rw-panel rw-wide"><h2>Gate operators</h2><p>Invite anyone by email, including people without EventPass accounts. Copy and share the private link; they register or sign in and accept it. Links expire in 72 hours and grant access only to this event.</p>
     {input('Operator email',staffEmail,setStaffEmail,'email')}{input('Gate label',gateLabel,setGateLabel)}{btn('Create private invitation link',()=>{void inviteGate()})}{btn('Add existing verified operator',()=>{void addExistingOperator()},true)}{latestInvite&&<div className="rw-invite"><p>Private invitation link (visible only now; share it with the invited person):</p><input readOnly aria-label="New gate invitation URL" value={latestInvite} onFocus={e=>e.currentTarget.select()}/>{btn('Copy invitation link',()=>{void navigator.clipboard.writeText(latestInvite).then(()=>setMessage('Invitation link copied')).catch(()=>setMessage('Select and copy the link manually'))},true)}<p>Do not publish this link publicly. Creating a new invitation invalidates the old one.</p></div>}
     {invites.filter(i=>i.event_id===eventId).map(i=><div className="rw-list-item" key={i.id}><div><b>{i.invitee_email}</b><p>{i.gate_label} · {i.status}</p></div>{i.status!=='revoked'&&btn('Revoke',()=>{void revokeGate(i)},true)}</div>)}</section>}
