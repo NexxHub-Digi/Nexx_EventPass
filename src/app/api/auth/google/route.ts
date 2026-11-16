@@ -3,7 +3,7 @@ import { currentUser } from '@/lib/security';
 import { callbackUrl, challenge, isPortal, oauthCredentials, randomValue, sealState } from '@/lib/google-oauth';
 export const runtime='nodejs';
 export async function GET(req:NextRequest) {
- const portal=req.nextUrl.searchParams.get('portal')||'guest';
+ const portal=req.nextUrl.searchParams.get('portal')||'user';
  const intent=req.nextUrl.searchParams.get('intent')==='link'?'link':'signin';
  if(!isPortal(portal)) return NextResponse.json({error:'Invalid portal'},{status:400});
  const config=oauthCredentials(portal);

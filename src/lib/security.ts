@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies, headers } from 'next/headers';
 import { db } from '@/lib/db';
-export type CurrentUser = { id: string; email: string; full_name: string; role: 'guest' | 'organiser' | 'platform_admin' };
+export type CurrentUser = { id: string; email: string; full_name: string; role: 'user' | 'organiser' | 'platform_admin' };
 function secret(name: 'AUTH_SECRET' | 'QR_SIGNING_SECRET') {
   const value = process.env[name];
   if (!value || value.length < 32) throw new Error(name + ' must be at least 32 characters');

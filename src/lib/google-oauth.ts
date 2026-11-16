@@ -1,16 +1,16 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
 
-export type OAuthPortal = 'guest' | 'organiser' | 'gate' | 'platform_admin';
-export const portals: OAuthPortal[] = ['guest', 'organiser', 'gate', 'platform_admin'];
+export type OAuthPortal = 'user' | 'organiser' | 'gate' | 'platform_admin';
+export const portals: OAuthPortal[] = ['user', 'organiser', 'gate', 'platform_admin'];
 export const isPortal = (v: string): v is OAuthPortal => portals.includes(v as OAuthPortal);
 const envPrefixes: Record<OAuthPortal,string> = {
-  guest:'GOOGLE_GUEST', organiser:'GOOGLE_ORGANISER', gate:'GOOGLE_GATE', platform_admin:'GOOGLE_PLATFORM'
+  user:'GOOGLE_GUEST', organiser:'GOOGLE_ORGANISER', gate:'GOOGLE_GATE', platform_admin:'GOOGLE_PLATFORM'
 };
 export function oauthCredentials(portal: OAuthPortal) {
   const prefix=envPrefixes[portal];
-  const clientId=process.env[prefix+'_CLIENT_ID'] || process.env.GOOGLE_CLIENT_ID;
-  const clientSecret=process.env[prefix+'_CLIENT_SECRET'] || process.env.GOOGLE_CLIENT_SECRET;
+  const clientId=process.env[prefix+'_CLIENT_ID'] || (portal==='user'?process.env.GOOGLE_GUEST_CLIENT_ID:undefined) || process.env.GOOGLE_CLIENT_ID;
+  const clientSecret=process.env[prefix+'_CLIENT_SECRET'] || (portal==='user'?process.env.GOOGLE_GUEST_CLIENT_SECRET:undefined) || process.env.GOOGLE_CLIENT_SECRET;
   return clientId && clientSecret ? {clientId,clientSecret} : null;
 }
 export function callbackUrl(origin: string) {

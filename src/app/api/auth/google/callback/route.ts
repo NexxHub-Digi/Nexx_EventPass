@@ -10,7 +10,7 @@ function back(origin:string,portal:OAuthPortal,code:string){
  const u=new URL('/',origin);u.searchParams.set('portal',portal);u.searchParams.set('oauth_error',code);return NextResponse.redirect(u);
 }
 export async function GET(req:NextRequest){
- let portal:OAuthPortal='guest';
+ let portal:OAuthPortal='user';
  const origin=process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin;
  const stateCookie=req.cookies.get('eventpass_google_state')?.value;
  let response:NextResponse;
@@ -52,11 +52,11 @@ export async function GET(req:NextRequest){
    // Never promote Google users merely because an email address matches a privileged account.
    const sameEmail=await db()`select id from app_users where email=${profile.email} limit 1`;
    if(sameEmail.length) throw new Error('link_existing_account_first');
-   if(portal!=='guest') throw new Error('privileged_account_required');
+   if(portal!=='user') throw new Error('privileged_account_required');
    const passwordHash=await bcrypt.hash(randomBytes(48).toString('base64url'),12);
    const created=await db().begin(async tx=>{
      const rows=await tx`insert into app_users(email,password_hash,full_name,role)
-     values(${profile.email},${passwordHash},${profile.name},'guest')
+     values(${profile.email},${passwordHash},${profile.name},'user')
      on conflict(email) do nothing returning id,role,email`;
      if(!rows[0]) return null;
      await tx`insert into oauth_identities(provider,provider_sub,user_id,provider_email)
