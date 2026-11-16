@@ -13,3 +13,14 @@ create index if not exists idx_scans_event_time on entry_scans(event_id,scanned_
 
 -- Event-level QR encryption, organiser keyword stored encrypted at rest.
 alter table events add column if not exists qr_keyword_ciphertext text;
+
+-- Google OAuth mapping. Role authorization always remains in app_users and event assignments.
+create table if not exists oauth_identities (
+  provider text not null check(provider='google'),
+  provider_sub text not null,
+  user_id uuid not null references app_users(id) on delete cascade,
+  provider_email text not null,
+  created_at timestamptz not null default now(),
+  primary key(provider,provider_sub),
+  unique(provider,user_id)
+);
