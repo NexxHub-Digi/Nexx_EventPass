@@ -1,13 +1,14 @@
 import { currentUser } from '@/lib/security';
 import { encryptOrganiserKeyword } from '@/lib/qr-encryption';
+import {isMasqueradePoster} from '@/lib/masquerade-templates';
 import { db } from '@/lib/db';
 import { fail, handleError, ok, payload, positiveInt, str } from '@/lib/http';
 export const runtime = 'nodejs';
 export async function GET() {
   try {
     const user = await currentUser();
-    const events = user ? await db()`select e.id,e.organiser_id,e.title,e.slug,e.venue,e.starts_at,e.ends_at,e.price_ngn,e.capacity,e.status,e.created_at,e.description,e.category,e.ticket_theme,e.admission_label,e.verification_status,(select m.id from event_media m where m.event_id=e.id and m.media_type='image' and m.approved order by m.created_at asc limit 1) as cover_media_id,(select m.id from event_media m where m.event_id=e.id and m.media_type='video' and m.approved order by m.created_at asc limit 1) as video_media_id,(select m.id from event_media m where m.event_id=e.id and m.media_type='ticket_art' and m.approved order by m.created_at asc limit 1) as ticket_art_id,(e.qr_keyword_ciphertext is not null) as qr_configured,u.full_name as organiser,p.bank_name,p.account_name as bank_account_name,p.account_number as bank_account_number from events e join app_users u on u.id=e.organiser_id left join organiser_payment_accounts p on p.organiser_id=e.organiser_id where (e.status='published' and e.verification_status='verified' and u.account_status='active') or e.organiser_id=${user.id} or ${user.role==='platform_admin'} order by e.starts_at asc limit 100`
-      : await db()`select e.id,e.organiser_id,e.title,e.slug,e.venue,e.starts_at,e.ends_at,e.price_ngn,e.capacity,e.status,e.created_at,e.description,e.category,e.ticket_theme,e.admission_label,e.verification_status,(select m.id from event_media m where m.event_id=e.id and m.media_type='image' and m.approved order by m.created_at asc limit 1) as cover_media_id,(select m.id from event_media m where m.event_id=e.id and m.media_type='video' and m.approved order by m.created_at asc limit 1) as video_media_id,(select m.id from event_media m where m.event_id=e.id and m.media_type='ticket_art' and m.approved order by m.created_at asc limit 1) as ticket_art_id,(e.qr_keyword_ciphertext is not null) as qr_configured,u.full_name as organiser,p.bank_name,p.account_name as bank_account_name,p.account_number as bank_account_number from events e join app_users u on u.id=e.organiser_id left join organiser_payment_accounts p on p.organiser_id=e.organiser_id where e.status='published' and e.verification_status='verified' and u.account_status='active' order by e.starts_at asc limit 100`;
+    const events = user ? await db()`select e.id,e.organiser_id,e.title,e.slug,e.venue,e.starts_at,e.ends_at,e.price_ngn,e.capacity,e.status,e.created_at,e.description,e.category,e.ticket_theme,e.admission_label,e.poster_template,e.verification_status,(select m.id from event_media m where m.event_id=e.id and m.media_type='image' and m.approved order by m.created_at asc limit 1) as cover_media_id,(select m.id from event_media m where m.event_id=e.id and m.media_type='video' and m.approved order by m.created_at asc limit 1) as video_media_id,(select m.id from event_media m where m.event_id=e.id and m.media_type='ticket_art' and m.approved order by m.created_at asc limit 1) as ticket_art_id,(e.qr_keyword_ciphertext is not null) as qr_configured,u.full_name as organiser,p.bank_name,p.account_name as bank_account_name,p.account_number as bank_account_number from events e join app_users u on u.id=e.organiser_id left join organiser_payment_accounts p on p.organiser_id=e.organiser_id where (e.status='published' and e.verification_status='verified' and u.account_status='active') or e.organiser_id=${user.id} or ${user.role==='platform_admin'} order by e.starts_at asc limit 100`
+      : await db()`select e.id,e.organiser_id,e.title,e.slug,e.venue,e.starts_at,e.ends_at,e.price_ngn,e.capacity,e.status,e.created_at,e.description,e.category,e.ticket_theme,e.admission_label,e.poster_template,e.verification_status,(select m.id from event_media m where m.event_id=e.id and m.media_type='image' and m.approved order by m.created_at asc limit 1) as cover_media_id,(select m.id from event_media m where m.event_id=e.id and m.media_type='video' and m.approved order by m.created_at asc limit 1) as video_media_id,(select m.id from event_media m where m.event_id=e.id and m.media_type='ticket_art' and m.approved order by m.created_at asc limit 1) as ticket_art_id,(e.qr_keyword_ciphertext is not null) as qr_configured,u.full_name as organiser,p.bank_name,p.account_name as bank_account_name,p.account_number as bank_account_number from events e join app_users u on u.id=e.organiser_id left join organiser_payment_accounts p on p.organiser_id=e.organiser_id where e.status='published' and e.verification_status='verified' and u.account_status='active' order by e.starts_at asc limit 100`;
     return ok({ events });
   } catch (e) { return handleError(e); }
 }
@@ -19,15 +20,16 @@ export async function POST(req: Request) {
     const startsAt = str(b.startsAt, 60); const start = new Date(startsAt);
     const price = Number(b.priceNgn); const capacity = positiveInt(b.capacity, 1000000);
     const keyword = str(b.qrKeyword, 80);
-    const description=str(b.description,2500),category=str(b.category,60)||'Other',ticketTheme=str(b.ticketTheme,32)||'aurora',admissionLabel=str(b.admissionLabel,80)||'ADMIT ONE';
+    const description=str(b.description,2500),category=str(b.category,60)||'Other',ticketTheme=str(b.ticketTheme,32)||'aurora',admissionLabel=str(b.admissionLabel,80)||'ADMIT ONE',posterTemplate=str(b.posterTemplate,40)||'none';
     const selectedTheme=await db()`select id from ticket_theme_catalog where id=${ticketTheme} and active=true limit 1`;
     if(!selectedTheme[0])return fail('Choose an available ticket theme');
+    if(posterTemplate!=='none'&&!isMasqueradePoster(posterTemplate))return fail('Choose an available poster design');
     if (keyword.length < 8) return fail('Choose a private organiser QR keyword of at least 8 characters');
     if (!title || !venue || !Number.isFinite(start.getTime()) || start.getTime()<Date.now() || !Number.isSafeInteger(price) || price<0 || !capacity) return fail('Please provide a future date, valid title, venue, price and capacity');
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60)+'-'+crypto.randomUUID().slice(0,8);
     const id = crypto.randomUUID();
     const encryptedKeyword = encryptOrganiserKeyword(id, keyword);
-    const events = await db()`insert into events (id,organiser_id,title,slug,venue,starts_at,price_ngn,capacity,status,qr_keyword_ciphertext,description,category,ticket_theme,verification_status,admission_label) values (${id},${user.id},${title},${slug},${venue},${start.toISOString()},${price},${capacity},'draft',${encryptedKeyword},${description},${category},${ticketTheme},'pending',${admissionLabel}) returning id,organiser_id,title,slug,venue,starts_at,price_ngn,capacity,status,description,category,ticket_theme,verification_status,admission_label`;
+    const events = await db()`insert into events (id,organiser_id,title,slug,venue,starts_at,price_ngn,capacity,status,qr_keyword_ciphertext,description,category,ticket_theme,verification_status,admission_label,poster_template) values (${id},${user.id},${title},${slug},${venue},${start.toISOString()},${price},${capacity},'draft',${encryptedKeyword},${description},${category},${ticketTheme},'pending',${admissionLabel},${posterTemplate}) returning id,organiser_id,title,slug,venue,starts_at,price_ngn,capacity,status,description,category,ticket_theme,verification_status,admission_label,poster_template`;
     return ok({ event:events[0] },201);
   } catch(e){return handleError(e);}
 }
@@ -36,14 +38,15 @@ export async function PATCH(req:Request){
  try{
   const u=await currentUser();if(!u||u.account_status!=='active'||u.role!=='organiser')return fail('Active organiser required',403);
   const b=await payload(req),eventId=str(b.eventId,40),description=str(b.description,2500),category=str(b.category,60)||'Other',
-  ticketTheme=str(b.ticketTheme,32)||'aurora',admissionLabel=str(b.admissionLabel,80)||'ADMIT ONE';
+  ticketTheme=str(b.ticketTheme,32)||'aurora',admissionLabel=str(b.admissionLabel,80)||'ADMIT ONE',posterTemplate=str(b.posterTemplate,40)||'none';
   if(!/^[0-9a-f-]{36}$/i.test(eventId))return fail('Invalid event');
   const selectedTheme=await db()`select id from ticket_theme_catalog where id=${ticketTheme} and active=true limit 1`;
   if(!selectedTheme[0])return fail('Invalid or inactive ticket theme');
+  if(posterTemplate!=='none'&&!isMasqueradePoster(posterTemplate))return fail('Invalid poster design');
   const issued=await db()`select exists(select 1 from tickets where event_id=${eventId}) as has_tickets`;
   if(issued[0]?.has_tickets)return fail('This event already has issued tickets. Contact Platform Admin to change a live event without disrupting existing passes.',409);
-  const rows=await db()`update events set description=${description},category=${category},ticket_theme=${ticketTheme},admission_label=${admissionLabel},verification_status='pending',status='draft'
-    where id=${eventId} and organiser_id=${u.id} returning id,description,category,ticket_theme,admission_label`;
+  const rows=await db()`update events set description=${description},category=${category},ticket_theme=${ticketTheme},admission_label=${admissionLabel},poster_template=${posterTemplate},verification_status='pending',status='draft'
+    where id=${eventId} and organiser_id=${u.id} returning id,description,category,ticket_theme,admission_label,poster_template`;
   if(!rows[0])return fail('Event not found or not owned by you',404);
   return ok({event:rows[0],message:'Changes are pending Platform Admin review before they appear publicly.'});
  }catch(e){return handleError(e)}
