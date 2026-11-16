@@ -1,7 +1,9 @@
 'use client';
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
-type Event={id:string;title:string;venue:string;organiser?:string;starts_at:string;price_ngn:number;category?:string;description?:string;ticket_theme?:string;cover_media_id?:string|null;video_media_id?:string|null;status:string;verification_status?:string};
+import {EventPosterDesign} from '@/components/EventPosterDesign';
+import {isMasqueradePoster} from '@/lib/masquerade-templates';
+type Event={id:string;title:string;venue:string;organiser?:string;starts_at:string;price_ngn:number;category?:string;description?:string;ticket_theme?:string;poster_template?:string;cover_media_id?:string|null;video_media_id?:string|null;status:string;verification_status?:string};
 const money=(n:number)=>n?'₦'+Number(n).toLocaleString('en-NG'):'Free entry';
 const themes:Record<string,string>={aurora:'linear-gradient(135deg,#562cbe,#087d88)',midnight:'linear-gradient(135deg,#171c30,#68502f)',sunset:'linear-gradient(135deg,#9a2b6f,#d47746)',neon:'linear-gradient(135deg,#221958,#1c9b9a)',minimal:'linear-gradient(135deg,#293d50,#334c63)'};
 export default function Home(){
@@ -23,7 +25,7 @@ export default function Home(){
  <div className="ep-filters"><input aria-label="Search events" placeholder="Search events, venues or organisers…" value={search} onChange={e=>setSearch(e.target.value)}/><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)}>{categories.map(c=><option key={c}>{c}</option>)}</select></div>
  {error&&<p role="alert" className="ep-empty">{error}</p>}
  {loading?<div className="ep-empty">Loading verified events…</div>:visible.length?<div className="ep-card-grid">{visible.map(e=><article className="ep-card" key={e.id}>
-  <div className="ep-cover">{e.cover_media_id?<img loading="lazy" src={'/api/events/media?id='+e.cover_media_id} alt={e.title+' event poster'}/>:<div className="ep-cover-fallback" style={{background:themes[e.ticket_theme||'aurora']||themes.aurora}}><span>◈</span><strong>{e.title}</strong></div>}<span className="ep-category">{e.category||'Event'}</span></div>
+  <div className="ep-cover">{e.cover_media_id?<img loading="lazy" src={'/api/events/media?id='+e.cover_media_id} alt={e.title+' event poster'}/>:isMasqueradePoster(e.poster_template||'')?<div className="ep-poster-thumb"><EventPosterDesign posterId={e.poster_template||''} title={e.title} venue={e.venue} startsAt={e.starts_at} priceNgn={e.price_ngn} organiser={e.organiser} description={e.description}/></div>:<div className="ep-cover-fallback" style={{background:themes[e.ticket_theme||'aurora']||themes.aurora}}><span>◈</span><strong>{e.title}</strong></div>}<span className="ep-category">{e.category||'Event'}</span></div>
   <div className="ep-card-content"><small>{new Date(e.starts_at).toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'numeric'})} · {e.venue}</small><h3>{e.title}</h3><p>{e.description||'Explore this event, its organiser and the official ticket collection.'}</p><div className="ep-card-bottom"><strong>{money(e.price_ngn)}</strong><Link href="/login/user">Explore tickets</Link></div></div>
  </article>)}</div>:!error&&<div className="ep-empty"><strong>No events match your search</strong><p>Change the category or search term, or check back when organisers publish more events.</p></div>}
  </section>
