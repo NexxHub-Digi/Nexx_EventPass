@@ -19,8 +19,21 @@ export async function POST(req: Request) {
         if(Number(counts[0].issued)+Number(order.quantity)>Number(order.capacity))return {error:'Event capacity exceeded',status:409};
       }
       await tx`update ticket_orders set status=${decision}, reviewed_by=${u.id},reviewed_at=now() where id=${id}`;
-      if(decision==='approved')for(let i=0;i<Number(order.quantity);i++)await tx`insert into tickets(event_id,order_id,owner_id) values(${order.event_id},${id},${order.buyer_id})`;
-      return {success:true,decision};
+      const issued=[];
+      if(decision==='approved'){
+        const design=await tx`select ticket_theme,qr_keyword_ciphertext,
+          (select m.id from event_media m where m.event_id=e.id and m.media_type='ticket_art' and m.approved order by m.created_at asc limit 1) as ticket_art_id
+          from events e where e.id=${order.event_id}`;
+        if(!design[0]?.qr_keyword_ciphertext)return {error:'Event secure QR configuration is missing',status:409};
+        for(let i=0;i<Number(order.quantity);i++){
+          const ticket=await tx`insert into tickets(event_id,order_id,owner_id)
+           values(${order.event_id},${id},${order.buyer_id}) returning id,event_id,status,created_at`;
+          await tx`insert into ticket_deliveries(ticket_id,order_id,recipient_id,event_id,ticket_theme,ticket_art_id)
+           values(${ticket[0].id},${id},${order.buyer_id},${order.event_id},${design[0].ticket_theme},${design[0].ticket_art_id})`;
+          issued.push({id:ticket[0].id});
+        }
+      }
+      return {success:true,decision,issued:issued.length,delivery:'in_app'};
     });
     if('error' in result)return fail(String(result.error),Number(result.status));return ok(result);
   }catch(e){return handleError(e);}
