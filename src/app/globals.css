@@ -50,3 +50,53 @@
 .rw-google-link{color:#45d6c9;text-decoration:underline;text-underline-offset:3px;font-size:13px;font-weight:650}
 
 .rw-invite{background:#263454;border:1px solid #45d6c9;padding:16px;border-radius:13px;margin:14px 0}.rw-invite input{width:100%;padding:12px;background:#111a30;color:#fff;border:1px solid #53688d;border-radius:8px}
+
+/* EventPass 2026 — discover / organiser creative studio / gate-first UI */
+.rw-market-hero{position:relative;padding:clamp(25px,5vw,52px);border-radius:23px;background:radial-gradient(ellipse at 90% 15%,#4f3180 0%,transparent 60%),linear-gradient(128deg,#122640,#171b39);overflow:hidden}
+.rw-market-hero:after{content:'◈';position:absolute;right:5%;top:-35px;font-size:220px;opacity:.09;transform:rotate(18deg);pointer-events:none}
+.rw-market-hero h1{font-size:clamp(32px,5vw,52px);line-height:1.07;margin:13px 0;letter-spacing:-1.3px;color:white}
+.rw-market-hero p{max-width:510px;color:#c3cbdf;font-size:15px}
+.rw-market-filters{position:relative;display:flex;flex-wrap:wrap;gap:10px;z-index:1;margin-top:26px}
+.rw-market-filters input,.rw-market-filters select{min-height:48px;border-radius:11px;background:#17233d;color:#fff;border:1px solid #455577;padding:0 14px;min-width:155px}
+.rw-market-filters input{flex:2;min-width:230px}
+.rw-market-count{font-size:13px;color:#a9b9d0;margin:22px 3px}.rw-market-count strong{color:#4ce7cc}
+.rw-market-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:18px}
+.rw-market-card{min-width:0;border-radius:17px;background:#20283f;border:1px solid #3a4662;overflow:hidden;animation:rw-rise .48s both;transition:transform .22s,border-color .22s,box-shadow .22s}
+.rw-market-card:hover{transform:translateY(-6px);border-color:#4adbc9;box-shadow:0 16px 32px #080c195c}
+.rw-market-cover{height:204px;position:relative;overflow:hidden;background:#293451}
+.rw-market-cover img,.rw-market-cover video{height:100%;width:100%;object-fit:cover;display:block}
+.rw-market-placeholder{height:100%;padding:24px;display:flex;flex-direction:column;justify-content:center;gap:9px}
+.rw-market-placeholder span{font-size:43px;color:#fff8}.rw-market-placeholder strong{font-size:24px;line-height:1.13;max-width:235px}
+.rw-event-tag{position:absolute;top:13px;left:13px;font-size:11px;font-weight:800;letter-spacing:.2px;padding:8px 12px;border-radius:30px;background:#12172dbd;backdrop-filter:blur(8px)}
+.rw-market-info{padding:20px}.rw-market-info h3{font-size:20px;line-height:1.24;margin:9px 0;color:#fff}
+.rw-market-meta{font-size:12px;color:#91ebd9}.rw-market-info>p{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;min-height:49px;color:#b0bfd2;line-height:1.55;font-size:13px}
+.rw-market-organiser{font-size:12px;color:#aebad1;margin-top:13px}.rw-market-organiser strong{color:#fff}
+.rw-market-footer{display:flex;justify-content:space-between;align-items:center;gap:11px;margin-top:17px}.rw-market-footer>strong{color:#7effdc;font-size:16px}.rw-market-footer button{font-size:12px;margin:0}
+.rw-market-booking{padding:20px;background:#151d31}.rw-market-booking h4{margin:6px 0 13px}.rw-empty{border:1px dashed #50607b;border-radius:16px;text-align:center;padding:35px;margin:15px 0;color:#b6c4d8}
+.rw-panel textarea{background:#222e48;border:1px solid #415172;color:#fff;border-radius:10px;padding:13px;font:inherit;resize:vertical}
+.rw-theme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px;margin:17px 0 22px}
+.rw-theme-option{position:relative;min-height:107px;border:2px solid transparent;border-radius:13px;padding:13px;text-align:left;display:flex;flex-direction:column;justify-content:space-between;color:#fff;transition:transform .2s,border-color .2s}
+.rw-theme-option strong{font-size:13px}.rw-theme-option span,.rw-theme-option small{font-size:10px;opacity:.86}.rw-theme-option.selected{border-color:#6bffe0;box-shadow:0 0 0 2px #102d36}.rw-theme-option:hover{transform:translateY(-3px)}
+.rw-media-inputs{display:flex;gap:11px;flex-wrap:wrap;margin:18px 0}
+.rw-file-label{border:1px dashed #52bdad;border-radius:12px;padding:13px;cursor:pointer;color:#aaf1df;font-size:13px}
+.rw-file-label input{display:block;margin-top:8px;max-width:225px;font-size:12px}
+.rw-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin:16px 0}
+.rw-media-card{min-width:0;background:#202b42;border-radius:11px;padding:9px;border:1px solid #3c4b66}
+.rw-media-card img,.rw-media-card video{display:block;width:100%;height:140px;object-fit:cover;border-radius:8px}
+.rw-media-card small{display:block;margin-top:8px;color:#b1c1da;overflow-wrap:anywhere}
+.rw-review-card{border:1px solid #485778;border-radius:14px;padding:17px;margin:14px 0;background:#1c2740}
+.rw-review-card strong{font-size:17px}.rw-designed-ticket{position:relative;overflow:hidden;min-height:245px;border:1px solid #ffffff39;isolation:isolate}
+.rw-ticket-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.48;z-index:-1}
+.rw-ticket-details{position:relative;z-index:1;text-shadow:0 1px 9px #0008}.rw-ticket-details small{letter-spacing:1.4px;font-size:10px}
+.rw-ticket-details h3{margin:13px 0 5px;font-size:23px}.rw-ticket-details .rw-qr{box-shadow:0 8px 24px #0008}
+.rw-gate-flow{max-width:750px;margin:20px auto;text-align:center}
+.rw-gate-flow h1{font-size:clamp(30px,5vw,48px);margin:12px 0}.rw-gate-flow>p{color:#b6c7da;line-height:1.6}
+.rw-gate-event-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:25px 0}
+.rw-gate-event{display:flex;flex-direction:column;gap:9px;text-align:left;border-radius:14px;background:#212d49;border:2px solid #40506f;color:#fff;padding:18px}
+.rw-gate-event.selected{border-color:#45d6c9;background:#1a3e46}.rw-gate-event strong{font-size:18px}.rw-gate-event small{color:#a7bcd0}
+.rw-gate-stage{border-radius:17px;background:#161e33;padding:20px;border:1px solid #415371}
+.rw-gate-stage>.primary{width:100%;min-height:60px;font-size:19px}.rw-gate-camera{height:min(65vh,500px);margin:14px 0}
+.rw-gate-stage .rw-result{margin:20px 0}.rw-gate-stage .rw-result b{font-size:clamp(23px,5vw,36px)}
+@keyframes rw-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:640px){.rw-market{padding:11px}.rw-market-hero{padding:25px}.rw-market-grid{grid-template-columns:1fr}.rw-market-cover{height:225px}.rw-gate-stage{padding:12px}.rw-market-filters input,.rw-market-filters select{width:100%}}
+@media(prefers-reduced-motion:reduce){.rw-market-card{animation:none;transition:none}.rw-market-card:hover,.rw-theme-option:hover{transform:none}}
