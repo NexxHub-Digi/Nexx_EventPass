@@ -15,6 +15,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:qr
       - run: npm run test:workflow
+      - run: node --test tests/gate-invitations.test.mjs
       - run: npm run build
         env:
           AUTH_SECRET: ci-auth-signing-secret-for-tests-01234567890123456789
