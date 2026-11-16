@@ -42,7 +42,10 @@ export async function POST(req:Request){
   if(!email)return fail('Verified existing User email required');
   const found=await db()`select u.id,u.role from app_users u where lower(u.email)=${email} and exists(select 1 from oauth_identities i where i.user_id=u.id and lower(i.provider_email)=${email}) limit 1`;
   if(!found[0]||found[0].role==='platform_admin')return fail('Create organisers from an existing Google-verified User account',400);
-  await db()`update app_users set role='organiser',requested_role=null,account_status='active',approved_by=${admin.id},approved_at=now() where id=${found[0].id}`;
+  await db().begin(async tx=>{
+   await tx`update app_users set role='organiser',requested_role=null,account_status='active',approved_by=${admin.id},approved_at=now() where id=${found[0].id} and role='user'`;
+   await tx`insert into platform_admin_actions(admin_id,target_user_id,action) values(${admin.id},${found[0].id},'create_organiser')`;
+  });
   return ok({success:true});
  }
  if(!/^[0-9a-f-]{36}$/i.test(id)||id===admin.id)return fail('Invalid organiser account');
