@@ -1,6 +1,6 @@
 # Organiser Studio — Luxury Ticket Template Collection
 
-The first design family is based on the STJ Masked Party references supplied in chat.
+The first design family is based on the seven STJ Masked Party references supplied in chat: five horizontal ticket designs and two portrait event posters.
 
 ## Built-in reusable designs
 
@@ -12,7 +12,9 @@ The first design family is based on the STJ Masked Party references supplied in 
 | `stj-midnight-luxe` | Midnight Luxe | Black/plum luxe background, gold ornamentation |
 | `stj-gold-script` | Gold Script Gala | Classic gold italic headline and decorative admission layout |
 
-These are **reusable SVG/CSS ticket compositions** reflecting the visual language of the supplied samples, not flattened copies of the seven uploaded pictures. Organisers can also upload their own event artwork as `ticket_art`, which remains subject to Platform Admin media review.
+The poster collection adds **Masked Apartment Evening** (`stj-apartment-party`) and **Lounge Masquerade Night** (`stj-lounge-nights`), with dynamic event details and no QR. The selected poster is saved as `events.poster_template` and can appear in discovery when there is no approved uploaded cover photo.
+
+These are **reusable SVG/CSS ticket and poster compositions** reflecting the visual language of the supplied samples, not flattened copies of the seven uploaded pictures. Organisers can also upload their own event artwork as `ticket_art`, which remains subject to Platform Admin media review.
 
 ## How it works
 
@@ -28,6 +30,6 @@ These are **reusable SVG/CSS ticket compositions** reflecting the visual languag
 - The reusable preview deliberately contains **NO usable QR code**, and a clear preview watermark appears.
 - A ticket's QR must never be captured in a static design and reused for other customers.
 - The custom art uploader can accept the organiser's original artwork, but keep any printed/static QR from the source image out of the functional scan area.
-- Five new templates have been added to the platform theme catalogue and are visible to the Expo organiser theme list as well.
-- The web studio has full ticket compositions. The Expo organiser app has a compact live sample card for masquerade themes; the detailed full-layout editor is on web.
+- Five new ticket templates have been added to the platform theme catalogue and are visible to the Expo organiser theme list as well.
+- The web studio has five detailed ticket compositions and two portrait promotional previews. The Expo organiser app has a compact live sample card for masquerade themes; the detailed full-layout editor is on web.
 - The secure QR generator, ticket ownership, redemption/duplicate detection and organiser isolation remain server-side.
