@@ -1,0 +1,9 @@
+[build]
+command = "npm run build"
+
+[build.environment]
+NODE_VERSION = "22"
+
+# Next.js runtime adapter is detected automatically by Netlify.
+# Set DATABASE_URL, AUTH_SECRET, QR_SIGNING_SECRET, ORGANISER_INVITE_CODE
+# privately in the hosting environment.
