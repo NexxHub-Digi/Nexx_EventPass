@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Nexx EventPass",
+    "slug": "nexx-eventpass",
+    "scheme": "eventpass",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nexxhub.eventpass",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scan EventPass tickets at authorised event gates."
+      }
+    },
+    "android": {
+      "package": "com.nexxhub.eventpass",
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow EventPass to scan QR tickets."
+        }
+      ]
+    ]
+  }
+}
