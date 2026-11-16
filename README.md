@@ -8,20 +8,29 @@ Nexx EventPass is a branded event-discovery, manual ticket-payment approval and 
 
 | Portal | Sign in | Mobile source | Permissions |
 |---|---|---|---|
-| **User** | /login/user | apps/user | Discover all published events, use organiser bank instructions, submit transfers + receipt, view approved QR wallet |
-| **Event Organiser** | /login/organiser | apps/organiser | Apply for approval, configure bank details, create events, review receipts, verify bank transfers, invite and revoke gate operators |
-| **Gate Operator** | /login/gate | apps/gate | Assigned event scans, camera + QR scanner, admission and per-gate activity only |
-| **Platform Administrator** | /login/platform-admin | apps/platform-admin | Approve/reject/activate/suspend organisers, create organisers from existing Google-verified Users, platform metrics |
+| **User** | /login/user | apps/user | Search and filter verified events, view uploaded posters/videos, request tickets and show themed encrypted QR wallet |
+| **Event Organiser** | /login/organiser | apps/organiser | Apply for approval, design multiple events, upload media, choose/import ticket graphics, verify payments and invite gate staff |
+| **Gate Operator** | /login/gate | apps/gate | Google invitation-only access, select assigned event → camera scan → immediate admit/reject decision |
+| **Platform Administrator** | /login/platform-admin | apps/platform-admin | Approve organisers and listings/media, publish new ticket themes, configure access and review platform metrics |
 
 Web workspaces: /dashboard/user, /dashboard/organiser, /dashboard/gate, /dashboard/platform-admin. Login portals **do not grant roles**.
+
+## Event marketplace, verification and ticket themes
+
+- Approved organisers can create multiple events, but **new event posts remain draft/pending until Platform Admin verifies them**.
+- Organisers may upload posters, galleries, custom ticket art (up to 2 MB each), and small video previews (up to 3.5 MB). Pending media remains hidden publicly until approved.
+- User marketplace supports search, categories, animations, poster/video discovery and manual ticket requests.
+- Gate mobile prioritises assigned event selection, runtime camera permission, QR validity and rapid repeat scanning.
+- Ticket designs use a **live, Platform Admin-managed catalogue** with six built-in themes plus additional themes added without deploying new app code. Custom artwork imports are available.
+- See [Event Studio Guide](docs/EVENT_STUDIO_GUIDE.md) for detailed workflows and production limitations.
 
 ## Administrator and organiser rules
 
 - The default platform administrator is an existing, verified, owner-authorised account provisioned directly in Neon, not a publicly registered account. **No default password is stored or distributed**.
 - Only Platform Admin can approve a User's organiser application or create an organiser from an existing Google-verified User account.
-- Anyone may apply to be an organiser using Google or email/password. Their organiser dashboard stays **pending** until approval; normal User access remains available during review.
+- Anyone may apply to be an organiser using Google only. Their organiser dashboard stays **pending** until approval; normal User access remains available during review.
 - The Platform Admin can suspend/restore organiser access. Inactive/suspended organisers cannot create events, review payment or assign gates.
-- A gate operator is an event-specific *assignment* to an existing User account, **not** a global privileged role. Only the owning organiser may issue or revoke invitations; the invited email must be verified through Google before the assignment is activated.
+- A gate operator is an event-specific assignment to a Google-verified identity, **not** a separate public registration or privileged global role. Only the owning organiser may issue or revoke invitations; the invited email must be verified through Google before the assignment is activated.
 - Organisers can scan their own event tickets and view gate activity. Gate operators may scan only their assigned events and cannot create events, approve payments, view other organisers' data or access platform administration.
 
 ## Manual bank-transfer and receipt workflow
@@ -40,14 +49,14 @@ No online payment processor is configured. Never approve a receipt without indep
 
 - **Next.js** App Router API routes: src/app/api
 - **Neon PostgreSQL**: app_users, oauth_identities, events, organiser_payment_accounts, ticket_orders, tickets, entry_scans, gate_assignments, gate_invitations
-- **Auth**: bcrypt email passwords; JWT web httpOnly cookie and mobile bearer tokens; Google OIDC with authorization code + PKCE, state/nonce validation and Google JWKS audience checks.
+- **Auth**: Google-only new-account sign-up on all role interfaces; Google OIDC with PKCE/state/nonce and JWKS audience verification; web httpOnly JWT sessions and Expo bearer sessions via short-lived, device-PKCE-bound one-use codes. Legacy password sign-in remains only for migration and is not shown publicly.
 - **Roles**: database role and account approval status, organiser ownership, event-scoped gate invitations and scan permissions.
 - **QR**: AES-256-GCM encrypted event-specific credentials with organiser keyword and server secret, or legacy signed HMAC tickets; atomic Postgres redemption, fail-closed offline.
 - **Web camera**: @zxing/browser and keyboard-style USB/Bluetooth QR readers.
 - **Expo**: four separately branded source projects and bundle identifiers. Only the Gate app requests CAMERA. User app uses a document picker for receipts.
 - **Google Search Console**: verification HTML preserved in public/; branded favicon and Open Graph metadata.
 
-Separate client IDs for User, Organiser, Gate and Platform Admin are configured in Vercel. Native Google OAuth for the four Expo binaries, app store releases, and production-grade device testing are **not yet complete**. Previously disclosed OAuth client secrets must be rotated in Google Cloud and the replacements entered directly into Vercel.
+Separate client IDs for User, Organiser, Gate and Platform Admin are configured in Vercel. Native browser Google OAuth and one-use PKCE token exchange are implemented in source, but signed APK/IPA distribution, physical-device OAuth/camera verification and production acceptance are **not yet complete**. Previously disclosed OAuth client secrets must be rotated in Google Cloud and the replacements entered directly into Vercel.
 
 ## Start locally
 
