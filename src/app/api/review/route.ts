@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       await tx`update ticket_orders set status=${decision}, reviewed_by=${u.id},reviewed_at=now() where id=${id}`;
       const issued=[];
       if(decision==='approved'){
-        const design=await tx`select ticket_theme,qr_keyword_ciphertext,
+        const design=await tx`select ticket_theme,admission_label,qr_keyword_ciphertext,
           (select m.id from event_media m where m.event_id=e.id and m.media_type='ticket_art' and m.approved order by m.created_at asc limit 1) as ticket_art_id
           from events e where e.id=${order.event_id}`;
         // Existing legacy events use signed EVP1 tickets; new configured events use encrypted EVP2.
@@ -29,8 +29,8 @@ export async function POST(req: Request) {
         for(let i=0;i<Number(order.quantity);i++){
           const ticket=await tx`insert into tickets(event_id,order_id,owner_id)
            values(${order.event_id},${id},${order.buyer_id}) returning id,event_id,status,created_at`;
-          await tx`insert into ticket_deliveries(ticket_id,order_id,recipient_id,event_id,ticket_theme,ticket_art_id)
-           values(${ticket[0].id},${id},${order.buyer_id},${order.event_id},${design[0].ticket_theme},${design[0].ticket_art_id})`;
+          await tx`insert into ticket_deliveries(ticket_id,order_id,recipient_id,event_id,ticket_theme,ticket_art_id,admission_label)
+           values(${ticket[0].id},${id},${order.buyer_id},${order.event_id},${design[0].ticket_theme},${design[0].ticket_art_id},${design[0].admission_label})`;
           issued.push({id:ticket[0].id});
         }
       }
