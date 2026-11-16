@@ -6,8 +6,8 @@ export const runtime = 'nodejs';
 export async function GET() {
   try {
     const user = await currentUser();
-    const events = user ? await db()`select e.id,e.organiser_id,e.title,e.slug,e.venue,e.starts_at,e.ends_at,e.price_ngn,e.capacity,e.status,e.created_at,(e.qr_keyword_ciphertext is not null) as qr_configured,u.full_name as organiser from events e join app_users u on u.id=e.organiser_id where e.status='published' or e.organiser_id=${user.id} order by e.starts_at asc limit 100`
-      : await db()`select e.id,e.organiser_id,e.title,e.slug,e.venue,e.starts_at,e.ends_at,e.price_ngn,e.capacity,e.status,e.created_at,(e.qr_keyword_ciphertext is not null) as qr_configured,u.full_name as organiser from events e join app_users u on u.id=e.organiser_id where e.status='published' order by e.starts_at asc limit 100`;
+    const events = user ? await db()`select e.id,e.organiser_id,e.title,e.slug,e.venue,e.starts_at,e.ends_at,e.price_ngn,e.capacity,e.status,e.created_at,(e.qr_keyword_ciphertext is not null) as qr_configured,u.full_name as organiser,p.bank_name,p.account_name as bank_account_name,p.account_number as bank_account_number from events e join app_users u on u.id=e.organiser_id left join organiser_payment_accounts p on p.organiser_id=e.organiser_id where (e.status='published' and u.account_status='active') or e.organiser_id=${user.id} or ${user.role==='platform_admin'} order by e.starts_at asc limit 100`
+      : await db()`select e.id,e.organiser_id,e.title,e.slug,e.venue,e.starts_at,e.ends_at,e.price_ngn,e.capacity,e.status,e.created_at,(e.qr_keyword_ciphertext is not null) as qr_configured,u.full_name as organiser,p.bank_name,p.account_name as bank_account_name,p.account_number as bank_account_number from events e join app_users u on u.id=e.organiser_id left join organiser_payment_accounts p on p.organiser_id=e.organiser_id where e.status='published' and u.account_status='active' order by e.starts_at asc limit 100`;
     return ok({ events });
   } catch (e) { return handleError(e); }
 }

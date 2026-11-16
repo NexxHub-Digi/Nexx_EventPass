@@ -1,7 +1,7 @@
 import { decodeEncryptedQr } from '@/lib/qr-encryption';
 import { currentUser, decodeQR } from '@/lib/security';import { db } from '@/lib/db';import { fail, handleError, ok, payload, str } from '@/lib/http';
 export const runtime='nodejs';
-export async function POST(req:Request){try{const u=await currentUser();if(!u)return fail('Gate staff must sign in',401);
+export async function POST(req:Request){try{const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active gate account required',403);
   const b=await payload(req),eventId=str(b.eventId,40),code=b.code;
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) return fail('Select a valid assigned event',400);
   if(typeof code!=='string'||code.length<10||code.length>2048) return fail('A QR credential is required',400);
