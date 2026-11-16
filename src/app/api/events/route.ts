@@ -20,7 +20,8 @@ export async function POST(req: Request) {
     const price = Number(b.priceNgn); const capacity = positiveInt(b.capacity, 1000000);
     const keyword = str(b.qrKeyword, 80);
     const description=str(b.description,2500),category=str(b.category,60)||'Other',ticketTheme=str(b.ticketTheme,32)||'aurora';
-    if(!['aurora','midnight','sunset','neon','minimal','custom'].includes(ticketTheme))return fail('Choose a supported ticket theme');
+    const selectedTheme=await db()`select id from ticket_theme_catalog where id=${ticketTheme} and active=true limit 1`;
+    if(!selectedTheme[0])return fail('Choose an available ticket theme');
     if (keyword.length < 8) return fail('Choose a private organiser QR keyword of at least 8 characters');
     if (!title || !venue || !Number.isFinite(start.getTime()) || start.getTime()<Date.now() || !Number.isSafeInteger(price) || price<0 || !capacity) return fail('Please provide a future date, valid title, venue, price and capacity');
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60)+'-'+crypto.randomUUID().slice(0,8);
@@ -36,8 +37,9 @@ export async function PATCH(req:Request){
   const u=await currentUser();if(!u||u.account_status!=='active'||u.role!=='organiser')return fail('Active organiser required',403);
   const b=await payload(req),eventId=str(b.eventId,40),description=str(b.description,2500),category=str(b.category,60)||'Other',
   ticketTheme=str(b.ticketTheme,32)||'aurora';
-  if(!/^[0-9a-f-]{36}$/i.test(eventId)||!['aurora','midnight','sunset','neon','minimal','custom'].includes(ticketTheme))
-    return fail('Invalid event or theme');
+  if(!/^[0-9a-f-]{36}$/i.test(eventId))return fail('Invalid event');
+  const selectedTheme=await db()`select id from ticket_theme_catalog where id=${ticketTheme} and active=true limit 1`;
+  if(!selectedTheme[0])return fail('Invalid or inactive ticket theme');
   const rows=await db()`update events set description=${description},category=${category},ticket_theme=${ticketTheme},verification_status='pending'
     where id=${eventId} and organiser_id=${u.id} returning id,description,category,ticket_theme`;
   if(!rows[0])return fail('Event not found or not owned by you',404);
