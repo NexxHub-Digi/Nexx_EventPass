@@ -60,9 +60,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/ticket-themes',wrong.cookie,{name:'Unauthorized Glow',label:'No',colorA:'#123456',colorB:'#456789',accent:'#ffffff'}),403,'only Admin may publish ticket themes');
   const dynamicTheme=expect(await post('/api/ticket-themes',adminCookie,{name:'E2E Ocean Glow',label:'Concert',colorA:'#1450aa',colorB:'#00baa1',accent:'#ffffff'}),201,'Admin adds ticket theme').theme;
   assert.ok(expect(await req('/api/ticket-themes'),200,'public ticket theme catalogue').themes.some(t=>t.id===dynamicTheme.id));
+  const masks=expect(await req('/api/ticket-themes'),200,'masquerade templates included').themes.filter(t=>t.id.startsWith('stj-'));
+  assert.equal(masks.length,5,'all five masquerade layout templates appear in Organiser theme catalogue');
   expect(await req('/api/auth/google?portal=gate&client=native'),400,'native OAuth requires PKCE challenge');
     const date=new Date(Date.now()+3600000).toISOString();
-  const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,qrKeyword:'private-test-keyword'}),201,'create event').event;
+  const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,qrKeyword:'private-test-keyword',ticketTheme:'stj-royal-gold'}),201,'create event').event;
   assert.equal(event.status,'draft','new event cannot auto-publish');
   assert.equal(event.verification_status,'pending','new event requires verification');
   assert.ok(!expect(await req('/api/events'),200,'pre-review discovery').events.some(x=>x.id===event.id),'unreviewed event hidden');
@@ -96,7 +98,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const tickets=expect(await req('/api/tickets',{cookie:buyer.cookie}),200,'ticket wallet').tickets;
   const ticket=tickets.find(t=>t.event_id===event.id);assert.ok(ticket?.qr?.startsWith('EVP2.'));
   assert.ok(ticket?.delivered_at,'ticket is immediately delivered into User wallet');
-  assert.equal(ticket?.ticket_theme,'aurora');
+  assert.equal(ticket?.ticket_theme,'stj-royal-gold','issued ticket retains the selected luxurious STJ design');
   expect(await req('/api/events/media?id='+artworkId),200,'verified poster publicly accessible');
   expect(await req('/api/events/media?eventId='+event.id,{cookie:buyer.cookie}),200,'buyer can browse gallery');
   expect(await req('/api/tickets',{cookie:buyer.cookie}),200,'tickets remain accessible');
