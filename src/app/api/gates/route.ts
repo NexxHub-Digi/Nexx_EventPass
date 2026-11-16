@@ -6,8 +6,8 @@ export async function GET(){
  try{const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active account required',403);
  const gates=await db()`select g.event_id,g.gate_label,e.title,e.starts_at,e.organiser_id,
  o.full_name as organiser_name from gate_assignments g join events e on e.id=g.event_id
- join app_users o on o.id=e.organiser_id where g.user_id=${u.id}
- union select e.id,'Organiser'::text,e.title,e.starts_at,e.organiser_id,u.full_name from events e where e.organiser_id=${u.id}
+ join app_users o on o.id=e.organiser_id where g.user_id=${u.id} and o.role='organiser' and o.account_status='active'
+ union select e.id,'Organiser'::text,e.title,e.starts_at,e.organiser_id,u.full_name from events e where e.organiser_id=${u.id} and u.role='organiser' and u.account_status='active'
  order by starts_at desc`;
  const invitations= u.role==='organiser' ? await db()`select i.id,i.event_id,i.invitee_email,i.gate_label,i.status,i.created_at
  from gate_invitations i where i.organiser_id=${u.id} order by i.created_at desc limit 100`: [];

@@ -5,7 +5,7 @@ export const runtime='nodejs';
 export async function GET() {
   try {
     const user=await currentUser();
-    if (!user || user.role!=='platform_admin') return fail('Platform administrator access required',403);
+    if (!user || user.role!=='platform_admin'||user.account_status!=='active') return fail('Platform administrator access required',403);
     const rows=await db()`select
       (select count(*)::int from app_users) as users,
       (select count(*)::int from events) as events,

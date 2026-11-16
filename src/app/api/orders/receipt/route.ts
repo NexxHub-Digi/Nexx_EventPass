@@ -8,9 +8,15 @@ export async function POST(req:Request){
   const form=await req.formData(),orderId=String(form.get('orderId')||''),file=form.get('receipt');
   if(!/^[a-f0-9-]{36}$/i.test(orderId)||!(file instanceof File)||!types.includes(file.type)||file.size<50||file.size>2_000_000)return fail('Upload PNG, JPG, WebP or PDF proof (up to 2 MB)',400);
   const contents=Buffer.from(await file.arrayBuffer());if(contents.length>2_000_000)return fail('Receipt too large',400);
-  const allowed=await db()`select id from ticket_orders where id=${orderId} and buyer_id=${u.id} and status='pending'`;
-  if(!allowed[0])return fail('Pending order belonging to you required',403);
-  await db()`update ticket_orders set receipt_data=${contents},receipt_mime=${file.type},receipt_uploaded_at=now() where id=${orderId} and buyer_id=${u.id} and status='pending'`;
+  const isPng=contents.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+  const isJpeg=contents[0]===255&&contents[1]===216&&contents[2]===255;
+  const isWebp=contents.toString('ascii',0,4)==='RIFF'&&contents.toString('ascii',8,12)==='WEBP';
+  const isPdf=contents.toString('ascii',0,5)==='%PDF-';
+  const verifiedMime=(file.type==='image/png'&&isPng)||(file.type==='image/jpeg'&&isJpeg)||
+    (file.type==='image/webp'&&isWebp)||(file.type==='application/pdf'&&isPdf);
+  if(!verifiedMime)return fail('Receipt content does not match its file type',400);
+  const rows=await db()`update ticket_orders set receipt_data=${contents},receipt_mime=${file.type},receipt_uploaded_at=now() where id=${orderId} and buyer_id=${u.id} and status='pending' returning id`;
+  if(!rows[0])return fail('Pending order belonging to you required',403);
   return ok({success:true});
  }catch(e){return handleError(e)}
 }

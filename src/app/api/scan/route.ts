@@ -5,7 +5,11 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
   const b=await payload(req),eventId=str(b.eventId,40),code=b.code;
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) return fail('Select a valid assigned event',400);
   if(typeof code!=='string'||code.length<10||code.length>2048) return fail('A QR credential is required',400);
-  const perm=await db()`select g.gate_label from gate_assignments g where g.event_id=${eventId} and g.user_id=${u.id} union select 'Organiser'::text from events e where e.id=${eventId} and e.organiser_id=${u.id}`;
+  const perm=await db()`select g.gate_label from gate_assignments g join events e on e.id=g.event_id
+    join app_users owner on owner.id=e.organiser_id
+    where g.event_id=${eventId} and g.user_id=${u.id} and e.status='published' and owner.role='organiser' and owner.account_status='active'
+    union select 'Organiser'::text from events e join app_users owner on owner.id=e.organiser_id
+    where e.id=${eventId} and e.organiser_id=${u.id} and owner.account_status='active' and owner.role='organiser' and e.status='published'`;
   if(!perm[0])return fail('Not assigned to this event',403);
   const gateLabel=String(perm[0].gate_label);
   const eventSecurity=await db()`select qr_keyword_ciphertext from events where id=${eventId}`;

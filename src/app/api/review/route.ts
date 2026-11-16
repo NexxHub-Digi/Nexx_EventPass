@@ -7,9 +7,10 @@ export async function POST(req: Request) {
     const b=await payload(req), id=str(b.orderId,40),decision=str(b.decision,20);
     if(!id || !['approved','rejected'].includes(decision))return fail('Invalid review decision');
     const result=await db().begin(async tx=>{
-      const orders=await tx`select o.*,e.organiser_id,e.capacity,e.starts_at,e.status as event_status from ticket_orders o join events e on e.id=o.event_id where o.id=${id} for update of o,e`;
+      const orders=await tx`select o.*,e.organiser_id,e.capacity,e.starts_at,e.status as event_status,a.account_status as organiser_status from ticket_orders o join events e on e.id=o.event_id join app_users a on a.id=e.organiser_id where o.id=${id} for update of o,e`;
       const order=orders[0];if(!order)return {error:'Order not found',status:404};
-      if(order.organiser_id!==u.id && u.role!=='platform_admin')return {error:'Not permitted',status:403};
+      if(order.organiser_id!==u.id || u.role!=='organiser')return {error:'Only the owning organiser may review payments',status:403};
+      if(order.organiser_status!=='active')return {error:'Organiser account inactive',status:403};
       if(order.status!=='pending')return {error:'Order already reviewed',status:409};
       if(decision==='approved'){
         if(Number(order.amount_ngn)>0 && !order.receipt_data)return {error:'Buyer must upload payment receipt before approval',status:409};

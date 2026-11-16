@@ -8,7 +8,7 @@ type Ctx={params:Promise<{action:string}>};
 export async function GET(_req:NextRequest,ctx:Ctx){
  const {action}=await ctx.params;if(action!=='me')return fail('Not found',404);
  const user=await currentUser();if(!user)return ok({user:null,portals:['user']});
- const gates=await db()`select exists(select 1 from gate_assignments g where g.user_id=${user.id}) or exists(select 1 from events e where e.organiser_id=${user.id}) as permitted`;
+ const gates=await db()`select exists(select 1 from gate_assignments g join events e on e.id=g.event_id join app_users owner on owner.id=e.organiser_id where g.user_id=${user.id} and owner.account_status='active' and owner.role='organiser') or exists(select 1 from events e where e.organiser_id=${user.id} and ${user.role}='organiser') as permitted`;
  const active=user.account_status==='active';
  const portals=['user',...(active&&['organiser','platform_admin'].includes(user.role)?['organiser']:[]),...(active&&gates[0]?.permitted?['gate']:[]),...(active&&user.role==='platform_admin'?['platform_admin']:[])];
  return ok({user,portals});
@@ -42,10 +42,7 @@ export async function POST(req:NextRequest,ctx:Ctx){
   u.requested_role='organiser';
  }
  if(portal==='platform_admin'&&u.role!=='platform_admin')return fail('Administrator access required',403);
- if(portal==='gate'){
-  const assigned=await db()`select exists(select 1 from gate_assignments where user_id=${u.id}) or exists(select 1 from events where organiser_id=${u.id}) as allowed`;
-  // Authentication may succeed, but gate access remains inactive until a verified invitation is assigned.
- }
+ // A signed-in User sees an inactive gate interface until assigned to an active organiser event.
  if(u.account_status!=='active' && !(portal==='organiser'&&u.account_status==='pending'))return fail('Account inactive',403);
  const token=await issueSession(u.id);
  const res=NextResponse.json({user:{id:u.id,email:u.email,full_name:u.full_name,role:u.role,account_status:u.account_status,requested_role:u.requested_role},token,pending:portal==='organiser'&&u.role==='user'&&u.requested_role==='organiser'},{headers:{'Cache-Control':'no-store'}});
