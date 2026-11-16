@@ -20,6 +20,7 @@ create table if not exists mobile_auth_codes(
  created_at timestamptz not null default now()
 );
 create index if not exists mobile_auth_codes_expires on mobile_auth_codes(expires_at);
+alter table mobile_auth_codes add column if not exists code_challenge text;
 
 alter table events add column if not exists verification_status text not null default 'verified';
 alter table events add column if not exists verified_by uuid references app_users(id);
