@@ -29,6 +29,9 @@ export async function POST(req:Request){
  const owned=await db()`select id from events where id=${eventId} and organiser_id=${u.id} and status='published'`;
  if(!owned[0])return fail('Only the owning organiser can invite operators to a published event',403);
  if(email===u.email.toLowerCase())return fail('Organiser already has gate access',409);
+ const alreadyAssigned=await db()`select 1 from gate_assignments g join app_users assigned on assigned.id=g.user_id
+ where g.event_id=${eventId} and lower(assigned.email)=${email} limit 1`;
+ if(alreadyAssigned[0]&&str(b.mode,10)!=='add')return fail('Operator is already assigned to this event. Revoke access before re-inviting, or use Add to update the gate.',409);
  if(str(b.mode,10)==='add'){
   // Direct assignment is restricted to an already-registered, Google-verified account.
   // Unregistered and password-only recipients use the private invitation acceptance flow.
