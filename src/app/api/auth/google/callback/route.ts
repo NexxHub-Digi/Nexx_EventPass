@@ -67,6 +67,21 @@ export async function GET(req:NextRequest){
    user=created;
   }
   if(!user) throw new Error('account_not_found');
+  // Accept only invitations delivered to the *Google-verified* email of this identity.
+  if(user.account_status==='active'){
+    await db().begin(async tx=>{
+      const invites=await tx`select i.id,i.event_id,i.gate_label from gate_invitations i
+        join app_users organiser on organiser.id=i.organiser_id
+        where lower(i.invitee_email)=${profile.email} and i.status='pending'
+        and organiser.role='organiser' and organiser.account_status='active'`;
+      for(const invite of invites){
+        await tx`insert into gate_assignments(event_id,user_id,gate_label)
+          values(${invite.event_id},${user.id},${invite.gate_label})
+          on conflict(event_id,user_id) do update set gate_label=excluded.gate_label`;
+        await tx`update gate_invitations set status='accepted' where id=${invite.id}`;
+      }
+    });
+  }
   if(portal==='organiser'&&!['organiser','platform_admin'].includes(user.role)&&!(user.account_status==='pending'&&user.requested_role==='organiser')) throw new Error('organiser_access_required');
   if(portal==='platform_admin'&&user.role!=='platform_admin') throw new Error('admin_access_required');
   if(user.account_status!=='active'&&!(portal==='organiser'&&user.account_status==='pending')) throw new Error('account_inactive');
