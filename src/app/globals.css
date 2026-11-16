@@ -137,3 +137,46 @@
 @media(max-width:850px){.ep-hero{padding-top:42px}.ep-hero-ticket{flex-basis:250px}.ep-ticket-art{min-height:185px}.ep-hero h1{font-size:clamp(39px,6vw,65px)}.ep-ticket-art>span{font-size:23px}}
 @media(max-width:670px){.ep-nav{align-items:flex-start}.ep-nav-links{gap:9px;flex-wrap:wrap;justify-content:flex-end}.ep-nav-links>a:not(.ep-sign-in){font-size:11px}.ep-hero{flex-direction:column;align-items:flex-start;padding-bottom:40px}.ep-hero-ticket{align-self:center;margin:35px 0 10px;width:min(82%,330px);flex-basis:auto}.ep-steps{grid-template-columns:1fr}.ep-filters{flex-direction:column}.ep-filters select{width:100%}.ep-footer{flex-direction:column}}
 @media(prefers-reduced-motion:reduce){.ep-card,.ep-hero-ticket{animation:none}.ep-card:hover{transform:none}}
+
+/* EventPass Masquerade Studio — editable ticket compositions derived from STJ samples.
+   Visual layout is reusable. The admission QR is rendered only from the live ticket token. */
+.masque-pass{--masque-base:#14031e;--masque-purple:#8026aa;--masque-gold:#f7d67c;position:relative;display:flex;width:100%;min-width:0;aspect-ratio:2.05/1;overflow:hidden;color:#fff7df;border:3px solid var(--masque-gold);border-radius:18px;background:radial-gradient(ellipse at 30% 65%,#802ba6 0%,transparent 45%),linear-gradient(120deg,#14031e,#41064f 70%,#1b062b);box-shadow:0 16px 42px #0007,inset 0 0 0 5px #0b0715,inset 0 0 0 7px #e6b252;font-family:Georgia,'Times New Roman',serif;isolation:isolate}
+.masque-pass:before{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(115deg,transparent 0 13px,#d66be509 13px 14px,transparent 14px 30px);opacity:.16}
+.masque-pass:after{content:"";position:absolute;inset:9px;border:1px solid #ffe19caa;border-radius:9px;pointer-events:none;z-index:7}
+.masque-stage{position:relative;flex:1;min-width:0;overflow:hidden;display:flex;align-items:center;justify-content:flex-end;padding:2.3% 3.8% 2.3% 2%}
+.masque-art{position:absolute;left:-6%;top:-14%;width:52%;height:130%;object-fit:contain;filter:drop-shadow(0 0 13px #ad42dd99)}
+.masque-custom-art{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.5;mask-image:linear-gradient(to right,#000 0%,#0008 40%,transparent 70%)}
+.masque-stage-content{position:relative;z-index:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2.5%;text-align:center;width:63%;height:100%;text-shadow:0 2px 7px #1c041f,0 0 13px #270729}
+.masque-eyebrow{font-family:Arial,sans-serif;font-size:clamp(5px,.78vw,12px);font-weight:700;letter-spacing:.16em;color:var(--masque-gold);text-transform:uppercase}
+.masque-main-title{font-size:clamp(16px,3.4vw,60px);font-weight:900;line-height:1.03;letter-spacing:-.04em;color:#ffe2a0;text-transform:uppercase;overflow-wrap:anywhere;max-height:45%;overflow:hidden;text-shadow:0 1px 0 #fff7ca,0 3px 0 #ac6e25,0 6px 15px #000c}
+.masque-rule{font-size:clamp(11px,1.8vw,28px);line-height:1;color:#ffdb72;letter-spacing:6px}
+.masque-event-details{width:96%;display:grid;gap:5px;font-family:Arial,sans-serif;font-weight:700;font-size:clamp(7px,1.04vw,15px);line-height:1.25;color:#fff}
+.masque-event-details span{overflow-wrap:anywhere}.masque-event-details i{color:var(--masque-gold);font-style:normal}
+.masque-price{font-weight:900;color:#17101d;text-shadow:none;font-size:clamp(12px,1.8vw,29px);line-height:1;padding:1.9% 6%;width:97%;background:linear-gradient(95deg,#9b6824,#fff4b1 28%,#f6c052 63%,#a66f26);border:1px solid #fff0ae;border-radius:8px}
+.masque-price small{font-family:Arial,sans-serif;font-size:.34em;letter-spacing:.1em;vertical-align:middle}
+.masque-admit{width:96%;padding:1.6% 2%;border:1px solid #eeb964;border-radius:5px;color:#fce0a1;font-size:clamp(8px,1.18vw,18px);font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.masque-stub{width:24%;position:relative;z-index:1;border-left:2px dashed #ffcf76;display:flex;flex-direction:column;align-items:center;justify-content:space-around;gap:3%;padding:5% 1.8% 4%;text-align:center;background:linear-gradient(160deg,#24052fdd,#18051ee8)}
+.masque-stub-heading{font-size:clamp(6px,.8vw,12px);color:#fce5a1;max-width:100%;overflow-wrap:anywhere}
+.masque-stub-title{font-size:clamp(10px,1.6vw,25px);font-weight:800;text-transform:uppercase;color:#ffda81;line-height:1.15;overflow-wrap:anywhere;max-height:26%;overflow:hidden}
+.masque-qr-frame{width:min(76%,155px);aspect-ratio:1;background:#fff;padding:5px;display:flex;align-items:center;justify-content:center;border-radius:5px;border:2px solid #f8d077}
+.masque-qr-frame svg{display:block;width:100%;height:auto}
+.masque-qr-pending{height:100%;width:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#2a1641;font-family:Arial,sans-serif;gap:6px;text-shadow:none}
+.masque-qr-pending>span{font-size:clamp(15px,3vw,38px)}.masque-qr-pending small{font-size:clamp(4px,.62vw,9px);line-height:1.15;font-weight:800}
+.masque-stub-admit{font-size:clamp(8px,1vw,17px);font-weight:800;color:var(--masque-gold);letter-spacing:.03em}
+.masque-stub-code{font:700 clamp(5px,.58vw,11px)/1.2 monospace;letter-spacing:.06em;color:#e9cfaa;overflow-wrap:anywhere}
+.masque-sample{position:absolute;z-index:8;top:43%;left:16%;background:#12071fcb;border:1px solid #f8d37e;color:#fff0af;padding:7px 14px;font:800 clamp(8px,1vw,14px)/1.1 Arial,sans-serif;letter-spacing:.09em;transform:rotate(-12deg);pointer-events:none;text-align:center}
+.masque-velvet-crown{--masque-gold:#f9d38a;background:radial-gradient(ellipse at 15% 10%,#ac37b0,transparent 44%),linear-gradient(125deg,#180521,#5d136c,#190820)}.masque-velvet-crown .masque-main-title{font-style:italic;text-transform:capitalize}
+.masque-grand-gala{--masque-gold:#ffd46e;background:radial-gradient(ellipse at 65% 50%,#762d9e,transparent 52%),linear-gradient(125deg,#25042c,#17031d)}.masque-grand-gala .masque-stage-content{width:67%}.masque-grand-gala .masque-art{width:48%}.masque-grand-gala .masque-price{border-radius:0}
+.masque-midnight-luxe{--masque-gold:#ffe19a;background:radial-gradient(circle at 14% 65%,#5f137a,transparent 40%),linear-gradient(130deg,#100218,#27052f)}.masque-midnight-luxe .masque-stage-content{width:68%}.masque-midnight-luxe .masque-main-title{font-size:clamp(17px,3.8vw,66px)}
+.masque-gold-script{--masque-gold:#ffe3a4;background:radial-gradient(ellipse at 60% 10%,#65255b,transparent 60%),linear-gradient(125deg,#160919,#4a1747,#15051b)}.masque-gold-script .masque-main-title{font-style:italic;text-transform:capitalize;font-weight:500;letter-spacing:-.04em}
+.masque-compact{width:100%;min-height:0;aspect-ratio:2.05/1;border-width:2px;border-radius:10px;box-shadow:0 8px 18px #0004}
+.masque-compact .masque-stage{padding:3% 3%}.masque-compact .masque-main-title{font-size:clamp(10px,1.8vw,24px)}.masque-compact .masque-eyebrow{font-size:clamp(4px,.56vw,8px)}.masque-compact .masque-event-details{font-size:clamp(5px,.65vw,9px);gap:2px}.masque-compact .masque-price{font-size:clamp(9px,1vw,15px)}.masque-compact .masque-admit{font-size:clamp(5px,.76vw,10px)}.masque-compact .masque-stub-title{font-size:clamp(6px,.8vw,12px)}.masque-compact .masque-stub-heading{font-size:clamp(4px,.5vw,7px)}.masque-compact .masque-qr-pending small{font-size:clamp(4px,.48vw,6px)}.masque-compact .masque-rule{font-size:clamp(7px,1vw,12px)}.masque-compact .masque-sample{font-size:8px;padding:3px 5px}
+.masque-template-gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr));gap:16px;margin:16px 0 24px}
+.masque-template-choice{display:flex;flex-direction:column;gap:9px;padding:10px;border:2px solid #48526c;border-radius:14px;color:#fff;background:#1b2339;cursor:pointer;text-align:left;transition:border-color .16s,transform .16s}
+.masque-template-choice.selected{border-color:#fbd779;background:#352945;box-shadow:0 0 0 2px #fbd77928}.masque-template-choice:hover{transform:translateY(-3px)}
+.masque-template-choice>span{font-weight:750;font-size:13px;display:flex;justify-content:space-between;gap:10px}
+.masque-template-preview{max-width:1000px;margin:20px auto 25px}
+.masque-studio-guidance{color:#b6c6da;font-size:13px;line-height:1.5}
+@media(max-width:650px){.masque-main-title{font-size:clamp(12px,4vw,25px)}.masque-event-details{font-size:clamp(5px,1.6vw,9px)}.masque-price{font-size:clamp(9px,2.5vw,18px)}.masque-eyebrow{font-size:clamp(4px,1.2vw,8px)}.masque-admit{font-size:clamp(6px,1.8vw,10px)}.masque-stub-title{font-size:clamp(6px,2vw,12px)}.masque-stub-heading{font-size:clamp(4px,1.1vw,7px)}.masque-stub-admit{font-size:clamp(5px,1.5vw,9px)}.masque-stub-code{font-size:clamp(4px,.9vw,6px)}.masque-art{left:-10%;width:54%}.masque-sample{font-size:7px;padding:4px 6px}.masque-template-gallery{grid-template-columns:1fr}}
+@media print{.masque-pass{box-shadow:none;break-inside:avoid;print-color-adjust:exact;-webkit-print-color-adjust:exact}.masque-sample{display:none}}
+@media(prefers-reduced-motion:reduce){.masque-template-choice{transition:none}.masque-template-choice:hover{transform:none}}
