@@ -3,10 +3,11 @@ import React,{useEffect,useRef,useState} from 'react';
 import {QRCodeSVG} from 'qrcode.react';
 import {useParams} from 'next/navigation';
 import {ticketThemes,findTicketTheme} from '@/lib/ticket-themes';
-import {masqueradeTemplates,isMasqueradeTemplate} from '@/lib/masquerade-templates';
+import {masqueradeTemplates,isMasqueradeTemplate,masqueradePosterTemplates,isMasqueradePoster} from '@/lib/masquerade-templates';
+import {EventPosterDesign} from '@/components/EventPosterDesign';
 import {TicketDesign} from '@/components/TicketDesign';
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null};
-type Event={id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;verification_status?:string;organiser?:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;cover_media_id?:string|null;video_media_id?:string|null;ticket_art_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
+type Event={id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;verification_status?:string;organiser?:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;cover_media_id?:string|null;video_media_id?:string|null;ticket_art_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type Order={id:string;event_id:string;event_title:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
 type Ticket={id:string;event_id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;redeemed_at?:string|null;ticket_theme?:string;admission_label?:string;ticket_art_id?:string|null};
 type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string};
@@ -34,7 +35,7 @@ export default function RoleWorkspace(){
  const [search,setSearch]=useState(''),[filterCategory,setFilterCategory]=useState('All'),[sortBy,setSortBy]=useState('soonest');
  const [themeCatalog,setThemeCatalog]=useState<{id:string;name:string;label:string;gradient:string;accent:string}[]>(ticketThemes.map(t=>({...t})));
  const [newThemeName,setNewThemeName]=useState(''),[newThemeLabel,setNewThemeLabel]=useState(''),[themeColorA,setThemeColorA]=useState('#3d2683'),[themeColorB,setThemeColorB]=useState('#12a59c'),[themeAccent,setThemeAccent]=useState('#ffffff');
- const [eventDescription,setEventDescription]=useState(''),[eventCategory,setEventCategory]=useState('Music'),[ticketTheme,setTicketTheme]=useState('aurora'),[admissionLabel,setAdmissionLabel]=useState('ADMIT ONE');
+ const [eventDescription,setEventDescription]=useState(''),[eventCategory,setEventCategory]=useState('Music'),[ticketTheme,setTicketTheme]=useState('aurora'),[admissionLabel,setAdmissionLabel]=useState('ADMIT ONE'),[posterTemplate,setPosterTemplate]=useState('none');
  const [eventMedia,setEventMedia]=useState<EventMedia[]>([]),[moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<EventMedia[]>([]);
  const [organisers,setOrganisers]=useState<Organiser[]>([]),[stats,setStats]=useState<Record<string,number>>({});
  const [selectedOrganiser,setSelectedOrganiser]=useState(''),[editName,setEditName]=useState(''),[editBank,setEditBank]=useState(''),[editAccount,setEditAccount]=useState(''),[editNumber,setEditNumber]=useState('');
@@ -86,7 +87,7 @@ export default function RoleWorkspace(){
  async function run(fn:()=>Promise<void>){setBusy(true);setMessage('');try{await fn()}catch(e){setMessage((e as Error).message)}finally{setBusy(false)}}
  async function createEvent(){await run(async()=>{
   const date=new Date(startsAt);if(!Number.isFinite(date.getTime()))throw Error('Choose an event date');
-  const result=await api('events','POST',{title:eventTitle,venue,description:eventDescription,category:eventCategory,ticketTheme,admissionLabel,startsAt:date.toISOString(),capacity:Number(capacity),priceNgn:Number(ticketPrice),qrKeyword:keyword});
+  const result=await api('events','POST',{title:eventTitle,venue,description:eventDescription,category:eventCategory,ticketTheme,admissionLabel,posterTemplate,startsAt:date.toISOString(),capacity:Number(capacity),priceNgn:Number(ticketPrice),qrKeyword:keyword});
   setEventTitle('');setKeyword('');await fetchAll();setEventId(result.event.id);setMessage('Event created! Add promotional media and send your listing for Platform Admin verification.');
  })}
  async function addNewTicketTheme(){await run(async()=>{
@@ -96,7 +97,7 @@ export default function RoleWorkspace(){
  })}
  async function saveEventDesign(){await run(async()=>{
   if(!eventId)throw Error('Select your event first');
-  await api('events','PATCH',{eventId,description:eventDescription,category:eventCategory,ticketTheme,admissionLabel});
+  await api('events','PATCH',{eventId,description:eventDescription,category:eventCategory,ticketTheme,admissionLabel,posterTemplate});
   await fetchAll();setMessage('Event design saved. Updated event content awaits platform review.');
  })}
  async function uploadMedia(file:File|null,purpose=''){
@@ -316,9 +317,14 @@ export default function RoleWorkspace(){
   <div className="masque-template-gallery">{masqueradeTemplates.map(t=><button type="button" key={t.id} aria-pressed={ticketTheme===t.id} className={'masque-template-choice '+(ticketTheme===t.id?'selected':'')} onClick={()=>setTicketTheme(t.id)}><TicketDesign compact preview themeId={t.id} title={eventTitle||'Masked Party'} venue={venue||'Your Event Venue'} startsAt={startsAt||'2026-11-29T23:00:00'} priceNgn={Number(ticketPrice)||0} organiser={me?.full_name||'Event Organiser'} admissionLabel={admissionLabel}/><span>{t.name}<small>{ticketTheme===t.id?'✓ Selected':'Select design'}</small></span></button>)}</div>
   <div className="rw-theme-grid">{themeCatalog.map(t=><button key={t.id} type="button" className={'rw-theme-option '+(ticketTheme===t.id?'selected':'')} onClick={()=>setTicketTheme(t.id)} style={{background:t.gradient}}>
   <span>{t.label}</span><strong>{t.name}</strong><small>{ticketTheme===t.id?'✓ Selected':'Preview theme'}</small></button>)}</div>
+  <h3>Matching event poster collection</h3>
+  <p className="masque-studio-guidance">The two portrait examples are event advertisements, not gate-entry tickets. Choose an optional poster that uses your own event title, date and price.</p>
+  <div className="masque-poster-gallery">{masqueradePosterTemplates.map(t=><button type="button" key={t.id} aria-pressed={posterTemplate===t.id} className={'masque-poster-choice '+(posterTemplate===t.id?'selected':'')} onClick={()=>setPosterTemplate(posterTemplate===t.id?'none':t.id)}>
+   <EventPosterDesign compact posterId={t.id} title={eventTitle||'Masked Apartment Party'} venue={venue||'Your Event Venue'} startsAt={startsAt||'2026-11-29T23:00:00'} priceNgn={Number(ticketPrice)||0} organiser={me?.full_name||'Event Organiser'} description={eventDescription}/>
+   <span>{t.name}{posterTemplate===t.id?' ✓':''}</span></button>)}</div>
   {btn('Create event for verification',()=>{void createEvent()})}
   </section>
-  <section className="rw-panel rw-wide"><h2>Events and payment approvals</h2><label className="rw-field">Choose an event<select value={eventId} onChange={e=>{const id=e.target.value;setEventId(id);const selected=events.find(ev=>ev.id===id);if(selected){setEventDescription(selected.description||'');setEventCategory(selected.category||'Other');setTicketTheme(selected.ticket_theme||'aurora');setAdmissionLabel(selected.admission_label||'ADMIT ONE')}setLatestInvite('')}}><option value="">Select event</option>
+  <section className="rw-panel rw-wide"><h2>Events and payment approvals</h2><label className="rw-field">Choose an event<select value={eventId} onChange={e=>{const id=e.target.value;setEventId(id);const selected=events.find(ev=>ev.id===id);if(selected){setEventDescription(selected.description||'');setEventCategory(selected.category||'Other');setTicketTheme(selected.ticket_theme||'aurora');setAdmissionLabel(selected.admission_label||'ADMIT ONE');setPosterTemplate(selected.poster_template||'none')}setLatestInvite('')}}><option value="">Select event</option>
   {events.filter(e=>e.organiser_id===me.id).map(e=><option value={e.id} key={e.id}>{e.title}</option>)}</select></label>
   {orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.buyer_name||o.buyer_email||'User'}</b><p>{o.quantity} tickets · {money(o.amount_ngn)} · {o.status}</p><small>Bank reference: {o.payment_reference}</small><p>{o.receipt_uploaded_at?<a href={'/api/orders/receipt?orderId='+o.id} target="_blank" rel="noreferrer">View submitted receipt</a>:'Receipt not submitted'}</p></div><div className="rw-actions">
   {o.status==='pending'&&<>{btn('Approve',()=>{void review(o.id,'approved')})}{btn('Reject',()=>{void review(o.id,'rejected')},true)}</>}</div></div>)}
@@ -338,7 +344,11 @@ export default function RoleWorkspace(){
     {input('Ticket admission label',admissionLabel,setAdmissionLabel)}
     <h3>Luxury ticket templates</h3><div className="masque-template-gallery">{masqueradeTemplates.map(t=><button type="button" key={t.id} aria-pressed={ticketTheme===t.id} className={'masque-template-choice '+(ticketTheme===t.id?'selected':'')} onClick={()=>setTicketTheme(t.id)}><TicketDesign compact preview themeId={t.id} title={events.find(e=>e.id===eventId)?.title||eventTitle||'Masked Party'} venue={events.find(e=>e.id===eventId)?.venue||venue||'Event Venue'} startsAt={events.find(e=>e.id===eventId)?.starts_at||startsAt||'2026-11-29T23:00:00'} priceNgn={events.find(e=>e.id===eventId)?.price_ngn??(Number(ticketPrice)||0)} organiser={me?.full_name||'Event Organiser'} admissionLabel={admissionLabel}/><span>{t.name}<small>{ticketTheme===t.id?'✓ Selected':'Select design'}</small></span></button>)}</div>
     {isMasqueradeTemplate(ticketTheme)&&<><h3>Live ticket preview</h3><div className="masque-template-preview"><TicketDesign preview themeId={ticketTheme} title={events.find(e=>e.id===eventId)?.title||eventTitle||'Masked Party'} venue={events.find(e=>e.id===eventId)?.venue||venue||'Event Venue'} startsAt={events.find(e=>e.id===eventId)?.starts_at||startsAt||'2026-11-29T23:00:00'} priceNgn={events.find(e=>e.id===eventId)?.price_ngn??(Number(ticketPrice)||0)} organiser={me?.full_name||'Event Organiser'} customArtwork={eventMedia.find(m=>m.media_type==='ticket_art'&&m.approved)?.url} admissionLabel={admissionLabel}/></div><p className="masque-studio-guidance">Preview only. The actual, unique ticket QR is generated on payment approval and is never part of a reusable design image.</p></>}
-    <h3>Colour themes</h3><div className="rw-theme-grid">{themeCatalog.map(t=><button type="button" key={t.id} className={'rw-theme-option '+(ticketTheme===t.id?'selected':'')} onClick={()=>setTicketTheme(t.id)} style={{background:t.gradient}}><strong>{t.name}</strong><small>{t.label}</small></button>)}</div>
+    <h3>Promotional poster templates</h3><p className="masque-studio-guidance">Select a reusable portrait-style event flyer for the public discovery card. You can still upload your own promotional image.</p>
+    <div className="masque-poster-gallery">{masqueradePosterTemplates.map(t=><button type="button" key={t.id} aria-pressed={posterTemplate===t.id} className={'masque-poster-choice '+(posterTemplate===t.id?'selected':'')} onClick={()=>setPosterTemplate(posterTemplate===t.id?'none':t.id)}>
+      <EventPosterDesign compact posterId={t.id} title={events.find(e=>e.id===eventId)?.title||eventTitle||'Masked Party'} venue={events.find(e=>e.id===eventId)?.venue||venue||'Event Venue'} startsAt={events.find(e=>e.id===eventId)?.starts_at||startsAt||'2026-11-29T23:00:00'} priceNgn={events.find(e=>e.id===eventId)?.price_ngn??(Number(ticketPrice)||0)} organiser={me?.full_name||'Event Organiser'} description={eventDescription}/><span>{t.name} {posterTemplate===t.id?'✓ Selected':''}</span>
+    </button>)}</div>
+        <h3>Colour themes</h3><div className="rw-theme-grid">{themeCatalog.map(t=><button type="button" key={t.id} className={'rw-theme-option '+(ticketTheme===t.id?'selected':'')} onClick={()=>setTicketTheme(t.id)} style={{background:t.gradient}}><strong>{t.name}</strong><small>{t.label}</small></button>)}</div>
     <label className="rw-field">Event category<select value={eventCategory} onChange={e=>setEventCategory(e.target.value)}>{['Music','Nightlife','Festival','Business','Food','Sports','Arts','Education','Community','Other'].map(c=><option key={c}>{c}</option>)}</select></label>
     <label className="rw-field">Public event description<textarea rows={3} maxLength={2500} value={eventDescription} onChange={e=>setEventDescription(e.target.value)}/></label>
     {btn('Save design for review',()=>{void saveEventDesign()})}
@@ -359,7 +369,7 @@ export default function RoleWorkspace(){
     <div className="rw-market-count"><strong>{visibleEvents.length}</strong> verified {visibleEvents.length===1?'event':'events'} to explore</div>
     <div className="rw-market-grid">{visibleEvents.map(e=><article key={e.id} className="rw-market-card">
       <div className="rw-market-cover">
-        {e.cover_media_id?<img loading="lazy" src={'/api/events/media?id='+e.cover_media_id} alt={e.title+' event poster'}/>:e.video_media_id?<video muted playsInline loop autoPlay preload="metadata" src={'/api/events/media?id='+e.video_media_id}/>:<div className="rw-market-placeholder" style={{background:themeFor(e.ticket_theme||'aurora').gradient}}><span>◈</span><strong>{e.title}</strong></div>}
+        {e.cover_media_id?<img loading="lazy" src={'/api/events/media?id='+e.cover_media_id} alt={e.title+' event poster'}/>:isMasqueradePoster(e.poster_template||'')?<div className="ep-poster-thumb"><EventPosterDesign posterId={e.poster_template||''} title={e.title} venue={e.venue} startsAt={e.starts_at} priceNgn={e.price_ngn} organiser={e.organiser} description={e.description}/></div>:e.video_media_id?<video muted playsInline loop autoPlay preload="metadata" src={'/api/events/media?id='+e.video_media_id}/>:<div className="rw-market-placeholder" style={{background:themeFor(e.ticket_theme||'aurora').gradient}}><span>◈</span><strong>{e.title}</strong></div>}
         <span className="rw-event-tag">{e.category||'Event'}</span>
       </div>
       <div className="rw-market-info"><div className="rw-market-meta">{nice(e.starts_at)} · {e.venue}</div>
