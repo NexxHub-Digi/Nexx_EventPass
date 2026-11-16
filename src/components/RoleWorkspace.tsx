@@ -39,6 +39,7 @@ export default function RoleWorkspace(){
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
  const valid=role==='user'||role==='organiser'||role==='gate'||role==='platform-admin';
  const allowed=me&&portals.includes(role==='platform-admin'?'platform_admin':role);
+ useEffect(()=>{if(role==='gate'&&gates.length===1&&!eventId)setEventId(gates[0].event_id)},[role,gates,eventId]);
  async function fetchAll(){
   const m=await api('auth/me');setMe(m.user);setPortals(m.portals||[]);
   if(!m.user)return;
@@ -102,7 +103,7 @@ export default function RoleWorkspace(){
  async function saveBank(){await run(async()=>{await api('organiser/payment-account','POST',{bankName,accountName,accountNumber});setMessage('Bank instructions saved. They are displayed on your published events.');await fetchAll()})}
  async function book(e:Event){await run(async()=>{
   if(!receipt&&e.price_ngn>0)throw Error('Upload payment receipt before submitting a paid order');
-  const o=await api('orders','POST',{eventId:e.id,quantity:Number(quantity),paymentReference:paymentRef});
+  const o=await api('orders','POST',{eventId:e.id,quantity:Number(quantity),paymentReference:e.price_ngn>0?paymentRef:'FREE-TICKET'});
   if(receipt){const form=new FormData();form.set('orderId',o.order.id);form.set('receipt',receipt);await api('orders/receipt','POST',form);}
   setSelectedEvent('');setPaymentRef('');setReceipt(null);setMessage('Order received. Organiser will verify funds and receipt before ticket issuance.');
   await fetchAll();
@@ -263,19 +264,65 @@ export default function RoleWorkspace(){
     {invites.filter(i=>i.event_id===eventId).map(i=><div className="rw-list-item" key={i.id}><div><b>{i.invitee_email}</b><p>{i.gate_label} · {i.status}</p></div>{i.status!=='revoked'&&btn('Revoke',()=>{void revokeGate(i)},true)}</div>)}</section>}
  </div>}
  {role==='user'&&<div className="rw-layout">
-  <section className="rw-panel rw-wide"><h2>Explore published events</h2>{events.filter(e=>e.status==='published').map(e=><div key={e.id} className="rw-event"><div><h3>{e.title}</h3><p>{e.venue} · {nice(e.starts_at)}</p><b>{money(e.price_ngn)}</b></div>{btn(selectedEvent===e.id?'Close':'Get ticket',()=>setSelectedEvent(selectedEvent===e.id?'':e.id),true)}
-    {selectedEvent===e.id&&<div className="rw-booking"><h4>Organiser bank transfer</h4>
-    {e.bank_name?<><p>{e.bank_name} — {e.bank_account_name}</p><strong>{e.bank_account_number}</strong></>:<p>Organiser has not published payment instructions. Contact organiser before transferring.</p>}
-    {input('Number of tickets',quantity,setQuantity,'number')}{input('Payment reference',paymentRef,setPaymentRef)}
-    <label className="rw-field">Payment receipt (PNG, JPG, WebP, PDF, max 2 MB)<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={v=>setReceipt(v.target.files?.[0]||null)}/></label>
-    <p>Payment verification is manual. QR tickets are not issued until approved.</p>{btn('Submit order & receipt',()=>{void book(e)})}</div>}</div>)}
-  </section><section className="rw-panel"><h2>My orders</h2>{orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.event_title}</b><p>{o.status} · {money(o.amount_ngn)}</p><small>{o.payment_reference}</small>{!o.receipt_uploaded_at&&o.status==='pending'&&<label className="rw-field">Upload missing receipt<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={e=>setReceiptUploads({...receiptUploads,[o.id]:e.target.files?.[0]||null})}/>{btn('Send receipt',()=>{void upload(o.id)})}</label>}</div></div>)}</section>
-  <section className="rw-panel"><h2>My QR wallet</h2>{tickets.map(t=><div className="rw-ticket" key={t.id}><h3>{t.title}</h3><p>{t.venue} · {nice(t.starts_at)}</p>{t.qr&&<div className="rw-qr"><QRCodeSVG value={t.qr} size={182} level="H" includeMargin/></div>}<b>{t.redeemed_at?'ALREADY CHECKED IN':t.status.toUpperCase()}</b></div>)}{!tickets.length&&<p>No approved tickets yet.</p>}</section></div>}
- {role==='gate'&&<div className="rw-layout"><section className="rw-panel"><h2>Your assigned gates</h2><label className="rw-field">Choose event<select value={eventId} onChange={e=>{setEventId(e.target.value);setScanOutcome('')}}><option value="">Choose assigned event</option>{gates.map(g=><option value={g.event_id} key={g.event_id}>{g.title} · {g.gate_label}</option>)}</select></label>
- <p>Only organiser-assigned events are accessible to your scanner.</p></section><section className="rw-panel"><h2>Scan entry QR</h2>
- {btn('Start camera',()=>{void startScan()})}{scanning&&<><div className="rw-camera"><video id="gate-video" autoPlay muted playsInline/></div>{btn('Stop camera',()=>{scanControls.current?.stop();setScanning(false)},true)}</>}
- {input('USB/Bluetooth scanner token',scanCode,setScanCode)}{btn('Verify entry',()=>{void scan()})}
- {!!scanOutcome&&<div className={'rw-result '+scanOutcome}><b>{scanOutcome==='approved'?'✓ ADMIT ONE':scanOutcome==='duplicate'?'ALREADY USED':'ENTRY DENIED'}</b><p>{scanOutcome.toUpperCase()}</p></div>}</section>
- <section className="rw-panel rw-wide"><h2>Gate activity log</h2>{scans.map(s=><div className="rw-list-item" key={s.id}><div><b>{s.outcome}</b><p>{s.operator||'Gate staff'} · {s.gate_label}</p><small>{nice(s.scanned_at)}</small></div></div>)}{!scans.length&&<p>There are no scans for this event yet.</p>}</section></div>}
+  <section className="rw-panel rw-wide rw-market">
+    <div className="rw-market-hero"><div className="eyebrow">NEXX EVENTPASS • DISCOVER</div><h1>Find your next experience.</h1><p>Concerts, celebrations, festivals, meetups and memorable nights—all in one place.</p>
+    <div className="rw-market-filters">
+      <input aria-label="Search events" placeholder="Search by name, venue, organiser or description..." value={search} onChange={e=>setSearch(e.target.value)}/>
+      <select aria-label="Event category" value={filterCategory} onChange={e=>setFilterCategory(e.target.value)}>{categories.map(c=><option key={c} value={c}>{c==='All'?'All categories':c}</option>)}</select>
+      <select aria-label="Sort events" value={sortBy} onChange={e=>setSortBy(e.target.value)}>
+       <option value="soonest">Soonest first</option><option value="latest">Latest date</option><option value="price">Lowest price</option></select>
+    </div></div>
+    <div className="rw-market-count"><strong>{visibleEvents.length}</strong> verified {visibleEvents.length===1?'event':'events'} to explore</div>
+    <div className="rw-market-grid">{visibleEvents.map(e=><article key={e.id} className="rw-market-card">
+      <div className="rw-market-cover">
+        {e.cover_media_id?<img loading="lazy" src={'/api/events/media?id='+e.cover_media_id} alt={e.title+' event poster'}/>:e.video_media_id?<video muted playsInline loop autoPlay preload="metadata" src={'/api/events/media?id='+e.video_media_id}/>:<div className="rw-market-placeholder" style={{background:findTicketTheme(e.ticket_theme||'aurora').gradient}}><span>◈</span><strong>{e.title}</strong></div>}
+        <span className="rw-event-tag">{e.category||'Event'}</span>
+      </div>
+      <div className="rw-market-info"><div className="rw-market-meta">{nice(e.starts_at)} · {e.venue}</div>
+        <h3>{e.title}</h3><p>{e.description||'Discover event details, tickets and more.'}</p>
+        <div className="rw-market-organiser">Hosted by <strong>{e.organiser||'Verified organiser'}</strong></div>
+        <div className="rw-market-footer"><strong>{e.price_ngn?money(e.price_ngn):'Free entry'}</strong>
+         {btn(selectedEvent===e.id?'Close details':'Explore tickets',()=>{void loadUserMedia(selectedEvent===e.id?'':e.id)},true)}</div>
+      </div>
+      {selectedEvent===e.id&&<div className="rw-booking rw-market-booking">
+       <h4>Explore {e.title}</h4>
+       {e.description&&<p>{e.description}</p>}
+       <div className="rw-gallery">{eventMedia.map(m=><div key={m.id} className="rw-media-card">
+        {m.media_type==='video'?<video controls playsInline preload="metadata" src={m.url}/>:<img loading="lazy" src={m.url} alt={m.file_name}/>}</div>)}</div>
+       <h4>{e.price_ngn?'Pay the organiser by bank transfer':'Request a free ticket'}</h4>
+       {e.price_ngn>0?(e.bank_name?<><p>{e.bank_name} — {e.bank_account_name}</p><strong>{e.bank_account_number}</strong></>:<p>The organiser has not configured payment instructions yet.</p>):<p>Approval may still be required before your ticket is issued.</p>}
+       {input('Number of tickets',quantity,setQuantity,'number')}
+       {e.price_ngn>0&&<>{input('Bank transfer reference',paymentRef,setPaymentRef)}
+        <label className="rw-field">Payment receipt (PNG, JPG, WebP, PDF, max 2 MB)<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={v=>setReceipt(v.target.files?.[0]||null)}/></label></>}
+       <p>Tickets are released only after the organiser approves the order.</p>
+       {btn('Request '+quantity+' '+(quantity==='1'?'ticket':'tickets'),()=>{void book(e)})}
+      </div>}
+    </article>)}</div>
+    {!visibleEvents.length&&<div className="rw-empty"><h3>No matching events yet</h3><p>Try another search or choose a different category.</p></div>}
+  </section>
+  <section className="rw-panel"><h2>My orders</h2>{orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.event_title}</b><p>{o.status} · {money(o.amount_ngn)}</p><small>{o.payment_reference}</small>{!o.receipt_uploaded_at&&o.status==='pending'&&o.amount_ngn>0&&<label className="rw-field">Upload missing receipt<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={e=>setReceiptUploads({...receiptUploads,[o.id]:e.target.files?.[0]||null})}/>{btn('Send receipt',()=>{void upload(o.id)})}</label>}</div></div>)}{!orders.length&&<p>Your event orders will appear here.</p>}</section>
+  <section className="rw-panel"><h2>My ticket wallet</h2>{tickets.map(t=><div key={t.id} className="rw-ticket rw-designed-ticket" style={{background:findTicketTheme(t.ticket_theme||'aurora').gradient}}>
+    {t.ticket_art_id&&<img className="rw-ticket-art" src={'/api/events/media?id='+t.ticket_art_id} alt="Custom event ticket design"/>}
+    <div className="rw-ticket-details"><small>NEXX EVENTPASS • OFFICIAL ENTRY</small><h3>{t.title}</h3><p>{t.venue} · {nice(t.starts_at)}</p>
+      {t.qr&&<div className="rw-qr"><QRCodeSVG value={t.qr} size={182} level="H" includeMargin/></div>}
+      <b>{t.redeemed_at?'ALREADY CHECKED IN':t.status.toUpperCase()}</b></div>
+    </div>)}{!tickets.length&&<p>Approved event passes will appear here with a unique encrypted QR code.</p>}</section>
+ </div>}
+ {role==='gate'&&<div className="rw-gate-flow"><div className="eyebrow">ASSIGNED ENTRY CONTROL</div>
+  <h1>{eventId?'Ready for entry':'Choose your assigned event'}</h1>
+  <p>Only events assigned by your organiser appear here. Select one, start scanning and immediately verify entry.</p>
+  {gates.length?<>
+   <div className="rw-gate-event-list">{gates.map(g=><button className={'rw-gate-event '+(eventId===g.event_id?'selected':'')} key={g.event_id} onClick={()=>{setEventId(g.event_id);setScanOutcome('');scanControls.current?.stop();setScanning(false)}}>
+    <strong>{g.title}</strong><small>{g.gate_label}</small></button>)}</div>
+   {eventId&&<div className="rw-gate-stage">
+    {!scanning&&btn(scanOutcome?'Scan next ticket':'Start camera scanner',()=>{void startScan()})}
+    {scanning&&<><div className="rw-camera rw-gate-camera"><video id="gate-video" autoPlay muted playsInline/></div>{btn('Stop scanning',()=>{scanControls.current?.stop();setScanning(false)},true)}</>}
+    {!!scanOutcome&&<div role="status" className={'rw-result '+scanOutcome}>
+      <b>{scanOutcome==='approved'?'✓ VALID — ADMIT':scanOutcome==='duplicate'?'ALREADY CHECKED IN':scanOutcome==='wrong_event'?'WRONG EVENT':scanOutcome==='revoked'?'REVOKED TICKET':'✕ ENTRY REJECTED'}</b>
+      <p>{scanOutcome==='approved'?'This ticket is genuine and has been redeemed.':scanOutcome==='duplicate'?'The ticket has already been used. Do not admit again.':'Do not admit this ticket. Ask the holder to contact the organiser.'}</p>
+    </div>}
+   </div>}
+  </>:<div className="rw-empty"><h3>No assigned event</h3><p>Ask an organiser to invite your Google email. Your assigned event will appear here after confirmation.</p></div>}
+ </div>}
  </main>;
 }
