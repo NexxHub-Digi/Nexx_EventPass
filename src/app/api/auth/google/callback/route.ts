@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { db } from '@/lib/db';
 import { currentUser, issueSession } from '@/lib/security';
 import { callbackUrl, oauthCredentials, portalDestination, readState, verifyGoogleIdToken, type OAuthPortal } from '@/lib/google-oauth';
@@ -32,6 +32,19 @@ export async function GET(req:NextRequest){
   const token=await tokenResponse.json();
   if(typeof token.id_token!=='string') throw new Error('google_id_token_missing');
   const profile=await verifyGoogleIdToken(token.id_token,creds.clientId,st.nonce);
+  if(portal==='gate'){
+   const eligible=await db()`select exists(
+    select 1 from gate_invitations i join events e on e.id=i.event_id join app_users owner on owner.id=i.organiser_id
+    where lower(i.invitee_email)=${profile.email} and i.status='pending'
+    and (i.token_expires_at is null or i.token_expires_at>now()) and e.status='published'
+    and owner.role='organiser' and owner.account_status='active'
+   ) or exists(
+    select 1 from gate_assignments g join app_users operator on operator.id=g.user_id
+    join events e on e.id=g.event_id join app_users owner on owner.id=e.organiser_id
+    where lower(operator.email)=${profile.email} and owner.role='organiser' and owner.account_status='active'
+   ) as permitted`;
+   if(!eligible[0]?.permitted)throw new Error('gate_invitation_required');
+  }
   let identity=await db()`select u.id,u.role,u.email,u.account_status,u.requested_role from oauth_identities i join app_users u on u.id=i.user_id
    where i.provider='google' and i.provider_sub=${profile.subject} limit 1`;
   let user=identity[0];
@@ -73,13 +86,16 @@ export async function GET(req:NextRequest){
     await db().begin(async tx=>{
       const invites=await tx`select i.id,i.event_id,i.gate_label from gate_invitations i
         join app_users organiser on organiser.id=i.organiser_id
-        where lower(i.invitee_email)=${profile.email} and i.status='pending' and i.token_hash is null
-        and organiser.role='organiser' and organiser.account_status='active'`;
+        join events e on e.id=i.event_id
+        where lower(i.invitee_email)=${profile.email} and i.status='pending'
+        and (i.token_expires_at is null or i.token_expires_at>now())
+        and organiser.role='organiser' and organiser.account_status='active' and e.status='published'
+        and ${portal==='gate'}`;
       for(const invite of invites){
         await tx`insert into gate_assignments(event_id,user_id,gate_label)
           values(${invite.event_id},${user.id},${invite.gate_label})
           on conflict(event_id,user_id) do update set gate_label=excluded.gate_label`;
-        await tx`update gate_invitations set status='accepted' where id=${invite.id}`;
+        await tx`update gate_invitations set status='accepted',accepted_by=${user.id},accepted_at=now(),token_hash=null,token_expires_at=null where id=${invite.id}`;
       }
     });
   }
@@ -89,12 +105,20 @@ export async function GET(req:NextRequest){
   }
   if(portal==='platform_admin'&&user.role!=='platform_admin') throw new Error('admin_access_required');
   if(user.account_status!=='active'&&!(portal==='organiser'&&user.account_status==='pending')) throw new Error('account_inactive');
-  if(portal==='gate'){
-   const p=await db()`select exists(select 1 from gate_assignments where user_id=${user.id})
-    or exists(select 1 from events where organiser_id=${user.id}) as permitted`;
-   // Unassigned operators sign in to an inactive gate dashboard; permission remains server enforced.
-  }
+
   const session=await issueSession(user.id);
+  if(st.native===true){
+   const schemes:Record<OAuthPortal,string>={user:'eventpassuser',organiser:'eventpassorganiser',gate:'eventpassgate',platform_admin:'eventpassplatformadmin'};
+   const exchangeCode=randomBytes(32).toString('base64url');
+   const hashed=createHash('sha256').update(exchangeCode).digest('hex');
+   await db()`insert into mobile_auth_codes(code_hash,user_id,client,expires_at)
+     values(${hashed},${user.id},${portal},now()+interval '2 minutes')`;
+   const deeplink=new URL(schemes[portal]+'://oauth');
+   deeplink.searchParams.set('code',exchangeCode);
+   response=NextResponse.redirect(deeplink);
+   response.cookies.delete('eventpass_google_state');
+   return response;
+  }
   const safeInvite=portal==='user'&&typeof st.returnTo==='string'&&/^\/invite\/gate\?token=[A-Za-z0-9_-]{43}$/.test(st.returnTo);
   const destination=new URL(safeInvite?st.returnTo!:'/dashboard/'+(portal==='platform_admin'?'platform-admin':portal),origin);
   destination.searchParams.set('oauth','success');

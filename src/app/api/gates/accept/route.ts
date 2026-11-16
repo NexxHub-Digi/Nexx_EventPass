@@ -20,6 +20,8 @@ export async function POST(req:Request){
    return {error:'Invitation expired, revoked or already used',status:410};
   if(i.organiser_role!=='organiser'||i.organiser_status!=='active'||i.event_status!=='published')
    return {error:'This organiser or event is inactive',status:403};
+  const verified=await tx`select 1 from oauth_identities where user_id=${u.id} and provider='google' and lower(provider_email)=${u.email.toLowerCase()} limit 1`;
+  if(!verified[0])return {error:'Confirm the invited email through Google sign-in',status:403};
   if(i.invitee_email.toLowerCase()!==u.email.toLowerCase())
    return {error:'Sign in with the email address this invitation was sent to',status:403};
   await tx`insert into gate_assignments(event_id,user_id,gate_label) values(${i.event_id},${u.id},${i.gate_label})

@@ -12,8 +12,9 @@ export async function GET(req:NextRequest) {
  if(intent==='link'&&!user) return NextResponse.json({error:'Sign in with your existing account first'},{status:401});
  const state=randomValue(),nonce=randomValue(),verifier=randomValue();
  const requested=req.nextUrl.searchParams.get('returnTo')||'';
+ const native=req.nextUrl.searchParams.get('client')==='native';
  const returnTo=portal==='user'&&/^\/invite\/gate\?token=[A-Za-z0-9_-]{43}$/.test(requested)?requested:undefined;
- const token=await sealState({portal,intent,state,nonce,verifier,...(user?{subject:user.id}:{}),...(returnTo?{returnTo}:{})});
+ const token=await sealState({portal,intent,state,nonce,verifier,...(user?{subject:user.id}:{}),...(returnTo?{returnTo}:{}),...(native?{native:true}:{})});
  const uri=new URL('https://accounts.google.com/o/oauth2/v2/auth');
  uri.searchParams.set('client_id',config.clientId);
  uri.searchParams.set('redirect_uri',callbackUrl(req.nextUrl.origin));
