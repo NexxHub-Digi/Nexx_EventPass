@@ -58,6 +58,13 @@ No online payment processor is configured. Never approve a receipt without indep
 
 Separate client IDs for User, Organiser, Gate and Platform Admin are configured in Vercel. Native browser Google OAuth and one-use PKCE token exchange are implemented in source, but signed APK/IPA distribution, physical-device OAuth/camera verification and production acceptance are **not yet complete**. Previously disclosed OAuth client secrets must be rotated in Google Cloud and the replacements entered directly into Vercel.
 
+## Dual-host deployment and central Platform Admin
+
+- **Vercel and Netlify** run the same full-stack Next.js website/API; both connect to one dedicated Neon Postgres project. Do **not** make Netlify a static export or create a second production database.
+- Platform Administrator can browse all accounts, search/filter, open profiles, update names, suspend/restore and deactivate while preserving transactional audit records, approve organisers and events, configure operational help settings and manage organiser support requests.
+- **Payment confirmation and ticket release:** an organiser verifies funds and approves the order. In the same database transaction, secure tickets and per-ticket in-app delivery records are created. User wallets refresh approximately every 12 seconds and display the event artwork/theme and encrypted/signed QR. Automatic external email/SMS delivery is **not yet configured**.
+- Netlify hosting requires linking the repository and supplying environment secrets and the exact Netlify Google OAuth redirect URIs. See [Netlify Setup](docs/NETLIFY_DEPLOYMENT.md) and [Platform Admin / CRM](docs/PLATFORM_ADMIN_MULTITENANT.md).
+
 ## Start locally
 
 Configure Neon DATABASE_URL, AUTH_SECRET (32+ chars), QR_SIGNING_SECRET (32+ chars), Next.js NEXT_PUBLIC_SITE_URL, and Google client credentials in an untracked .env.local (see .env.example). Never place private API keys in EXPO_PUBLIC_ variables.
