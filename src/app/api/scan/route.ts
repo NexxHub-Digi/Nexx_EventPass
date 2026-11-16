@@ -14,6 +14,14 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
   const gateLabel=String(perm[0].gate_label);
   const eventSecurity=await db()`select qr_keyword_ciphertext from events where id=${eventId}`;
   const encrypted=eventSecurity[0]?.qr_keyword_ciphertext;
+  // Expose a distinct wrong-event outcome before attempting event-specific decryption.
+  // Never admit based on a QR prefix; the actual ticket still requires cryptographic verification.
+  const envelope=code.split('.');
+  const embeddedEventId=envelope[0]==='EVP2'&&envelope.length===3?envelope[1]:envelope[0]==='EVP1'&&envelope.length===4?envelope[2]:null;
+  if(embeddedEventId && /^[0-9a-f-]{36}$/i.test(embeddedEventId) && embeddedEventId!==eventId){
+    await db()`insert into entry_scans(event_id,scanner_id,outcome,gate_label) values(${eventId},${u.id},'wrong_event',${gateLabel})`;
+    return ok({outcome:'wrong_event',message:'Ticket belongs to another event'});
+  }
   const decoded=encrypted ? decodeEncryptedQr(code,eventId,String(encrypted)) : decodeQR(code);
   if(!decoded || decoded.eventId!==eventId){await db()`insert into entry_scans(event_id,scanner_id,outcome,gate_label) values(${eventId},${u.id},${decoded?'wrong_event':'invalid'},${gateLabel})`;return ok({outcome:decoded?'wrong_event':'invalid',message:'Entry denied'});}
   const result=await db().begin(async tx=>{
