@@ -60,7 +60,8 @@ export async function POST(req:Request){
  token_hash=excluded.token_hash,token_expires_at=excluded.token_expires_at,accepted_by=null,accepted_at=null,created_at=now()
  returning id,token_expires_at`;
  // Re-invitation never grants access automatically: recipient must accept the fresh token.
- const base=process.env.NEXT_PUBLIC_SITE_URL||new URL(req.url).origin;
+ const runtimeOrigin=new URL(req.url).origin;
+ const base=runtimeOrigin.includes('.netlify.app') ? runtimeOrigin : (process.env.AUTH_PUBLIC_ORIGIN||process.env.NEXT_PUBLIC_SITE_URL||runtimeOrigin);
  const link=new URL('/invite/gate',base);
  link.searchParams.set('token',token);
  return ok({success:true,status:'pending',invitationId:invited[0].id,

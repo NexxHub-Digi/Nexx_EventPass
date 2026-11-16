@@ -12,7 +12,7 @@ function back(origin:string,portal:OAuthPortal,code:string){
 }
 export async function GET(req:NextRequest){
  let portal:OAuthPortal='user';
- const origin=process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin;
+ const origin=req.nextUrl.origin.includes('.netlify.app') ? req.nextUrl.origin : (process.env.AUTH_PUBLIC_ORIGIN || process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin);
  const stateCookie=req.cookies.get('eventpass_google_state')?.value;
  let response:NextResponse;
  try {

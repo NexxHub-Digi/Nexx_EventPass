@@ -14,7 +14,8 @@ export function oauthCredentials(portal: OAuthPortal) {
   return clientId && clientSecret ? {clientId,clientSecret} : null;
 }
 export function callbackUrl(origin: string) {
-  const base=process.env.NEXT_PUBLIC_SITE_URL || origin;
+  // Each deployment completes OAuth on its own host; never bounce Netlify users to Vercel.
+  const base=origin.includes('.netlify.app') ? origin : (process.env.AUTH_PUBLIC_ORIGIN || process.env.NEXT_PUBLIC_SITE_URL || origin);
   return new URL('/api/auth/google/callback',base.endsWith('/')?base:base+'/').toString();
 }
 export const randomValue=()=>randomBytes(32).toString('base64url');
