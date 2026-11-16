@@ -80,3 +80,9 @@ Existing EVP1 events can enable encryption through the organiser UI **only befor
 ### Tests
 
 Run `npm run test:qr` to check encrypted ticket roundtrip, fresh nonces, keyword isolation and tampering resistance. Run `npm run typecheck` and `npm run build` in a dependency-enabled environment. Gate admission concurrency and device-camera tests must additionally run against a dedicated staging environment before commercial use.
+
+
+## Google sign-in (web)
+Four role-specific Google OAuth clients support Guest, Organiser, Gate Operator and Platform Administrator sign-in. Verified Google identity alone never elevates roles. First-time Google login can register a **guest** account. Existing accounts must sign in via password first and choose **Link Google account**; privileged roles are not created by Google login. Callback: `/api/auth/google/callback`. See [Google Cloud setup](docs/GOOGLE_OAUTH_SETUP.md). Native Expo Google sign-in is not included in this web integration.
+
+After adding the OAuth client secrets in Vercel, redeploy the app and test successful login, cancellation, role denial, linking, logout and session persistence. Rotate any secrets previously disclosed in a conversation.
