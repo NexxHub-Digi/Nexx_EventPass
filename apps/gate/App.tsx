@@ -17,7 +17,7 @@ export default function App(){
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [code,setCode]=useState(''),[scanning,setScanning]=useState(false),[outcome,setOutcome]=useState(''),[permission,askPermission]=useCameraPermissions();
  const scanLock=useRef(false);
-async function verify(v:string){if(scanLock.current)return;scanLock.current=true;setScanning(false);try{await exec(async()=>{if(!eventId)throw Error('Select an event');const r=await api('scan',token,'POST',{eventId,code:v});setOutcome(r.outcome);Alert.alert(r.outcome==='approved'?'Admit':'Entry denied',r.message);setCode('')})}finally{scanLock.current=false}}
+async function verify(v:string){if(scanLock.current)return;scanLock.current=true;setScanning(false);try{await exec(async()=>{if(!eventId)throw Error('Select an event');const r=await api('scan',token,'POST',{eventId,code:v});setOutcome(r.outcome);setCode('')})}finally{scanLock.current=false}}
 async function openCamera(){if(!eventId)return;const perm=permission?.granted?permission:await askPermission();if(!perm.granted){Alert.alert('Camera denied','Enable camera access in device settings');return}setScanning(true)}
  async function load(t:string){
  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
@@ -25,7 +25,7 @@ async function openCamera(){if(!eventId)return;const perm=permission?.granted?pe
  setMember(me.user);
  if(me.user.account_status==='pending')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
- const v=await api('gates',t);setGates(v.gates||[]);
+ const v=await api('gates',t);setGates(v.gates||[]);if((v.gates||[]).length===1)setEventId(v.gates[0].event_id);
  }
  useEffect(()=>{SecureStore.getItemAsync('eventpass_token').then(t=>{if(t){setToken(t);load(t).catch(e=>setError((e as Error).message))}}).catch(()=>{})},[]);
  async function exec(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
@@ -48,12 +48,26 @@ async function openCamera(){if(!eventId)return;const perm=permission?.granted?pe
  {button('Continue with Google',()=>{void login()})}
  </>:<>
  <Text style={s.title}>Welcome, {member.full_name}</Text><Text style={s.hint}>{member.email}</Text>
- {member.account_status==='pending'?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
- <Text style={s.title}>Assigned gates</Text>{gates.map(g=><Pressable key={g.event_id} style={[s.card,eventId===g.event_id&&{borderColor:'#45D6C9'}]} onPress={()=>{setEventId(g.event_id);setOutcome('')}}><Text style={s.title}>{g.title}</Text><Text style={s.hint}>{g.gate_label}</Text></Pressable>)}
-{eventId&&<><Text style={s.title}>Verify QR</Text>{button('Open camera',()=>{void openCamera()})}
-{scanning&&<View style={{height:300,overflow:'hidden',borderRadius:12}}><CameraView facing="back" style={{flex:1}} barcodeScannerSettings={{barcodeTypes:['qr']}} onBarcodeScanned={({data})=>{if(scanning){setScanning(false);void verify(data)}}}/></View>}
-{input('USB/Bluetooth QR token',code,setCode)}{button('Validate entry',()=>{void verify(code)})}
-{!!outcome&&<View style={s.card}><Text style={[s.title,{color:outcome==='approved'?'#43D7A1':outcome==='duplicate'?'#FBBF24':'#FB7185'}]}>{outcome.toUpperCase()}</Text></View>}</>}
+ {member.account_status==='pending'?<View style={s.card}><Text style={s.title}>Account inactive</Text><Text style={s.hint}>Ask your organiser to invite your verified Google email.</Text></View>:<>
+ <Text style={s.title}>Select an assigned event</Text>
+ <Text style={s.hint}>Only your organiser's authorised event gates are available.</Text>
+ {gates.map(g=><Pressable key={g.event_id} style={[s.card,eventId===g.event_id&&{borderColor:'#45D6C9',backgroundColor:'#163e42'}]} onPress={()=>{setEventId(g.event_id);setOutcome('');setScanning(false)}}>
+ <Text style={s.title}>{g.title}</Text><Text style={s.hint}>{g.gate_label} {eventId===g.event_id?' ✓ Selected':''}</Text></Pressable>)}
+ {!gates.length&&<View style={s.card}><Text style={s.hint}>No gate assignments yet. Your organiser must add your Google email to an event.</Text></View>}
+ {eventId&&<View style={[s.card,{alignItems:'center',paddingVertical:24}]}>
+  {!scanning&&button(outcome?'Scan next ticket':'START SCANNER',()=>{void openCamera()})}
+  {scanning&&<View style={{height:340,width:'100%',overflow:'hidden',borderRadius:15}}>
+   <CameraView facing="back" style={{flex:1}} barcodeScannerSettings={{barcodeTypes:['qr']}}
+    onBarcodeScanned={({data})=>{if(scanning&&!scanLock.current){setScanning(false);void verify(data)}}}/>
+  </View>}
+  {scanning&&button('Stop camera',()=>setScanning(false),true)}
+  {!!outcome&&<View accessibilityRole="alert" style={[s.card,{width:'100%',alignItems:'center',backgroundColor:outcome==='approved'?'#124c3f':'#56313a'}]}>
+   <Text style={{fontWeight:'900',fontSize:27,color:outcome==='approved'?'#8DFFE3':'#FFB9B9',textAlign:'center'}}>
+    {outcome==='approved'?'✓ VALID — ADMIT':outcome==='duplicate'?'ALREADY USED':outcome==='wrong_event'?'WRONG EVENT':'✕ ENTRY REJECTED'}</Text>
+   <Text style={s.hint}>{outcome==='approved'?'Genuine ticket, now redeemed.':outcome==='duplicate'?'This pass has already been used.':'Do not admit. Ask the ticket holder to contact the organiser.'}</Text>
+  </View>}
+ </View>}
+ </>}
  </>}
  {button('Sign out',()=>{void logout()},true)}</>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
