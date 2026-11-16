@@ -25,3 +25,6 @@ The Next.js API is common to all apps. Session cookies protect web clients; bear
 GitHub Actions runs web typecheck, QR tests and build plus matrix Expo TypeScript checks for each of the four apps. Native builds are not yet signed or installed on devices. Google OIDC for the native Expo apps is separate from the current web OAuth client configuration.
 
 The older apps/mobile, apps/web and supabase/ are legacy prototypes/migrations; the deployed backend is the Neon + Next.js API.
+
+
+Gate invitations: organisers can invite any email. The new invitation API returns a one-time private 72-hour URL, shareable via WhatsApp/email/etc; the recipient signs in or registers and accepts explicitly. Auto email dispatch is not provided. See [Gate invitations](GATE_INVITATIONS.md).

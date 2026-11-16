@@ -29,7 +29,7 @@ export default function RoleWorkspace(){
  const [bankName,setBankName]=useState(''),[accountName,setAccountName]=useState(''),[accountNumber,setAccountNumber]=useState('');
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
- const [staffEmail,setStaffEmail]=useState(''),[gateLabel,setGateLabel]=useState('Main gate'),[newOrganiser,setNewOrganiser]=useState('');
+ const [staffEmail,setStaffEmail]=useState(''),[gateLabel,setGateLabel]=useState('Main gate'),[newOrganiser,setNewOrganiser]=useState(''),[latestInvite,setLatestInvite]=useState('');
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
  const valid=role==='user'||role==='organiser'||role==='gate'||role==='platform-admin';
  const allowed=me&&portals.includes(role==='platform-admin'?'platform_admin':role);
@@ -82,7 +82,7 @@ export default function RoleWorkspace(){
  })}
  async function inviteGate(){await run(async()=>{
   if(!eventId)throw Error('Select an event first');
-  const r=await api('gates','POST',{eventId,email:staffEmail,gateLabel});setMessage(r.message);setStaffEmail('');
+  const r=await api('gates','POST',{eventId,email:staffEmail,gateLabel});setMessage(r.message);setLatestInvite(r.invitationLink||'');setStaffEmail('');
   const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);
  })}
  async function revokeGate(i:Invite){await run(async()=>{
@@ -176,8 +176,8 @@ export default function RoleWorkspace(){
   {orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.buyer_name||o.buyer_email||'User'}</b><p>{o.quantity} tickets · {money(o.amount_ngn)} · {o.status}</p><small>Bank reference: {o.payment_reference}</small><p>{o.receipt_uploaded_at?<a href={'/api/orders/receipt?orderId='+o.id} target="_blank" rel="noreferrer">View submitted receipt</a>:'Receipt not submitted'}</p></div><div className="rw-actions">
   {o.status==='pending'&&<>{btn('Approve',()=>{void review(o.id,'approved')})}{btn('Reject',()=>{void review(o.id,'rejected')},true)}</>}</div></div>)}
   {!eventId&&<p>Select an event to review payments and assign gate staff.</p>}</section>
-  {eventId&&<section className="rw-panel rw-wide"><h2>Gate operators</h2><p>Invitations are scoped to this event. The operator must verify the invited email with Google.</p>
-    {input('Operator email',staffEmail,setStaffEmail,'email')}{input('Gate label',gateLabel,setGateLabel)}{btn('Send gate invitation',()=>{void inviteGate()})}
+  {eventId&&<section className="rw-panel rw-wide"><h2>Gate operators</h2><p>Invite anyone by email, including people without EventPass accounts. Copy and share the private link; they register or sign in and accept it. Links expire in 72 hours and grant access only to this event.</p>
+    {input('Operator email',staffEmail,setStaffEmail,'email')}{input('Gate label',gateLabel,setGateLabel)}{btn('Create private invitation link',()=>{void inviteGate()})}{latestInvite&&<div className="rw-invite"><p>Private invitation link (visible only now; share it with the invited person):</p><input readOnly aria-label="New gate invitation URL" value={latestInvite} onFocus={e=>e.currentTarget.select()}/>{btn('Copy invitation link',()=>{void navigator.clipboard.writeText(latestInvite).then(()=>setMessage('Invitation link copied')).catch(()=>setMessage('Select and copy the link manually'))},true)}<p>Do not publish this link publicly. Creating a new invitation invalidates the old one.</p></div>}
     {invites.filter(i=>i.event_id===eventId).map(i=><div className="rw-list-item" key={i.id}><div><b>{i.invitee_email}</b><p>{i.gate_label} · {i.status}</p></div>{i.status!=='revoked'&&btn('Revoke',()=>{void revokeGate(i)},true)}</div>)}</section>}
  </div>}
  {role==='user'&&<div className="rw-layout">

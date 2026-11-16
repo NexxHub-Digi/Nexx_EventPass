@@ -73,7 +73,7 @@ export async function GET(req:NextRequest){
     await db().begin(async tx=>{
       const invites=await tx`select i.id,i.event_id,i.gate_label from gate_invitations i
         join app_users organiser on organiser.id=i.organiser_id
-        where lower(i.invitee_email)=${profile.email} and i.status='pending'
+        where lower(i.invitee_email)=${profile.email} and i.status='pending' and i.token_hash is null
         and organiser.role='organiser' and organiser.account_status='active'`;
       for(const invite of invites){
         await tx`insert into gate_assignments(event_id,user_id,gate_label)

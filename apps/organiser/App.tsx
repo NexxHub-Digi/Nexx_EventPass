@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,ActivityIndicator} from 'react-native';
+import {Alert,Share,ScrollView,Pressable,Text,TextInput,View,StyleSheet,ActivityIndicator} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 const PORTAL: string="organiser",TITLE="Nexx EventPass Event Organiser",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
@@ -38,7 +38,7 @@ export default function App(){
 {button('Publish event',()=>{void exec(async()=>{const startsAt=new Date(date);if(!Number.isFinite(startsAt.getTime()))throw Error('Invalid date');await api('events',token,'POST',{title:eventTitle,venue,startsAt:startsAt.toISOString(),priceNgn:Number(price),capacity:Number(capacity),qrKeyword:keyword});await load(token)})})}
 <Text style={s.title}>My events</Text>{events.filter(e=>e.organiser_id===member.id).map(e=><Pressable key={e.id} style={[s.card,eventId===e.id&&{borderColor:'#45D6C9'}]} onPress={()=>{setEventId(e.id);void exec(async()=>{setOrders((await api('orders?eventId='+e.id,token)).orders||[])})}}><Text style={s.title}>{e.title}</Text><Text style={s.hint}>{e.status}</Text></Pressable>)}
 {!!eventId&&<><Text style={s.title}>Manual payment approval</Text>{orders.map(o=><View style={s.card} key={o.id}><Text style={s.hint}>{o.buyer_name||o.buyer_email} · ₦{Number(o.amount_ngn).toLocaleString()} · {o.status}</Text><Text style={s.hint}>Receipt: {o.receipt_uploaded_at?'Submitted — view on web':'Missing'}</Text>{o.status==='pending'&&button('Approve verified transfer',()=>{void exec(async()=>{await api('review',token,'POST',{orderId:o.id,decision:'approved'});setOrders((await api('orders?eventId='+eventId,token)).orders||[])})})}</View>)}
-{input('Invited gate operator email',staff,setStaff)}{button('Invite gate operator',()=>{void exec(async()=>{const r=await api('gates',token,'POST',{eventId,email:staff,gateLabel:'Main gate'});Alert.alert('Invitation',r.message)})})}</>}
+{input('Invited gate operator email',staff,setStaff)}{button('Invite gate operator',()=>{void exec(async()=>{const r=await api('gates',token,'POST',{eventId,email:staff,gateLabel:'Main gate'});await Share.share({message:'Your private Nexx EventPass gate invitation (expires in 72 hours): '+r.invitationLink});Alert.alert('Invitation created','Share the link privately. The recipient can register or sign in to accept.')})})}</>}
  </>}
  {button('Sign out',()=>{void logout()},true)}</>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}

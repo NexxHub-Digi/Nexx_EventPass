@@ -48,3 +48,5 @@
 .rw-profile h3{font-size:17px;margin:18px 0 10px}
 
 .rw-google-link{color:#45d6c9;text-decoration:underline;text-underline-offset:3px;font-size:13px;font-weight:650}
+
+.rw-invite{background:#263454;border:1px solid #45d6c9;padding:16px;border-radius:13px;margin:14px 0}.rw-invite input{width:100%;padding:12px;background:#111a30;color:#fff;border:1px solid #53688d;border-radius:8px}
