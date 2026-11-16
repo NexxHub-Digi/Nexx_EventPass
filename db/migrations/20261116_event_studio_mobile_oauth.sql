@@ -29,3 +29,24 @@ alter table event_media add column if not exists approved boolean not null defau
 alter table event_media drop constraint if exists event_media_media_type_check;
 alter table event_media add constraint event_media_media_type_check check(media_type in ('image','video','ticket_art'));
 create index if not exists idx_events_verification on events(verification_status,status);
+
+-- Platform-managed expandable theme catalogue.
+create table if not exists ticket_theme_catalog(
+ id text primary key,
+ name text not null,
+ label text not null,
+ color_a text not null,
+ color_b text not null,
+ accent text not null,
+ active boolean not null default true,
+ created_by uuid references app_users(id),
+ created_at timestamptz not null default now()
+);
+insert into ticket_theme_catalog(id,name,label,color_a,color_b,accent) values
+ ('aurora','Aurora Glow','Festival','#5928bf','#17baa7','#b6ffe9'),
+ ('midnight','Midnight Gold','Premium','#0c1022','#68502f','#f3cb78'),
+ ('sunset','Sunset Social','Social','#a72865','#ffae56','#ffe9aa'),
+ ('neon','Neon Pulse','Nightlife','#101124','#0da19b','#a2ffed'),
+ ('minimal','Minimal Ivory','Corporate','#253247','#344c61','#f4f5f9'),
+ ('custom','Custom Artwork','Your Design','#2f2d61','#4d658a','#ffffff')
+on conflict(id) do nothing;
