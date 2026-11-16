@@ -134,7 +134,7 @@ export async function GET(req:NextRequest){
   const allowed=['state_missing','google_cancelled','invalid_oauth_state','oauth_not_configured',
   'google_exchange_failed','google_id_token_missing','link_session_expired','link_email_mismatch',
   'google_account_already_linked','link_existing_account_first','privileged_account_required',
-  'account_not_found','organiser_access_required','admin_access_required','gate_assignment_required'];
+  'account_not_found','organiser_access_required','admin_access_required','gate_assignment_required','gate_invitation_required'];
   response=back(origin,portal,allowed.includes(reason)?reason:'google_sign_in_failed');
  }
  response.cookies.delete('eventpass_google_state');
