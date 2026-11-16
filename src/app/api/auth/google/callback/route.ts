@@ -91,7 +91,7 @@ export async function GET(req:NextRequest){
    if(!p[0]?.permitted) throw new Error('gate_assignment_required');
   }
   const session=await issueSession(user.id);
-  const destination=new URL('/',origin);
+  const destination=new URL('/dashboard/'+(portal==='platform_admin'?'platform-admin':portal),origin);
   destination.searchParams.set('oauth','success');
   destination.searchParams.set('portal',portal);
   destination.searchParams.set('view',user.account_status==='pending'?'pending':portalDestination(portal));

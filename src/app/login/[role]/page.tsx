@@ -22,7 +22,7 @@ export default function RoleLogin(){
    const result=await fetch('/api/auth/'+mode,{method:'POST',headers:{'Content-Type':'application/json'},
      body:JSON.stringify({portal:role,email,password,fullName:name,organiserCode:role==='organiser'?invite:''})});
    const value=await result.json();if(!result.ok)throw Error(value.error||'Sign-in failed');
-   window.location.assign('/?auth=ok&view='+choice.view);
+   window.location.assign('/dashboard/'+(role==='platform_admin'?'platform-admin':role));
   }catch(err){setError(err instanceof Error?err.message:'Sign-in failed');setBusy(false)}
  }
  return <main className="role-login-shell"><div className="role-login-card">
