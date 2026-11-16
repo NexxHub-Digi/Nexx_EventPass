@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { db } from '@/lib/db';
-import { currentUser, issueSession } from '@/lib/security';
+import { currentUser, issueSession, revokeCurrentSession } from '@/lib/security';
 import { fail, handleError, ok, payload, str } from '@/lib/http';
 export const runtime='nodejs';
 type Ctx={params:Promise<{action:string}>};
@@ -15,7 +15,7 @@ export async function GET(_req:NextRequest,ctx:Ctx){
 }
 export async function POST(req:NextRequest,ctx:Ctx){
  const {action}=await ctx.params;
- if(action==='logout'){const r=ok({success:true});r.cookies.delete('eventpass_session');return r;}
+ if(action==='logout'){await revokeCurrentSession();const r=ok({success:true});r.cookies.delete('eventpass_session');return r;}
  if(!['login','register'].includes(action))return fail('Not found',404);
  try{
  const b=await payload(req),email=str(b.email,254).toLowerCase(),password=typeof b.password==='string'?b.password:'',portal=str(b.portal,40)||'user';
