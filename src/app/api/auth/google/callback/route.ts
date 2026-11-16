@@ -111,8 +111,8 @@ export async function GET(req:NextRequest){
    const schemes:Record<OAuthPortal,string>={user:'eventpassuser',organiser:'eventpassorganiser',gate:'eventpassgate',platform_admin:'eventpassplatformadmin'};
    const exchangeCode=randomBytes(32).toString('base64url');
    const hashed=createHash('sha256').update(exchangeCode).digest('hex');
-   await db()`insert into mobile_auth_codes(code_hash,user_id,client,expires_at)
-     values(${hashed},${user.id},${portal},now()+interval '2 minutes')`;
+   await db()`insert into mobile_auth_codes(code_hash,user_id,client,expires_at,code_challenge)
+     values(${hashed},${user.id},${portal},now()+interval '2 minutes',${st.nativeChallenge})`;
    const deeplink=new URL(schemes[portal]+'://oauth');
    deeplink.searchParams.set('code',exchangeCode);
    response=NextResponse.redirect(deeplink);

@@ -13,8 +13,10 @@ export async function GET(req:NextRequest) {
  const state=randomValue(),nonce=randomValue(),verifier=randomValue();
  const requested=req.nextUrl.searchParams.get('returnTo')||'';
  const native=req.nextUrl.searchParams.get('client')==='native';
+ const nativeChallenge=req.nextUrl.searchParams.get('challenge')||'';
+ if(native&&!/^[a-f0-9]{64}$/.test(nativeChallenge))return NextResponse.json({error:'Native PKCE challenge required'},{status:400});
  const returnTo=portal==='user'&&/^\/invite\/gate\?token=[A-Za-z0-9_-]{43}$/.test(requested)?requested:undefined;
- const token=await sealState({portal,intent,state,nonce,verifier,...(user?{subject:user.id}:{}),...(returnTo?{returnTo}:{}),...(native?{native:true}:{})});
+ const token=await sealState({portal,intent,state,nonce,verifier,...(user?{subject:user.id}:{}),...(returnTo?{returnTo}:{}),...(native?{native:true,nativeChallenge}:{})});
  const uri=new URL('https://accounts.google.com/o/oauth2/v2/auth');
  uri.searchParams.set('client_id',config.clientId);
  uri.searchParams.set('redirect_uri',callbackUrl(req.nextUrl.origin));
