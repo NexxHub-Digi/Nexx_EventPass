@@ -1,0 +1,55 @@
+name: EventPass PostgreSQL API E2E
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  http-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: eventpass
+          POSTGRES_PASSWORD: e2e-test-password
+          POSTGRES_DB: eventpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eventpass -d eventpass"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      CI: "true"
+      EVENTPASS_E2E: "true"
+      DATABASE_URL: postgres://eventpass:e2e-test-password@127.0.0.1:5432/eventpass
+      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3210
+      AUTH_SECRET: ci-auth-test-only-never-use-in-production-123456789
+      QR_SIGNING_SECRET: ci-qr-test-only-never-use-in-production-123456789
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install web dependencies
+        run: npm install --no-audit --no-fund
+      - name: Initialise isolated PostgreSQL test database
+        run: node tests/e2e/setup.mjs
+      - name: Build actual Next.js app
+        run: npm run build
+      - name: Start Next.js and wait for API readiness
+        run: |
+          npm run start -- -p 3210 > /tmp/eventpass-e2e-next.log 2>&1 &
+          for i in $(seq 1 50); do
+            if curl -fsS http://127.0.0.1:3210/api/events > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/eventpass-e2e-next.log
+          exit 1
+      - name: Execute real HTTP cross-role workflow tests
+        run: node --test tests/e2e/live-workflows.test.mjs
+      - name: Show Next.js server logs when tests fail
+        if: failure()
+        run: tail -n 150 /tmp/eventpass-e2e-next.log || true
