@@ -1,83 +1,60 @@
 # Nexx EventPass
 
-**Web, Android and iOS ticket issuing and QR gate-verification platform.**
+An event ticketing and access-control application with a responsive **Next.js web app**, **Expo React Native (Android/iOS)** client, and **Neon PostgreSQL** backend.
 
-## Source structure
+## Current functionality
 
-- `apps/web` — Next.js 16 web app, organiser dashboard, guest discovery, staff scanner, protected API endpoints.
-- `apps/mobile` — Expo / React Native Android and iOS app with native QR camera scanner and email-code auth.
-- `supabase/migrations/20261116100000_eventpass_core.sql` — Postgres schema, ownership RLS, atomic ticket issuing and one-time redemption functions.
-- `index.html` — previous standalone UI/UX prototype retained for reference.
-- `docs/WORKFLOWS.md` — product workflows.
+- Email/password signup and login (bcrypt password hashes, httpOnly signed web session, bearer sessions for Expo)
+- Organiser invite-code signup (other users are guests by default)
+- Create and publish an event, set ticket price and event capacity
+- Guest booking request with bank transfer reference for **manual payment review** (no payment processor)
+- Organiser verifies payment independently and approves/rejects the submitted reference
+- On approval, the backend atomically checks capacity and issues unique QR credentials signed with HMAC-SHA256
+- Guest mobile and web ticket wallet, with QR display
+- Gate staff permissions assigned by the organiser; server validation of signed QR and atomic, one-time redemption
+- Duplicate, invalid and revoked check-in outcomes with database audit trail
+- Legacy UI/UX prototype at `/prototype`
 
-## Deployment
+## Architecture
 
-The Next.js web root directory in Vercel is `apps/web`, attached to GitHub `NexxHub-Digi/Nexx_EventPass` (branch `main`). The web UI displays **Preview mode** when Supabase isn't configured; this must not be used to admit guests.
+- `src/app`: Next.js App Router frontend and server-side HTTP API
+- `src/lib`: Postgres connector, signed-session and QR security
+- `db/schema.sql`: Neon/PostgreSQL schema for the event and ticket system
+- `apps/mobile`: Expo Android/iOS app using the same authenticated APIs
+- `public/prototype.html`: original Figma-inspired design prototype
 
-### Required Supabase setup
+## Quick start
 
-1. Create a **dedicated** Supabase project for EventPass. Do not reuse Nexx AI or Nexx Hotel databases. The existing Nexx-Digi org currently has reached its two-project free limit.
-2. Apply the SQL migration to that project, review its RLS policies and enable required Auth email templates.
-3. Set the following secrets in Vercel for production, preview and development as appropriate:
+1. Provision a Neon Postgres database (the dedicated `nexx-eventpass` project is created).
+2. Execute `db/schema.sql` if the schema has not yet been applied.
+3. Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `AUTH_SECRET`, `QR_SIGNING_SECRET` and `ORGANISER_INVITE_CODE` (keep all secrets server-side).
+4. Run `npm install`, `npm run build`, `npm run dev`.
+5. Register your organiser account using the private `ORGANISER_INVITE_CODE`. Guests can register without one.
+6. For Expo: `cd apps/mobile && npm install && cp .env.example .env && npx expo start`. Set `EXPO_PUBLIC_API_URL` to the deployed Next.js web URL.
 
-| Variable | Where | Description |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Web | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Web | Publishable (not secret) key |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Server only** | Supabase secret/service role key; never put in browser or Expo |
-| `EVENTPASS_SIGNING_SECRET` | **Server only** | At least 32 random characters, stored as Vercel encrypted env |
+## Manual payment workflow
 
-Generate a signing secret using a cryptographically secure random generator. Rotating it invalidates previously issued ticket QR tokens. Do not commit credentials to Git.
+1. Event organiser publishes an event and independently shares trusted bank payment instructions.
+2. Guest submits quantity and a bank transfer reference through the web or mobile app.
+3. Order stays `pending`. **A reference is not proof of payment.** Organiser confirms money arrived in their bank statement, then approves/rejects the order.
+4. Approval issues tickets; an approval cannot exceed event capacity.
+5. Gate staff scan the issued QR; online first redemption succeeds, subsequent attempts are denied.
 
-4. Configure Supabase Auth redirect allow-list for your Vercel site. For mobile email-code login, adapt the Supabase email template to include `{{ .Token }}`.
-5. Deploy a production build; test online scan and double-scan concurrency with authorised accounts before live admission.
+### Important operational safeguards
 
-### Local web
+- Do not approve an order without independently confirming its payment.
+- Do not share `DATABASE_URL`, `AUTH_SECRET`, `QR_SIGNING_SECRET` or the organiser invitation code with mobile clients or in Git.
+- In the initial version the event organiser also has gate scan permissions, and can assign registered staff accounts.
+- Offline admission is **not** supported; a network connection is required to prevent duplicate entries across gates.
+- QR codes do not contain attendee personal information.
+- Registration and login should receive rate limiting and anti-bot protection before a high-volume public launch.
+- Web browser scanning uses `BarcodeDetector` when available; Expo camera scanning is the more consistent option.
 
-```bash
-cd apps/web
-npm install
-cp .env.example .env.local
-npm run dev
-```
+## Current release limitations
 
-### Expo Android and iOS
+This is an early full-stack MVP, not a certified production ticketing system. Payment receipt file uploads, refund workflows, invitations by email, multi-ticket tier structures, offline entry reconciliation, notification delivery and app-store publication are not implemented. Perform live end-to-end, concurrency, security and real-device tests before using it to admit paying guests.
 
-```bash
-cd apps/mobile
-npm install
-cp .env.example .env
-npx expo start
-```
+## Links
 
-Enter the Expo public API URL and Supabase **publishable** credentials, never server secrets. App Store builds, signing and store account configuration are **not complete**. Test with Expo Go or development builds first.
-
-## Implemented components
-
-- Responsive Next.js event browser and organiser dashboard
-- Supabase email-link web sign-in, email-code mobile sign-in (requires template)
-- Published event creation (authenticated owner)
-- Event-owner manual ticket issue, signed HMAC QR credential
-- Event owner or assigned gate staff check-in
-- Server signature and event validation; atomic SQL redemption, duplicate detection and auditable result
-- Native and browser camera QR scanning (source implemented; device tests pending)
-
-## Not yet complete / disabled
-
-- Dedicated Supabase database provisioning (free-plan capacity limit)
-- Payment provider and payment webhook reconciliation
-- Guest checkout and verified wallet sync
-- Staff invitation administration and advanced multi-tenant organisations
-- Offline entry: **not supported**, fails closed
-- App Store / Play Store binaries and release
-- End-to-end concurrency, security and native device acceptance testing
-
-## Critical security principle
-
-A locally decoded QR code **never** authorises entry. The verifier checks the signed credential, authenticates the operator, validates assignment, then performs atomic server-side one-time redemption. Incomplete or offline verification must deny admission.
-
-For full reference see `docs/WORKFLOWS.md`.
-
-## License
-
-Copyright Nexx EventPass. All rights reserved pending owner licensing decision.
+- [GitHub](https://github.com/NexxHub-Digi/Nexx_EventPass)
+- [Figma](https://www.figma.com/design/hIcS4ec1F0tX2BIkttaec0)

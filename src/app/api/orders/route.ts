@@ -1,0 +1,24 @@
+import { currentUser } from '@/lib/security';
+import { db } from '@/lib/db';
+import { fail, handleError, ok, payload, positiveInt, str } from '@/lib/http';
+export const runtime='nodejs';
+export async function GET(req: Request) {
+  try { const u=await currentUser();if(!u)return fail('Sign in required',401);
+    const url=new URL(req.url); const eventId=url.searchParams.get('eventId');
+    if(eventId){ const allowed=await db()`select id from events where id=${eventId} and organiser_id=${u.id}`; if(!allowed[0]) return fail('Not authorised',403);
+      const orders=await db()`select o.*,u.full_name as buyer_name,u.email as buyer_email,e.title as event_title from ticket_orders o join app_users u on u.id=o.buyer_id join events e on e.id=o.event_id where o.event_id=${eventId} order by o.created_at desc limit 100`;
+      return ok({orders}); }
+    const orders=await db()`select o.*,e.title as event_title from ticket_orders o join events e on e.id=o.event_id where o.buyer_id=${u.id} order by o.created_at desc limit 100`;
+    return ok({orders});
+  }catch(e){return handleError(e);}
+}
+export async function POST(req: Request) {
+  try { const u=await currentUser();if(!u)return fail('Sign in required',401);
+    const b=await payload(req);const eventId=str(b.eventId,40),quantity=positiveInt(b.quantity,10),reference=str(b.paymentReference,250);
+    if(!eventId || !quantity || reference.length<5) return fail('Event, quantity and manual payment reference required');
+    const e=await db()`select id,price_ngn,capacity from events where id=${eventId} and status='published' and starts_at>now()`;
+    if(!e[0])return fail('Event is not available');
+    const orders=await db()`insert into ticket_orders (event_id,buyer_id,quantity,amount_ngn,payment_reference,status) values (${eventId},${u.id},${quantity},${quantity*Number(e[0].price_ngn)},${reference},'pending') returning *`;
+    return ok({order:orders[0],message:'Submitted for organiser verification. Not a valid ticket until approved.'},201);
+  }catch(e){return handleError(e);}
+}
