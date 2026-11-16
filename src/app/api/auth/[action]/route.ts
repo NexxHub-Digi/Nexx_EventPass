@@ -16,7 +16,8 @@ export async function GET(_req:NextRequest,ctx:Ctx){
 export async function POST(req:NextRequest,ctx:Ctx){
  const {action}=await ctx.params;
  if(action==='logout'){await revokeCurrentSession();const r=ok({success:true});r.cookies.delete('eventpass_session');return r;}
- if(!['login','register'].includes(action))return fail('Not found',404);
+ if(action==='register')return fail('New accounts must register with Google',403);
+ if(action!=='login')return fail('Not found',404);
  try{
  const b=await payload(req),email=str(b.email,254).toLowerCase(),password=typeof b.password==='string'?b.password:'',portal=str(b.portal,40)||'user';
  if(!['user','organiser','gate','platform_admin'].includes(portal))return fail('Invalid portal');
