@@ -6,8 +6,8 @@ if(process.env.CI!=='true'||process.env.EVENTPASS_E2E!=='true'||!/@(localhost|12
 const sql=postgres(process.env.DATABASE_URL,{ssl:false,prepare:false});
 const base='http://127.0.0.1:3210', tag=randomUUID().slice(0,8),password='EventPass-E2E-Password-123456789!';
 const email=name=>'e2e-'+name+'-'+tag+'@example.invalid';
-async function req(path,{cookie,method='GET',body,form}={}){
- const resp=await fetch(base+path,{method,headers:{...(cookie?{Cookie:cookie}:{}),...(!form&&body?{'Content-Type':'application/json'}:{})},body:form||(body?JSON.stringify(body):undefined)});
+async function req(path,{cookie,bearer,method='GET',body,form}={}){
+ const resp=await fetch(base+path,{method,headers:{...(cookie?{Cookie:cookie}:{}),...(bearer?{Authorization:'Bearer '+bearer}:{}),...(!form&&body?{'Content-Type':'application/json'}:{})},body:form||(body?JSON.stringify(body):undefined)});
  let data;try{data=await resp.json()}catch{data=null}
  return {status:resp.status,data,cookie:resp.headers.get('set-cookie')?.split(';')[0]};
 }
@@ -17,7 +17,7 @@ async function signUp(name,portal='user'){
  const r=await post('/api/auth/register',null,{portal,email:email(name),fullName:'Test '+name,password});
  const u=expect(r,200,'register '+name).user;
  assert.ok(r.cookie?.includes('eventpass_session='));
- return {id:u.id,cookie:r.cookie,email:email(name)};
+ return {id:u.id,cookie:r.cookie,email:email(name),token:r.data.token};
 }
 test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic scan and suspension',async()=>{
  try{
@@ -76,7 +76,9 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/platform/organisers',adminCookie,{action:'suspend',userId:org.id}),200,'suspend organiser');
   expect(await post('/api/events',org.cookie,{title:'Nope',venue:'E2E',startsAt:date,capacity:1,priceNgn:0,qrKeyword:'secrettest123'}),403,'suspended organiser');
   expect(await post('/api/platform/organisers',adminCookie,{action:'restore',userId:org.id}),200,'restore organiser');
-  expect(await post('/api/auth/logout',buyer.cookie,{}),200,'web logout');
-  expect(await req('/api/tickets'),403,'logged out wallet inaccessible');
+  expect(await req('/api/tickets',{bearer:buyer.token}),200,'mobile bearer access before logout');
+  expect(await post('/api/auth/logout',buyer.cookie,{}),200,'server-side session revocation');
+  expect(await req('/api/tickets',{bearer:buyer.token}),403,'revoked mobile token cannot access wallet');
+  expect(await req('/api/tickets'),403,'logged-out anonymous request cannot access wallet');
  }finally{await sql.end()}
 },{timeout:180000});
