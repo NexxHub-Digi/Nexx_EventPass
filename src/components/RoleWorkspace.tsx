@@ -28,6 +28,8 @@ export default function RoleWorkspace(){
  const [me,setMe]=useState<Member|null>(null),[portals,setPortals]=useState<string[]>([]),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[orders,setOrders]=useState<Order[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[gates,setGates]=useState<Gate[]>([]),[invites,setInvites]=useState<Invite[]>([]);
  const [search,setSearch]=useState(''),[filterCategory,setFilterCategory]=useState('All'),[sortBy,setSortBy]=useState('soonest');
+ const [themeCatalog,setThemeCatalog]=useState<{id:string;name:string;label:string;gradient:string;accent:string}[]>(ticketThemes.map(t=>({...t})));
+ const [newThemeName,setNewThemeName]=useState(''),[newThemeLabel,setNewThemeLabel]=useState(''),[themeColorA,setThemeColorA]=useState('#3d2683'),[themeColorB,setThemeColorB]=useState('#12a59c'),[themeAccent,setThemeAccent]=useState('#ffffff');
  const [eventDescription,setEventDescription]=useState(''),[eventCategory,setEventCategory]=useState('Music'),[ticketTheme,setTicketTheme]=useState('aurora');
  const [eventMedia,setEventMedia]=useState<EventMedia[]>([]),[moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<EventMedia[]>([]);
  const [organisers,setOrganisers]=useState<Organiser[]>([]),[stats,setStats]=useState<Record<string,number>>({});
@@ -43,7 +45,7 @@ export default function RoleWorkspace(){
  async function fetchAll(){
   const m=await api('auth/me');setMe(m.user);setPortals(m.portals||[]);
   if(!m.user)return;
-  const e=await api('events');setEvents(e.events||[]);
+  const [e,themeResult]=await Promise.all([api('events'),api('ticket-themes')]);setEvents(e.events||[]);if(themeResult.themes?.length)setThemeCatalog(themeResult.themes);
   if(m.user.account_status==='pending'||(role==='organiser'&&m.user.role==='user'&&m.user.requested_role==='organiser'))return;
   const rr=role==='platform-admin'?'platform_admin':role;
   if(!(m.portals||[]).includes(rr))return;
@@ -71,6 +73,11 @@ export default function RoleWorkspace(){
   const date=new Date(startsAt);if(!Number.isFinite(date.getTime()))throw Error('Choose an event date');
   const result=await api('events','POST',{title:eventTitle,venue,description:eventDescription,category:eventCategory,ticketTheme,startsAt:date.toISOString(),capacity:Number(capacity),priceNgn:Number(ticketPrice),qrKeyword:keyword});
   setEventTitle('');setKeyword('');await fetchAll();setEventId(result.event.id);setMessage('Event created! Add promotional media and send your listing for Platform Admin verification.');
+ })}
+ async function addNewTicketTheme(){await run(async()=>{
+  await api('ticket-themes','POST',{name:newThemeName,label:newThemeLabel,colorA:themeColorA,colorB:themeColorB,accent:themeAccent});
+  const r=await api('ticket-themes');setThemeCatalog(r.themes||[]);setNewThemeName('');setNewThemeLabel('');
+  setMessage('New ticket theme is available to organisers');
  })}
  async function saveEventDesign(){await run(async()=>{
   if(!eventId)throw Error('Select your event first');
@@ -162,6 +169,7 @@ export default function RoleWorkspace(){
  }
  async function signout(){await api('auth/logout','POST');window.location.assign('/login/'+role)}
  const input=(label:string,value:string,onChange:(v:string)=>void,type='text')=><label className="rw-field">{label}<input value={value} onChange={e=>onChange(e.target.value)} type={type}/></label>;
+ const themeFor=(id:string)=>themeCatalog.find(t=>t.id===id)||findTicketTheme(id);
  const categories=['All',...new Set(events.filter(e=>e.status==='published').map(e=>e.category||'Other'))];
  const visibleEvents=events.filter(e=>e.status==='published'&&e.verification_status!=='pending')
   .filter(e=>filterCategory==='All'||(e.category||'Other')===filterCategory)
@@ -210,7 +218,16 @@ export default function RoleWorkspace(){
       {btn('Save organiser configuration',()=>{void configureOrganiser()})}
     </>:<p>This applicant is not approved. Approve before configuring the organiser profile.</p>}
    </div>)}
-  </section>  <section className="rw-panel rw-wide"><div className="eyebrow">EVENT AUTHENTICITY</div><h2>Review organiser listings and media</h2>
+  </section>  <section className="rw-panel rw-wide"><div className="eyebrow">TICKET DESIGN SERVICE</div><h2>Publish new ticket themes</h2>
+   <p>Approved designs appear in every organiser's theme selector without requiring an application update. Custom artwork remains available.</p>
+   {input('Theme name',newThemeName,setNewThemeName)}{input('Theme label',newThemeLabel,setNewThemeLabel)}
+   <div className="rw-media-inputs"><label className="rw-field">First colour<input type="color" value={themeColorA} onChange={e=>setThemeColorA(e.target.value)}/></label>
+    <label className="rw-field">Second colour<input type="color" value={themeColorB} onChange={e=>setThemeColorB(e.target.value)}/></label>
+    <label className="rw-field">Accent colour<input type="color" value={themeAccent} onChange={e=>setThemeAccent(e.target.value)}/></label></div>
+   <div className="rw-theme-grid">{themeCatalog.map(t=><div key={t.id} className="rw-theme-option" style={{background:t.gradient}}><strong>{t.name}</strong><small>{t.label}</small></div>)}</div>
+   {btn('Add theme to catalogue',()=>{void addNewTicketTheme()})}
+  </section>
+  <section className="rw-panel rw-wide"><div className="eyebrow">EVENT AUTHENTICITY</div><h2>Review organiser listings and media</h2>
    <p>Verify the identity, location, date, marketing materials and ticket promises before publishing an event to the public marketplace.</p>
    {moderationEvents.map(ev=><div className="rw-review-card" key={ev.id}>
      <div><strong>{ev.title}</strong><p>{ev.venue} · {nice(ev.starts_at)}</p><small>Submitted by {ev.organiser_name} ({ev.organiser_email})</small><p>Listing: {ev.verification_status} · {ev.pending_media} unreviewed assets</p></div>
@@ -233,7 +250,7 @@ export default function RoleWorkspace(){
   <label className="rw-field">Event category<select value={eventCategory} onChange={e=>setEventCategory(e.target.value)}>{['Music','Nightlife','Festival','Business','Food','Sports','Arts','Education','Community','Other'].map(c=><option key={c}>{c}</option>)}</select></label>
   {input('Date and time',startsAt,setStartsAt,'datetime-local')}{input('Price (NGN)',ticketPrice,setTicketPrice,'number')}{input('Capacity',capacity,setCapacity,'number')}{input('Private encrypted QR keyword (8+ characters)',keyword,setKeyword,'password')}
   <h3>Ticket design collection</h3>
-  <div className="rw-theme-grid">{ticketThemes.map(t=><button key={t.id} type="button" className={'rw-theme-option '+(ticketTheme===t.id?'selected':'')} onClick={()=>setTicketTheme(t.id)} style={{background:t.gradient}}>
+  <div className="rw-theme-grid">{themeCatalog.map(t=><button key={t.id} type="button" className={'rw-theme-option '+(ticketTheme===t.id?'selected':'')} onClick={()=>setTicketTheme(t.id)} style={{background:t.gradient}}>
   <span>{t.label}</span><strong>{t.name}</strong><small>{ticketTheme===t.id?'✓ Selected':'Preview theme'}</small></button>)}</div>
   {btn('Create event for verification',()=>{void createEvent()})}
   </section>
@@ -254,7 +271,7 @@ export default function RoleWorkspace(){
       <small>{m.file_name} · {m.approved?'Approved':'Awaiting review'}</small>
       {btn('Remove',()=>{void deleteMedia(m.id)},true)}
     </div>)}</div>
-    <h3>Ticket theme</h3><div className="rw-theme-grid">{ticketThemes.map(t=><button type="button" key={t.id} className={'rw-theme-option '+(ticketTheme===t.id?'selected':'')} onClick={()=>setTicketTheme(t.id)} style={{background:t.gradient}}><strong>{t.name}</strong><small>{t.label}</small></button>)}</div>
+    <h3>Ticket theme</h3><div className="rw-theme-grid">{themeCatalog.map(t=><button type="button" key={t.id} className={'rw-theme-option '+(ticketTheme===t.id?'selected':'')} onClick={()=>setTicketTheme(t.id)} style={{background:t.gradient}}><strong>{t.name}</strong><small>{t.label}</small></button>)}</div>
     <label className="rw-field">Event category<select value={eventCategory} onChange={e=>setEventCategory(e.target.value)}>{['Music','Nightlife','Festival','Business','Food','Sports','Arts','Education','Community','Other'].map(c=><option key={c}>{c}</option>)}</select></label>
     <label className="rw-field">Public event description<textarea rows={3} maxLength={2500} value={eventDescription} onChange={e=>setEventDescription(e.target.value)}/></label>
     {btn('Save design for review',()=>{void saveEventDesign()})}
@@ -275,7 +292,7 @@ export default function RoleWorkspace(){
     <div className="rw-market-count"><strong>{visibleEvents.length}</strong> verified {visibleEvents.length===1?'event':'events'} to explore</div>
     <div className="rw-market-grid">{visibleEvents.map(e=><article key={e.id} className="rw-market-card">
       <div className="rw-market-cover">
-        {e.cover_media_id?<img loading="lazy" src={'/api/events/media?id='+e.cover_media_id} alt={e.title+' event poster'}/>:e.video_media_id?<video muted playsInline loop autoPlay preload="metadata" src={'/api/events/media?id='+e.video_media_id}/>:<div className="rw-market-placeholder" style={{background:findTicketTheme(e.ticket_theme||'aurora').gradient}}><span>◈</span><strong>{e.title}</strong></div>}
+        {e.cover_media_id?<img loading="lazy" src={'/api/events/media?id='+e.cover_media_id} alt={e.title+' event poster'}/>:e.video_media_id?<video muted playsInline loop autoPlay preload="metadata" src={'/api/events/media?id='+e.video_media_id}/>:<div className="rw-market-placeholder" style={{background:themeFor(e.ticket_theme||'aurora').gradient}}><span>◈</span><strong>{e.title}</strong></div>}
         <span className="rw-event-tag">{e.category||'Event'}</span>
       </div>
       <div className="rw-market-info"><div className="rw-market-meta">{nice(e.starts_at)} · {e.venue}</div>
@@ -301,7 +318,7 @@ export default function RoleWorkspace(){
     {!visibleEvents.length&&<div className="rw-empty"><h3>No matching events yet</h3><p>Try another search or choose a different category.</p></div>}
   </section>
   <section className="rw-panel"><h2>My orders</h2>{orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.event_title}</b><p>{o.status} · {money(o.amount_ngn)}</p><small>{o.payment_reference}</small>{!o.receipt_uploaded_at&&o.status==='pending'&&o.amount_ngn>0&&<label className="rw-field">Upload missing receipt<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={e=>setReceiptUploads({...receiptUploads,[o.id]:e.target.files?.[0]||null})}/>{btn('Send receipt',()=>{void upload(o.id)})}</label>}</div></div>)}{!orders.length&&<p>Your event orders will appear here.</p>}</section>
-  <section className="rw-panel"><h2>My ticket wallet</h2>{tickets.map(t=><div key={t.id} className="rw-ticket rw-designed-ticket" style={{background:findTicketTheme(t.ticket_theme||'aurora').gradient}}>
+  <section className="rw-panel"><h2>My ticket wallet</h2>{tickets.map(t=><div key={t.id} className="rw-ticket rw-designed-ticket" style={{background:themeFor(t.ticket_theme||'aurora').gradient}}>
     {t.ticket_art_id&&<img className="rw-ticket-art" src={'/api/events/media?id='+t.ticket_art_id} alt="Custom event ticket design"/>}
     <div className="rw-ticket-details"><small>NEXX EVENTPASS • OFFICIAL ENTRY</small><h3>{t.title}</h3><p>{t.venue} · {nice(t.starts_at)}</p>
       {t.qr&&<div className="rw-qr"><QRCodeSVG value={t.qr} size={182} level="H" includeMargin/></div>}
