@@ -31,6 +31,10 @@ export default function App(){
  setPalette(Object.fromEntries((themesResult.themes||[]).map((x:{id:string;color_a:string})=>[x.id,x.color_a])));
  }
  useEffect(()=>{SecureStore.getItemAsync('eventpass_token').then(t=>{if(t){setToken(t);load(t).catch(e=>setError((e as Error).message))}}).catch(()=>{})},[]);
+ useEffect(()=>{if(!token||!member||member.account_status!=='active')return;
+  const id=setInterval(()=>{api('tickets',token).then(v=>setTickets(v.tickets||[])).catch(()=>{})},12000);
+  return ()=>clearInterval(id);
+ },[token,member?.id,member?.account_status]);
  async function exec(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  async function login(){await exec(async()=>{
    const redirect='eventpassuser://oauth';
