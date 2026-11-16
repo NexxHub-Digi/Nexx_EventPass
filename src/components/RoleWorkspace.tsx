@@ -57,7 +57,8 @@ export default function RoleWorkspace(){
   if(role==='user'){
    const [t,o]=await Promise.all([api('tickets'),api('orders')]);setTickets(t.tickets||[]);setOrders(o.orders||[]);
   }else if(role==='organiser'){
-   const [b,g]=await Promise.all([api('organiser/payment-account'),api('gates')]);
+   const [b,g,support]=await Promise.all([api('organiser/payment-account'),api('gates'),api('support/cases')]);
+   setCases(support.cases||[]);
    setBankName(b.account?.bank_name||'');setAccountName(b.account?.account_name||'');setAccountNumber(b.account?.account_number||'');
    setGates(g.gates||[]);setInvites(g.invitations||[]);
   }else if(role==='gate'){const g=await api('gates');setGates(g.gates||[]);}
@@ -204,6 +205,36 @@ export default function RoleWorkspace(){
   <section className="rw-panel"><h2>Platform overview</h2><div className="rw-stats">{Object.entries(stats).map(([k,v])=><div className="rw-stat" key={k}><b>{Number(v).toLocaleString()}</b><small>{k}</small></div>)}</div>
   <h3>Create organiser from verified User</h3><p>Only a Google-verified existing account can be promoted. No default password is created.</p>
   {input('Verified User email',newOrganiser,setNewOrganiser,'email')}{btn('Create organiser',()=>{void adminAction('create')})}</section>
+  <section className="rw-panel rw-wide"><div className="eyebrow">MULTI-TENANT CRM</div><h2>User and operator directory</h2>
+   <p>Search accounts and open a profile to view tickets, event activity and gate assignments. Deactivation preserves financial and admission audit records.</p>
+   <div className="rw-market-filters">{input('Search name or email',userSearch,setUserSearch)}
+    <select value={userFilter} aria-label="Filter by role" onChange={e=>setUserFilter(e.target.value)}><option value="">All roles</option><option value="user">Users / Gate identities</option><option value="organiser">Organisers</option><option value="platform_admin">Administrators</option></select>
+    {btn('Search users',()=>{void searchAdminUsers(1)})}</div>
+   <p>{usersCount} accounts · page {userPage}</p>
+   {allUsers.map(a=><div key={a.id} className="rw-list-item"><div><strong>{a.full_name}</strong><p>{a.email}</p><small>{a.role} · {a.account_status} · {a.google_verified?'Google verified':'Unlinked'} · {a.ticket_count} tickets · {a.gate_event_count} gates</small></div>{btn('Open profile',()=>chooseUser(a.id),true)}</div>)}
+   <div className="rw-actions">{userPage>1&&btn('Previous',()=>{void searchAdminUsers(userPage-1)},true)}{userPage*40<usersCount&&btn('Next',()=>{void searchAdminUsers(userPage+1)},true)}</div>
+   {selectedUser&&allUsers.filter(a=>a.id===selectedUser).map(a=><div key={a.id} className="rw-profile"><h3>Account: {a.full_name}</h3><p>{a.email} · {a.role} · {a.account_status} · joined {nice(a.created_at)}</p>
+    <div className="rw-stats"><div className="rw-stat"><b>{a.order_count}</b><small>Orders</small></div><div className="rw-stat"><b>{a.ticket_count}</b><small>Tickets</small></div><div className="rw-stat"><b>{a.event_count}</b><small>Events</small></div><div className="rw-stat"><b>{a.gate_event_count}</b><small>Gates</small></div></div>
+    {a.role==='platform_admin'?<p>Other administrators cannot be modified from this directory.</p>:<>
+    {input('Full name',userEditName,setUserEditName)}{btn('Save profile',()=>{void changeUser('configure')})}
+    {a.account_status==='active'?btn('Suspend',()=>{void changeUser('suspend')},true):btn('Restore access',()=>{void changeUser('restore')})}
+    {input('Reason for deactivation',accountReason,setAccountReason)}{btn('Deactivate account',()=>{void changeUser('deactivate')},true)}
+    </>}</div>)}
+  </section>
+  <section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER SUCCESS</div><h2>Support cases and assistance</h2>
+   <p>Support cases are tenant-scoped. Review organiser problems, assign case status and record the resolution.</p>
+   {cases.map(c=><div className="rw-list-item" key={c.id}><div><b>{c.subject}</b><p>{c.organiser_name} · {c.status} · {c.priority}</p><small>{c.description}</small>{c.resolution&&<p>Resolution: {c.resolution}</p>}</div>
+     <div className="rw-actions">{btn('Investigate',()=>{void updateCase(c.id,'in_progress',c.priority)},true)}{btn('Resolve',()=>{void updateCase(c.id,'resolved',c.priority)})}</div></div>)}
+   {!cases.length&&<p>No open support requests.</p>}
+   <label className="rw-field">Support resolution / guidance<textarea rows={3} value={caseResolution} onChange={e=>setCaseResolution(e.target.value)}/></label>
+  </section>
+  <section className="rw-panel rw-wide"><div className="eyebrow">PLATFORM CONFIGURATION</div><h2>Operational settings</h2>
+   <p>Set organiser onboarding policy, event authenticity checks, support email, and help instructions. API credentials are managed in hosting environment variables.</p>
+   <label className="rw-field">Setting<select value={settingKey} onChange={e=>{setSettingKey(e.target.value);setSettingValue(platformSettings[e.target.value]||'')}}>
+    <option value="support_email">Support contact email</option><option value="organiser_approval_policy">Organiser approval checklist</option>
+    <option value="event_verification_policy">Event authenticity checklist</option><option value="help_text">Help text</option></select></label>
+   <label className="rw-field">Value<textarea rows={3} value={settingValue} onChange={e=>setSettingValue(e.target.value)}/></label>{btn('Save settings',()=>{void saveSetting()})}
+  </section>
   <section className="rw-panel"><h2>Organiser directory and access control</h2>
    <p>Review all organiser applications and existing profiles. Revoke access without deleting tickets or historical events.</p>
    {organisers.map(o=><div className="rw-list-item" key={o.id}>
@@ -257,6 +288,12 @@ export default function RoleWorkspace(){
    {!moderationEvents.length&&<p>No pending event or media submissions.</p>}
   </section></div>}
  {role==='organiser'&&<div className="rw-layout">
+  <section className="rw-panel"><div className="eyebrow">ORGANISER HELPDESK</div><h2>Get Platform Support</h2><p>Report issues with event verification, bank payments, QR tickets, or gate staff. Only you and Platform Admin can see your cases.</p>
+   {input('Subject',caseSubject,setCaseSubject)}
+   <label className="rw-field">Description<textarea rows={3} value={caseDescription} onChange={e=>setCaseDescription(e.target.value)}/></label>
+   <label className="rw-field">Priority<select value={casePriority} onChange={e=>setCasePriority(e.target.value)}>{['low','normal','high','urgent'].map(x=><option key={x}>{x}</option>)}</select></label>{btn('Create support request',()=>{void openSupportCase()})}
+   {cases.map(c=><div className="rw-list-item" key={c.id}><div><b>{c.subject}</b><p>{c.status} · {c.priority}</p>{c.resolution&&<p>Response: {c.resolution}</p>}</div></div>)}
+  </section>
   <section className="rw-panel"><h2>Bank transfer instructions</h2><p>Users see these account details on your published events. Only approve a ticket after confirming funds in your own bank records.</p>
     {input('Bank name',bankName,setBankName)}{input('Account name',accountName,setAccountName)}{input('Account number',accountNumber,setAccountNumber)}
     {btn('Save bank details',()=>{void saveBank()})}
