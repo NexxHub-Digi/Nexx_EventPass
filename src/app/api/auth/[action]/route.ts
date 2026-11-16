@@ -1,53 +1,43 @@
-import { NextRequest, NextResponse } from 'next/server';
+import {NextRequest,NextResponse} from 'next/server';
 import bcrypt from 'bcryptjs';
-import { db } from '@/lib/db';
-import { currentUser, issueSession, revokeCurrentSession } from '@/lib/security';
-import { fail, handleError, ok, payload, str } from '@/lib/http';
+import {db} from '@/lib/db';
+import {currentUser,issueSession,revokeCurrentSession} from '@/lib/security';
+import {fail,handleError,ok,payload,str} from '@/lib/http';
 export const runtime='nodejs';
 type Ctx={params:Promise<{action:string}>};
 export async function GET(_req:NextRequest,ctx:Ctx){
  const {action}=await ctx.params;if(action!=='me')return fail('Not found',404);
- const user=await currentUser();if(!user)return ok({user:null,portals:['user']});
- const gates=await db()`select exists(select 1 from gate_assignments g join events e on e.id=g.event_id join app_users owner on owner.id=e.organiser_id where g.user_id=${user.id} and owner.account_status='active' and owner.role='organiser') or exists(select 1 from events e where e.organiser_id=${user.id} and ${user.role}='organiser') as permitted`;
+ const user=await currentUser();if(!user)return ok({user:null,portals:[]});
  const active=user.account_status==='active';
- const portals=['user',...(active&&['organiser','platform_admin'].includes(user.role)?['organiser']:[]),...(active&&gates[0]?.permitted?['gate']:[]),...(active&&user.role==='platform_admin'?['platform_admin']:[])];
+ const gates=active?await db()`select exists(
+ select 1 from gate_assignments g join events e on e.id=g.event_id join app_users owner on owner.id=e.organiser_id
+ where g.user_id=${user.id} and e.status='published' and owner.account_status='active' and owner.role='organiser')
+ or exists(select 1 from events e where e.organiser_id=${user.id} and ${user.role==='organiser'}) as permitted`:[];
+ const portals=active?['user',...(['organiser','platform_admin'].includes(user.role)?['organiser']:[]),
+  ...(gates[0]?.permitted?['gate']:[]),...(user.role==='platform_admin'?['platform_admin']:[])]:[];
  return ok({user,portals});
 }
 export async function POST(req:NextRequest,ctx:Ctx){
  const {action}=await ctx.params;
- if(action==='logout'){await revokeCurrentSession();const r=ok({success:true});r.cookies.delete('eventpass_session');return r;}
- if(action==='register')return fail('New accounts must register with Google',403);
- if(action!=='login')return fail('Not found',404);
- try{
- const b=await payload(req),email=str(b.email,254).toLowerCase(),password=typeof b.password==='string'?b.password:'',portal=str(b.portal,40)||'user';
- if(!['user','organiser','gate','platform_admin'].includes(portal))return fail('Invalid portal');
- if(action==='register'&&!['user','organiser'].includes(portal))return fail('Only Users and organiser applicants can register',403);
- if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<10||password.length>128)return fail('Valid email and password (10–128 characters) required');
- let u;
- if(action==='register'){
-   const fullName=str(b.fullName,100);if(fullName.length<2)return fail('Full name required');
-   const hash=await bcrypt.hash(password,12);
-   const pending=portal==='organiser';
-   const created=await db()`insert into app_users(email,password_hash,full_name,role,account_status,requested_role)
-   values(${email},${hash},${fullName},'user','active',${pending?'organiser':null})
-   on conflict(email) do nothing returning id,email,full_name,role,account_status,requested_role`;
-   if(!created[0])return fail('Account already exists. Sign in to request organiser access.',409);
-   u=created[0];
- }else{
-   const list=await db()`select id,email,full_name,role,account_status,requested_role,password_hash from app_users where email=${email} limit 1`;
-   if(!list[0]||!(await bcrypt.compare(password,list[0].password_hash)))return fail('Invalid credentials',401);
-   u=list[0];
- }
- if(portal==='organiser'&&u.role==='user'&&u.account_status==='active'&&u.requested_role!=='organiser') {
-  await db()`update app_users set requested_role='organiser' where id=${u.id} and role='user' and account_status='active'`;
-  u.requested_role='organiser';
- }
- if(portal==='platform_admin'&&u.role!=='platform_admin')return fail('Administrator access required',403);
- // A signed-in User sees an inactive gate interface until assigned to an active organiser event.
- if(u.account_status!=='active' && !(portal==='organiser'&&u.account_status==='pending'))return fail('Account inactive',403);
- const token=await issueSession(u.id);
- const res=NextResponse.json({user:{id:u.id,email:u.email,full_name:u.full_name,role:u.role,account_status:u.account_status,requested_role:u.requested_role},token,pending:portal==='organiser'&&u.role==='user'&&u.requested_role==='organiser'},{headers:{'Cache-Control':'no-store'}});
- res.cookies.set('eventpass_session',token,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax',path:'/',maxAge:604800});
- return res;
+ try {
+  if(action==='logout'){await revokeCurrentSession();const r=ok({success:true});r.cookies.delete('eventpass_session');return r;}
+  if(action==='register')return fail('Sign up using Google only',403);
+  if(action!=='login')return fail('Not found',404);
+  // Existing password accounts retain a migration-only sign-in, but the interface presents Google exclusively.
+  const b=await payload(req),email=str(b.email,254).toLowerCase(),password=typeof b.password==='string'?b.password:'',portal=str(b.portal,40)||'user';
+  if(!['user','organiser','gate','platform_admin'].includes(portal))return fail('Invalid portal');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<10||password.length>128)return fail('Invalid credentials',401);
+  const users=await db()`select id,email,full_name,role,account_status,requested_role,password_hash from app_users where email=${email} limit 1`;
+  const user=users[0];
+  if(!user||!(await bcrypt.compare(password,user.password_hash)))return fail('Invalid credentials',401);
+  if(user.account_status!=='active')return fail('Account inactive',403);
+  if(portal==='organiser'&&user.role==='user'&&user.requested_role!=='organiser'){
+   await db()`update app_users set requested_role='organiser' where id=${user.id} and role='user'`;user.requested_role='organiser';
+  }
+  if(portal==='platform_admin'&&user.role!=='platform_admin')return fail('Administrator access required',403);
+  const token=await issueSession(user.id);
+  const res=NextResponse.json({user:{id:user.id,email:user.email,full_name:user.full_name,role:user.role,account_status:user.account_status,requested_role:user.requested_role},token},{headers:{'Cache-Control':'no-store'}});
+  res.cookies.set('eventpass_session',token,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax',path:'/',maxAge:604800});
+  return res;
  }catch(e){return handleError(e)}
 }
