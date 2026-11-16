@@ -8,7 +8,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 const PORTAL: string="organiser",TITLE="Nexx EventPass Event Organiser",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
-type Event={id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;description?:string;category?:string;ticket_theme?:string;verification_status?:string;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
+type Event={id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;verification_status?:string;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type Ticket={id:string;title:string;qr:string|null;status:string;redeemed_at:string|null};
 type Order={id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number};
 type Gate={event_id:string;title:string;gate_label:string};
@@ -18,7 +18,7 @@ export default function App(){
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [bank,setBank]=useState(''),[accName,setAccName]=useState(''),[accNo,setAccNo]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[date,setDate]=useState(''),[time,setTime]=useState('19:00'),[price,setPrice]=useState('5000'),[capacity,setCapacity]=useState('100'),[keyword,setKeyword]=useState(''),[staff,setStaff]=useState('');
- const [description,setDescription]=useState(''),[category,setCategory]=useState('Music'),[theme,setTheme]=useState('aurora'),[media,setMedia]=useState<{id:string;media_type:string;url:string;approved:boolean}[]>([]);
+ const [description,setDescription]=useState(''),[category,setCategory]=useState('Music'),[theme,setTheme]=useState('aurora'),[admissionLabel,setAdmissionLabel]=useState('ADMIT ONE'),[media,setMedia]=useState<{id:string;media_type:string;url:string;approved:boolean}[]>([]);
  const [themes,setThemes]=useState<[string,string][]>([['aurora','Aurora Glow'],['midnight','Midnight Gold'],['sunset','Sunset Social'],['neon','Neon Pulse'],['minimal','Minimal Ivory'],['custom','Custom Artwork']]);
  async function uploadEventFile(purpose=''){if(!eventId)throw Error('Select an event');
   const result=await DocumentPicker.getDocumentAsync({type:purpose==='ticket_art'?['image/jpeg','image/png','image/webp']:['image/jpeg','image/png','image/webp','video/mp4','video/webm']});
@@ -33,7 +33,7 @@ export default function App(){
  }
  async function saveDesign(){if(!eventId)return;
   await exec(async()=>{
-   await api('events',token,'PATCH',{eventId,description,category,ticketTheme:theme});
+   await api('events',token,'PATCH',{eventId,description,category,ticketTheme:theme,admissionLabel});
    await load(token);Alert.alert('Design saved','Updates are waiting for verification');
   });
  }
@@ -78,23 +78,39 @@ export default function App(){
 {input('Category (Music / Festival / Business...)',category,setCategory)}
 {input('Date (YYYY-MM-DD)',date,setDate)}{input('Time (HH:MM, 24-hour)',time,setTime)}
 {input('Price in NGN',price,setPrice)}{input('Capacity',capacity,setCapacity)}{input('Private QR keyword (8+ characters)',keyword,setKeyword,true)}
-<Text style={s.title}>Ticket themes</Text><ScrollView horizontal contentContainerStyle={{gap:8,paddingBottom:9}}>
+<Text style={s.title}>Ticket templates</Text><Text style={s.hint}>Choose one of the luxury STJ-inspired masquerade layouts, or another theme. Every issued ticket receives its own real QR.</Text>{theme.startsWith('stj-')&&<View style={{borderWidth:3,borderColor:'#f1c36a',backgroundColor:'#240732',borderRadius:12,flexDirection:'row',overflow:'hidden',marginVertical:12,minHeight:145}}>
+ <View style={{flex:3,padding:11,justifyContent:'space-around',alignItems:'center'}}>
+  <Text style={{fontSize:27}}>🎭 ✨</Text><Text numberOfLines={2} style={{fontSize:16,color:'#ffe4a3',fontWeight:'900',textAlign:'center'}}>{eventTitle||events.find(e=>e.id===eventId)?.title||'Your Masquerade Event'}</Text>
+  <Text style={{fontSize:10,color:'#fff',textAlign:'center'}}>{venue||events.find(e=>e.id===eventId)?.venue||'Your event venue'}</Text>
+  <Text style={{fontSize:12,color:'#f9d77b',fontWeight:'900'}}>{admissionLabel}</Text>
+ </View><View style={{flex:1,borderLeftColor:'#ffcf74',borderLeftWidth:2,borderStyle:'dashed',alignItems:'center',justifyContent:'center',padding:6}}>
+  <Text style={{fontSize:25,color:'#f7d77c'}}>◈</Text><Text style={{fontSize:8,color:'#fff',textAlign:'center'}}>QR GENERATED ON APPROVAL</Text>
+ </View></View>}
+{input('Admission label (e.g. ADMIT ONE — MASK COMPULSORY)',admissionLabel,setAdmissionLabel)}<ScrollView horizontal contentContainerStyle={{gap:8,paddingBottom:9}}>
 {themes.map(([id,name])=><Pressable key={id} onPress={()=>setTheme(id)} style={[s.card,{minWidth:120,backgroundColor:theme===id?'#6240a9':'#273351',borderColor:theme===id?'#49f1d4':'#425173'}]}><Text style={{color:'#fff',fontWeight:'800'}}>{name}</Text><Text style={s.hint}>{theme===id?'✓ Selected':'Preview'}</Text></Pressable>)}</ScrollView>
 {button('Create event for review',()=>{void exec(async()=>{
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!/^\d{2}:\d{2}$/.test(time))throw Error('Use date YYYY-MM-DD and time HH:MM');
  const startsAt=new Date(date+'T'+time+':00');
  if(!Number.isFinite(startsAt.getTime())||startsAt.getTime()<=Date.now())throw Error('Choose a future event date and time');
- const result=await api('events',token,'POST',{title:eventTitle,venue,description,category,ticketTheme:theme,startsAt:startsAt.toISOString(),priceNgn:Number(price),capacity:Number(capacity),qrKeyword:keyword});
+ const result=await api('events',token,'POST',{title:eventTitle,venue,description,category,ticketTheme:theme,admissionLabel,startsAt:startsAt.toISOString(),priceNgn:Number(price),capacity:Number(capacity),qrKeyword:keyword});
  await load(token);setEventId(result.event.id);setEventTitle('');setKeyword('');
  Alert.alert('Event created','Upload posters and ticket artwork, then wait for Platform Admin verification.');
 })})}
-<Text style={s.title}>My events</Text>{events.filter(e=>e.organiser_id===member.id).map(e=><Pressable key={e.id} style={[s.card,eventId===e.id&&{borderColor:'#45D6C9'}]} onPress={()=>{setEventId(e.id);setDescription(e.description||'');setCategory(e.category||'Other');setTheme(e.ticket_theme||'aurora');void exec(async()=>{setOrders((await api('orders?eventId='+e.id,token)).orders||[]);setMedia((await api('events/media?eventId='+e.id,token)).media||[])})}}><Text style={s.title}>{e.title}</Text><Text style={s.hint}>{e.status} · {e.verification_status||'verified'}</Text></Pressable>)}
+<Text style={s.title}>My events</Text>{events.filter(e=>e.organiser_id===member.id).map(e=><Pressable key={e.id} style={[s.card,eventId===e.id&&{borderColor:'#45D6C9'}]} onPress={()=>{setEventId(e.id);setDescription(e.description||'');setCategory(e.category||'Other');setTheme(e.ticket_theme||'aurora');setAdmissionLabel(e.admission_label||'ADMIT ONE');void exec(async()=>{setOrders((await api('orders?eventId='+e.id,token)).orders||[]);setMedia((await api('events/media?eventId='+e.id,token)).media||[])})}}><Text style={s.title}>{e.title}</Text><Text style={s.hint}>{e.status} · {e.verification_status||'verified'}</Text></Pressable>)}
 {!!eventId&&<>
  <Text style={s.title}>Event media & ticket artwork</Text><Text style={s.hint}>Upload posters, short videos and custom design images for platform review.</Text>
  {button('Upload photo or short video',()=>{void uploadEventFile()})}
  {button('Import custom ticket artwork',()=>{void uploadEventFile('ticket_art')},true)}
  <ScrollView horizontal contentContainerStyle={{gap:12,marginVertical:14}}>{media.map(m=><View key={m.id} style={{width:160}}>{m.media_type==='video'?<Text style={s.hint}>▶ Video uploaded</Text>:<Image source={{uri:BASE+m.url}} style={{width:150,height:115,borderRadius:10}}/>}<Text style={s.hint}>{m.approved?'Approved':'Pending media review'}</Text></View>)}</ScrollView>
- <Text style={s.title}>Update ticket design</Text><ScrollView horizontal contentContainerStyle={{gap:8}}>{themes.map(([id,name])=><Pressable key={id} onPress={()=>setTheme(id)} style={[s.card,{backgroundColor:theme===id?'#513c83':'#273351'}]}><Text style={s.buttonText}>{name}</Text></Pressable>)}</ScrollView>
+ <Text style={s.title}>Update ticket design</Text>{theme.startsWith('stj-')&&<View style={{borderWidth:3,borderColor:'#f1c36a',backgroundColor:'#240732',borderRadius:12,flexDirection:'row',overflow:'hidden',marginVertical:12,minHeight:145}}>
+ <View style={{flex:3,padding:11,justifyContent:'space-around',alignItems:'center'}}>
+  <Text style={{fontSize:27}}>🎭 ✨</Text><Text numberOfLines={2} style={{fontSize:16,color:'#ffe4a3',fontWeight:'900',textAlign:'center'}}>{eventTitle||events.find(e=>e.id===eventId)?.title||'Your Masquerade Event'}</Text>
+  <Text style={{fontSize:10,color:'#fff',textAlign:'center'}}>{venue||events.find(e=>e.id===eventId)?.venue||'Your event venue'}</Text>
+  <Text style={{fontSize:12,color:'#f9d77b',fontWeight:'900'}}>{admissionLabel}</Text>
+ </View><View style={{flex:1,borderLeftColor:'#ffcf74',borderLeftWidth:2,borderStyle:'dashed',alignItems:'center',justifyContent:'center',padding:6}}>
+  <Text style={{fontSize:25,color:'#f7d77c'}}>◈</Text><Text style={{fontSize:8,color:'#fff',textAlign:'center'}}>QR GENERATED ON APPROVAL</Text>
+ </View></View>}
+{input('Ticket admission label',admissionLabel,setAdmissionLabel)}<ScrollView horizontal contentContainerStyle={{gap:8}}>{themes.map(([id,name])=><Pressable key={id} onPress={()=>setTheme(id)} style={[s.card,{backgroundColor:theme===id?'#513c83':'#273351'}]}><Text style={s.buttonText}>{name}</Text></Pressable>)}</ScrollView>
  {input('Description',description,setDescription)}{input('Category',category,setCategory)}{button('Save event design',()=>{void saveDesign()})}
  <Text style={s.title}>Manual payment approval</Text>{orders.map(o=><View style={s.card} key={o.id}><Text style={s.hint}>{o.buyer_name||o.buyer_email} · ₦{Number(o.amount_ngn).toLocaleString()} · {o.status}</Text><Text style={s.hint}>Receipt: {o.receipt_uploaded_at?'Submitted — view on web':'Missing'}</Text>{o.status==='pending'&&button('Approve verified transfer',()=>{void exec(async()=>{await api('review',token,'POST',{orderId:o.id,decision:'approved'});setOrders((await api('orders?eventId='+eventId,token)).orders||[])})})}</View>)}
 {input('Gate operator email',staff,setStaff)}{button('Invite gate operator',()=>{void exec(async()=>{const r=await api('gates',token,'POST',{eventId,email:staff,gateLabel:'Main gate'});await Share.share({message:'Your private Nexx EventPass gate invitation (expires in 72 hours): '+r.invitationLink});Alert.alert('Invitation created','Share the link privately. The invited recipient signs in using Google to accept.')})})}{button('Add existing verified person',()=>{void exec(async()=>{const r=await api('gates',token,'POST',{eventId,email:staff,gateLabel:'Main gate',mode:'add'});Alert.alert('Operator added',r.message);setStaff('')})},true)}</>}
