@@ -4,29 +4,34 @@ on:
     branches: [main]
   pull_request:
 jobs:
-  build-and-test:
+  web:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install web dependencies
-        run: npm install --no-audit --no-fund
-      - name: Static type checks
-        run: npm run typecheck
-      - name: QR security unit tests
-        run: npm run test:qr
-      - name: Build Next.js
-        run: npm run build
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run test:qr
+      - run: npm run build
         env:
-          AUTH_SECRET: ci-test-secret-not-used-for-production-0123456789
-          QR_SIGNING_SECRET: ci-test-qr-secret-not-used-production-0123456789
-      - name: Check Expo app dependencies
-        working-directory: apps/mobile
+          AUTH_SECRET: ci-auth-signing-secret-for-tests-01234567890123456789
+          QR_SIGNING_SECRET: ci-qr-signing-secret-for-tests-0123456789012345
+  mobile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [user, organiser, gate, platform-admin]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Expo
+        working-directory: apps/${{ matrix.app }}
         run: npm install --no-audit --no-fund
-      - name: Check Expo TypeScript
-        working-directory: apps/mobile
+      - name: Check TypeScript
+        working-directory: apps/${{ matrix.app }}
         run: npx tsc --noEmit

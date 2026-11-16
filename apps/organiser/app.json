@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Nexx EventPass Event Organiser",
+    "slug": "nexx-eventpass-organiser",
+    "scheme": "eventpassorganiser",
+    "version": "0.3.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.nexx.eventpass.organiser",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.nexx.eventpass.organiser",
+      "blockedPermissions": [
+        "android.permission.CAMERA"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}

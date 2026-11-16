@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Nexx EventPass Platform Admin",
+    "slug": "nexx-eventpass-platform-admin",
+    "scheme": "eventpassplatformadmin",
+    "version": "0.3.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.nexx.eventpass.admin",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.nexx.eventpass.admin",
+      "blockedPermissions": [
+        "android.permission.CAMERA"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}

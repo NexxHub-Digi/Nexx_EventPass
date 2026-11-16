@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Nexx EventPass Gate Operator",
+    "slug": "nexx-eventpass-gate",
+    "scheme": "eventpassgate",
+    "version": "0.3.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.nexx.eventpass.gate",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.nexx.eventpass.gate",
+      "permissions": [
+        "CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow EventPass Gate Operator to scan tickets.",
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}

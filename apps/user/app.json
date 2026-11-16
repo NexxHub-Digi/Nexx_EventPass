@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Nexx EventPass User",
+    "slug": "nexx-eventpass-user",
+    "scheme": "eventpassuser",
+    "version": "0.3.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.nexx.eventpass.user",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.nexx.eventpass.user",
+      "blockedPermissions": [
+        "android.permission.CAMERA"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}
