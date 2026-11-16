@@ -188,3 +188,30 @@
 .masque-qr-modal h3{font-size:22px;margin-bottom:8px}.masque-qr-modal>p{font-size:13px;color:#d0c9dd}
 .masque-expanded-code{max-width:320px;width:100%;margin:18px auto;padding:12px;background:white;border-radius:9px}
 .masque-expanded-code svg{width:100%;height:auto;display:block}
+
+/* Portrait promotion designs complement (not replace) encrypted QR admission passes. */
+.masque-poster{position:relative;isolation:isolate;overflow:hidden;aspect-ratio:3/4.4;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:1%;padding:6% 7%;border:4px solid #eabf63;border-radius:14px;text-align:center;color:#fff5d3;background:radial-gradient(ellipse at 35% 36%,#a3439a 0%,transparent 55%),linear-gradient(170deg,#3a072e 2%,#290b38 52%,#140316 100%);box-shadow:0 15px 36px #0008,inset 0 0 0 5px #38103b,inset 0 0 0 7px #dca64e;font-family:Georgia,'Times New Roman',serif}
+.masque-poster:before{content:"";position:absolute;inset:0;z-index:-1;background:repeating-radial-gradient(ellipse at 70% 20%,transparent 0 20px,#d28ce208 23px 26px,transparent 27px 55px)}
+.masque-poster:after{content:"";position:absolute;inset:12px;border:1px solid #f6db89a1;border-radius:8px;pointer-events:none}
+.poster-ornament{color:#ffd36d;font-size:clamp(14px,2vw,25px);letter-spacing:.3em;line-height:1}
+.poster-presenter{color:#ffe6a7;font-weight:800;text-transform:uppercase;line-height:1.08;font-size:clamp(9px,1.5vw,23px);text-shadow:0 2px 7px #000}
+.poster-presenter span{display:block;letter-spacing:.3em;font:800 .52em Arial,sans-serif;margin-top:7px}
+.poster-art{height:27%;width:100%;display:flex;justify-content:center;align-items:center;overflow:hidden}
+.poster-art .masque-art{position:relative;top:auto;left:auto;width:100%;height:130%;filter:drop-shadow(0 5px 12px #000)}
+.poster-title{color:#ffe19a;font-size:clamp(19px,3vw,43px);font-weight:900;line-height:.99;text-shadow:0 2px 0 #a46e23,0 4px 17px #000d;overflow-wrap:anywhere;max-height:23%;overflow:hidden}
+.poster-description{font-style:italic;font-weight:700;color:#ffefc0;font-size:clamp(10px,1.3vw,17px);line-height:1.3;overflow:hidden;max-height:15%}
+.poster-information{border-top:1px solid #dbb657;border-bottom:1px solid #dbb657;width:100%;padding:2.5% 1%;display:flex;flex-direction:column;gap:4px;text-align:left;font:700 clamp(9px,1.2vw,15px)/1.3 Arial,sans-serif;color:#fff;overflow-wrap:anywhere}
+.poster-price{padding:3% 7%;width:100%;background:linear-gradient(95deg,#b76d19,#ffeaa4,#d9a03a);color:#281126;font-weight:900;font-size:clamp(18px,3.1vw,43px);line-height:1;border-radius:50px;text-shadow:none}
+.poster-price small{display:block;font:800 .32em Arial,sans-serif;letter-spacing:.2em;margin-top:6px}
+.poster-footer{color:#ffe4a6;font-size:clamp(9px,1.1vw,14px);letter-spacing:.17em}
+.poster-watermark{position:absolute;top:48%;left:5%;right:5%;font:900 clamp(10px,2vw,23px) Arial,sans-serif;color:#fff4bd9c;letter-spacing:.22em;transform:rotate(-17deg);pointer-events:none;text-shadow:0 1px 5px #100a17}
+.poster-lounge{background:radial-gradient(ellipse at 80% 65%,#b66a43 0%,transparent 45%),radial-gradient(ellipse at 10% 30%,#782069 0%,transparent 48%),linear-gradient(170deg,#2b082c,#430b27,#160615)}
+.poster-lounge .poster-title{font-style:italic;text-transform:capitalize}.poster-lounge .poster-price{border-radius:11px}.poster-lounge .poster-description{border-bottom:1px solid #ecbf68;padding-bottom:8px}
+.poster-compact{width:100%;font-size:10px;border-width:2px;box-shadow:0 5px 13px #0005}.poster-compact .poster-title{font-size:clamp(14px,2vw,24px)}.poster-compact .poster-information{font-size:clamp(6px,.75vw,9px)}.poster-compact .poster-price{font-size:clamp(13px,1.7vw,20px)}.poster-compact .poster-description{font-size:clamp(7px,1vw,11px)}.poster-compact .poster-ornament{font-size:12px}.poster-compact .poster-presenter{font-size:clamp(8px,1vw,11px)}.poster-compact .poster-footer{font-size:7px}
+.masque-poster-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,220px));gap:14px;margin:18px 0}
+.masque-poster-choice{border:2px solid #4d5276;background:#1d2740;border-radius:12px;color:#fff;padding:10px;cursor:pointer;display:flex;flex-direction:column;gap:10px;align-items:stretch;text-align:left}
+.masque-poster-choice.selected{border-color:#ffd884;box-shadow:0 0 0 2px #f2c76f39}.masque-poster-choice>span{font-size:13px;font-weight:750}
+.masque-poster-main-preview{max-width:370px;margin:20px auto}
+.ep-poster-thumb{height:100%;width:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#17091f}
+.ep-poster-thumb .masque-poster{height:260%;width:100%;min-width:250px;transform:scale(.62);transform-origin:center}
+@media(max-width:600px){.masque-poster-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}.masque-poster-choice{padding:6px}.poster-title{font-size:clamp(15px,5vw,30px)}.poster-description{font-size:clamp(7px,2vw,11px)}.poster-information{font-size:clamp(7px,2vw,11px)}.poster-price{font-size:clamp(14px,4vw,24px)}}
