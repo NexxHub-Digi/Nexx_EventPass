@@ -1,4 +1,4 @@
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import {Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,ActivityIndicator} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import {CameraView,useCameraPermissions} from 'expo-camera';
@@ -14,7 +14,8 @@ export default function App(){
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [code,setCode]=useState(''),[scanning,setScanning]=useState(false),[outcome,setOutcome]=useState(''),[permission,askPermission]=useCameraPermissions();
-async function verify(v:string){setScanning(false);await exec(async()=>{if(!eventId)throw Error('Select an event');const r=await api('scan',token,'POST',{eventId,code:v});setOutcome(r.outcome);Alert.alert(r.outcome==='approved'?'Admit':'Entry denied',r.message);setCode('')})}
+ const scanLock=useRef(false);
+async function verify(v:string){if(scanLock.current)return;scanLock.current=true;setScanning(false);try{await exec(async()=>{if(!eventId)throw Error('Select an event');const r=await api('scan',token,'POST',{eventId,code:v});setOutcome(r.outcome);Alert.alert(r.outcome==='approved'?'Admit':'Entry denied',r.message);setCode('')})}finally{scanLock.current=false}}
 async function openCamera(){if(!eventId)return;const perm=permission?.granted?permission:await askPermission();if(!perm.granted){Alert.alert('Camera denied','Enable camera access in device settings');return}setScanning(true)}
  async function load(t:string){
  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
