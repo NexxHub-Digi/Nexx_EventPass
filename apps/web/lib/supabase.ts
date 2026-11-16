@@ -1,0 +1,5 @@
+import {createClient} from "@supabase/supabase-js";
+export function publicClient(){const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;if(!url||!key)throw new Error("Supabase not configured");return createClient(url,key,{auth:{persistSession:false}});}
+export function adminClient(){const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;if(!url||!key)throw new Error("Server database not configured");return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});}
+export async function requestUser(request:Request){const token=request.headers.get("authorization")?.match(/^Bearer (.+)$/i)?.[1];if(!token)throw new Error("UNAUTHENTICATED");const {data,error}=await publicClient().auth.getUser(token);if(error||!data.user)throw new Error("UNAUTHENTICATED");return data.user;}
+export function errorResponse(e:unknown){const s=e instanceof Error?e.message:"Unexpected error";return Response.json({error:s},{status:s==="UNAUTHENTICATED"?401:s==="FORBIDDEN"?403:s==="NOT_FOUND"?404:s==="NOT_CONFIGURED"?503:400,headers:{"Cache-Control":"no-store"}})}
