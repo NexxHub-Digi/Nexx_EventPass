@@ -24,7 +24,7 @@ export default function GateInvitation(){
   <p>Your organiser invited you to verify tickets. This assignment gives access to the specified event only—not organiser or administrator privileges.</p>
   {message&&<p role="status">{message}</p>}
   {!token&&!accepted&&<p role="alert">Invitation link is missing. Ask the organiser for a new private link.</p>}
-  {me?<><p>Signed in as <strong>{me.email}</strong></p>
+  {me?<><p>Signed in as <strong>{me.email}</strong></p><button className="ghost" onClick={()=>{void fetch('/api/auth/logout',{method:'POST'}).then(()=>setMe(null))}}>Not your invited email? Switch account</button>
    {token&&!accepted&&<button className="primary wide" disabled={busy} onClick={()=>{void accept()}}>Accept event invitation</button>}
    {accepted&&<Link className="rw-primary-link" href="/dashboard/gate">Open Gate Operator dashboard</Link>}
    </>:<>
