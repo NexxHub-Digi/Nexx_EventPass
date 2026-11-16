@@ -1,53 +1,83 @@
 # Nexx EventPass
 
-Web / Android / iOS event-ticketing and QR-based entry-verification platform — **UI/UX prototype**.
+**Web, Android and iOS ticket issuing and QR gate-verification platform.**
 
-## Current state
+## Source structure
 
-This repository currently includes a self-contained, responsive HTML/CSS/JavaScript design prototype. It is **not** a deployed ticketing backend or secure operational gate scanner. QR visuals are illustrative, payment flows are mockups, and verification outcomes are UI simulations. Do not use this prototype for real-money event ticketing or access decisions.
+- `apps/web` — Next.js 16 web app, organiser dashboard, guest discovery, staff scanner, protected API endpoints.
+- `apps/mobile` — Expo / React Native Android and iOS app with native QR camera scanner and email-code auth.
+- `supabase/migrations/20261116100000_eventpass_core.sql` — Postgres schema, ownership RLS, atomic ticket issuing and one-time redemption functions.
+- `index.html` — previous standalone UI/UX prototype retained for reference.
+- `docs/WORKFLOWS.md` — product workflows.
 
-## Run locally
+## Deployment
 
-Open `index.html` in a browser, or serve it:
+The Next.js web root directory in Vercel is `apps/web`, attached to GitHub `NexxHub-Digi/Nexx_EventPass` (branch `main`). The web UI displays **Preview mode** when Supabase isn't configured; this must not be used to admit guests.
+
+### Required Supabase setup
+
+1. Create a **dedicated** Supabase project for EventPass. Do not reuse Nexx AI or Nexx Hotel databases. The existing Nexx-Digi org currently has reached its two-project free limit.
+2. Apply the SQL migration to that project, review its RLS policies and enable required Auth email templates.
+3. Set the following secrets in Vercel for production, preview and development as appropriate:
+
+| Variable | Where | Description |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Web | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Web | Publishable (not secret) key |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server only** | Supabase secret/service role key; never put in browser or Expo |
+| `EVENTPASS_SIGNING_SECRET` | **Server only** | At least 32 random characters, stored as Vercel encrypted env |
+
+Generate a signing secret using a cryptographically secure random generator. Rotating it invalidates previously issued ticket QR tokens. Do not commit credentials to Git.
+
+4. Configure Supabase Auth redirect allow-list for your Vercel site. For mobile email-code login, adapt the Supabase email template to include `{{ .Token }}`.
+5. Deploy a production build; test online scan and double-scan concurrency with authorised accounts before live admission.
+
+### Local web
 
 ```bash
-python3 -m http.server 3000
+cd apps/web
+npm install
+cp .env.example .env.local
+npm run dev
 ```
 
-Then open <http://localhost:3000>.
+### Expo Android and iOS
 
-## Screens and flows
+```bash
+cd apps/mobile
+npm install
+cp .env.example .env
+npx expo start
+```
 
-- Public events, guest discovery, event detail and ticket selection
-- Organiser dashboard, event setup, ticket inventory and ticket designer
-- Guest checkout preview and QR ticket wallet
-- Staff gate scanner and approval / duplicate / invalid result states
-- Ticket lifecycle, role-based access and handoff diagrams
+Enter the Expo public API URL and Supabase **publishable** credentials, never server secrets. App Store builds, signing and store account configuration are **not complete**. Test with Expo Go or development builds first.
 
-## Production implementation plan
+## Implemented components
 
-- `apps/web`: Next.js public site and organiser portal
-- `apps/mobile`: Expo / React Native (Android and iOS)
-- `packages/shared`: shared schemas and role definitions
-- Supabase PostgreSQL with row-level security and audited API operations
-- Signed, expiring or event-scoped QR credentials; issue only after confirmed payment or authorized complimentary issuance
-- **Atomic** database redemption so concurrent scans cannot both admit the same ticket
-- Verified payments, organiser roles, gate assignments, audit and revocation logs
-- Integration and security tests before production launch
+- Responsive Next.js event browser and organiser dashboard
+- Supabase email-link web sign-in, email-code mobile sign-in (requires template)
+- Published event creation (authenticated owner)
+- Event-owner manual ticket issue, signed HMAC QR credential
+- Event owner or assigned gate staff check-in
+- Server signature and event validation; atomic SQL redemption, duplicate detection and auditable result
+- Native and browser camera QR scanning (source implemented; device tests pending)
 
-## Design source
+## Not yet complete / disabled
 
-[Figma design](https://www.figma.com/design/hIcS4ec1F0tX2BIkttaec0) — initial editable screens.
+- Dedicated Supabase database provisioning (free-plan capacity limit)
+- Payment provider and payment webhook reconciliation
+- Guest checkout and verified wallet sync
+- Staff invitation administration and advanced multi-tenant organisations
+- Offline entry: **not supported**, fails closed
+- App Store / Play Store binaries and release
+- End-to-end concurrency, security and native device acceptance testing
 
-## Security
+## Critical security principle
 
-Never trust a locally decoded QR payload as admission authorization. The backend must validate the ticket signature and atomically mark first-use redemption. Avoid placing unnecessary guest personal data in QR codes.
+A locally decoded QR code **never** authorises entry. The verifier checks the signed credential, authenticates the operator, validates assignment, then performs atomic server-side one-time redemption. Incomplete or offline verification must deny admission.
+
+For full reference see `docs/WORKFLOWS.md`.
 
 ## License
 
-Copyright Nexx EventPass. License to be selected by the project owner.
-
-
-## Mobile UX refinement v2
-
-The `Refined mobile UX` navigation section provides 10 Android/iOS screen mockups: discovery, event detail, checkout, wallet, staff sign-in, QR scanner, valid/duplicate/invalid states, and organiser analytics. On narrow screens the website uses a collapsible menu. These are demonstrative UI layouts, not implemented payment or gate verification services.
+Copyright Nexx EventPass. All rights reserved pending owner licensing decision.
