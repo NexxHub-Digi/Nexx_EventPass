@@ -7,7 +7,11 @@ export async function GET(){
  try{
   const u=await currentUser();if(!u||u.role!=='platform_admin'||u.account_status!=='active')return fail('Platform Administrator only',403);
   const rows=await db()`select setting_key,setting_value,updated_at from platform_settings order by setting_key`;
-  return ok({settings:Object.fromEntries(rows.map(r=>[r.setting_key,r.setting_value]))});
+  return ok({settings:Object.fromEntries(rows.map(r=>{
+   let value=r.setting_value;
+   if(typeof value==='string'&&value.startsWith('"')){try{value=JSON.parse(value)}catch{}}
+   return [r.setting_key,value];
+  }))});
  }catch(e){return handleError(e)}
 }
 export async function PATCH(req:Request){
