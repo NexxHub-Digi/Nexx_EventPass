@@ -37,7 +37,7 @@ export async function POST(req:Request){
   const allowed:Record<string,string>={'image/jpeg':'image','image/png':'image','image/webp':'image','video/mp4':'video','video/webm':'video'};
   const purpose=String(form.get('purpose')||'');
   const kind=purpose==='ticket_art'&&allowed[file.type]==='image'?'ticket_art':allowed[file.type];
-  if(!kind||file.size<32||file.size>(kind==='video'?8_000_000:2_000_000))return fail('Upload JPG, PNG or WebP (2 MB max), MP4 or WebM clips (8 MB max)',400);
+  if(!kind||file.size<32||file.size>(kind==='video'?3_500_000:2_000_000))return fail('Upload JPG, PNG or WebP (2 MB max), MP4 or WebM clips (3.5 MB max)',400);
   const bytes=Buffer.from(await file.arrayBuffer());
   const signature=(file.type==='image/jpeg'&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255)
    ||(file.type==='image/png'&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))
