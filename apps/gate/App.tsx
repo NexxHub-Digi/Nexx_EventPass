@@ -2,6 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,ActivityIndicator} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
+import * as Crypto from 'expo-crypto';
 WebBrowser.maybeCompleteAuthSession();
 import {CameraView,useCameraPermissions} from 'expo-camera';
 const PORTAL: string="gate",TITLE="Nexx EventPass Gate Operator",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
@@ -31,11 +32,13 @@ async function openCamera(){if(!eventId)return;const perm=permission?.granted?pe
  async function exec(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  async function login(){await exec(async()=>{
    const redirect='eventpassgate://oauth';
-   const result=await WebBrowser.openAuthSessionAsync(BASE+'/api/auth/google?portal='+encodeURIComponent(PORTAL)+'&client=native',redirect);
+   const verifier=Array.from(Crypto.getRandomBytes(32)).map(b=>b.toString(16).padStart(2,'0')).join('');
+   const challenge=await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256,verifier);
+   const result=await WebBrowser.openAuthSessionAsync(BASE+'/api/auth/google?portal='+encodeURIComponent(PORTAL)+'&client=native&challenge='+challenge,redirect);
    if(result.type!=='success')throw Error('Google sign-in was cancelled');
    const code=new URL(result.url).searchParams.get('code');
    if(!code)throw Error('Google did not return a valid sign-in code');
-   const data=await api('auth/mobile','','POST',{code,client:PORTAL});
+   const data=await api('auth/mobile','','POST',{code,client:PORTAL,codeVerifier:verifier});
    await SecureStore.setItemAsync('eventpass_token',data.token);
    setToken(data.token);await load(data.token);
  })}
