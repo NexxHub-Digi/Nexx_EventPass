@@ -36,7 +36,7 @@ export default function RoleWorkspace(){
   const m=await api('auth/me');setMe(m.user);setPortals(m.portals||[]);
   if(!m.user)return;
   const e=await api('events');setEvents(e.events||[]);
-  if(m.user.account_status==='pending')return;
+  if(m.user.account_status==='pending'||(role==='organiser'&&m.user.role==='user'&&m.user.requested_role==='organiser'))return;
   const rr=role==='platform-admin'?'platform_admin':role;
   if(!(m.portals||[]).includes(rr))return;
   if(role==='user'){
@@ -112,7 +112,7 @@ export default function RoleWorkspace(){
  if(!valid)return <main className="rw-shell"><h1>Unknown interface</h1><a href="/login/user">User login</a></main>;
  if(loading)return <main className="rw-shell"><p>Loading your EventPass account…</p></main>;
  if(!me)return <main className="rw-shell"><h1>{title}</h1><p>Sign in to continue.</p><a className="rw-primary-link" href={'/login/'+role}>Sign in to {title}</a></main>;
- if(me.account_status==='pending'&&role==='organiser')return <main className="rw-shell"><h1>Organiser approval pending</h1><p>Your Google or email account is registered. The Platform Administrator must approve your organiser request before your management interface becomes active.</p><p>{me.email}</p><button onClick={()=>{void signout()}}>Sign out</button></main>;
+ if(role==='organiser'&&me.role==='user'&&me.requested_role==='organiser')return <main className="rw-shell"><h1>Organiser approval pending</h1><p>Your Google or email account is registered. The Platform Administrator must approve your organiser request before your management interface becomes active.</p><p>{me.email}</p><button onClick={()=>{void signout()}}>Sign out</button></main>;
  if(!allowed)return <main className="rw-shell"><h1>{title} access inactive</h1><p>Your account does not have permission to access this interface.</p><p>Organisers require administrator approval. Gate operators require an invitation from an organiser and a Google-verified email.</p><a href="/login/user">Open User interface</a></main>;
  return <main className="rw-shell"><div className="rw-top"><div><a href="/" className="rw-brand">◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title}</div></div><div className="rw-tools"><span>{me.full_name}</span>{btn('Sign out',()=>{void signout()},true)}</div></div>
  {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
@@ -121,7 +121,7 @@ export default function RoleWorkspace(){
   <h3>Create organiser from verified User</h3><p>Only a Google-verified existing account can be promoted. No default password is created.</p>
   {input('Verified User email',newOrganiser,setNewOrganiser,'email')}{btn('Create organiser',()=>{void adminAction('create')})}</section>
   <section className="rw-panel"><h2>Organiser approval and access control</h2>{organisers.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.full_name}</b><p>{o.email}</p><small>{o.account_status} · {o.role} · {o.event_count} events</small></div><div className="rw-actions">
-  {o.requested_role==='organiser'&&o.account_status==='pending'&&<>{btn('Approve',()=>{void adminAction('approve',o.id)})}{btn('Reject',()=>{void adminAction('reject',o.id)},true)}</>}
+  {o.requested_role==='organiser'&&o.role==='user'&&<>{btn('Approve',()=>{void adminAction('approve',o.id)})}{btn('Reject',()=>{void adminAction('reject',o.id)},true)}</>}
   {o.role==='organiser'&&o.account_status==='active'&&btn('Suspend',()=>{void adminAction('suspend',o.id)},true)}
   {o.role==='organiser'&&o.account_status==='suspended'&&btn('Restore',()=>{void adminAction('restore',o.id)})}
   </div></div>)}{!organisers.length&&<p>No organiser applications yet.</p>}</section></div>}

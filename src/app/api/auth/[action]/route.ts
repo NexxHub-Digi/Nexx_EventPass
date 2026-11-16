@@ -28,7 +28,7 @@ export async function POST(req:NextRequest,ctx:Ctx){
    const hash=await bcrypt.hash(password,12);
    const pending=portal==='organiser';
    const created=await db()`insert into app_users(email,password_hash,full_name,role,account_status,requested_role)
-   values(${email},${hash},${fullName},'user',${pending?'pending':'active'},${pending?'organiser':null})
+   values(${email},${hash},${fullName},'user','active',${pending?'organiser':null})
    on conflict(email) do nothing returning id,email,full_name,role,account_status,requested_role`;
    if(!created[0])return fail('Account already exists. Sign in to request organiser access.',409);
    u=created[0];
@@ -37,17 +37,18 @@ export async function POST(req:NextRequest,ctx:Ctx){
    if(!list[0]||!(await bcrypt.compare(password,list[0].password_hash)))return fail('Invalid credentials',401);
    u=list[0];
  }
- if(portal==='organiser'&&u.role!=='organiser'&&u.role!=='platform_admin'){
-  if(!(u.account_status==='pending'&&u.requested_role==='organiser'))return fail('Apply for organiser approval first',403);
+ if(portal==='organiser'&&u.role==='user'&&u.account_status==='active'&&u.requested_role!=='organiser') {
+  await db()`update app_users set requested_role='organiser' where id=${u.id} and role='user' and account_status='active'`;
+  u.requested_role='organiser';
  }
  if(portal==='platform_admin'&&u.role!=='platform_admin')return fail('Administrator access required',403);
  if(portal==='gate'){
   const assigned=await db()`select exists(select 1 from gate_assignments where user_id=${u.id}) or exists(select 1 from events where organiser_id=${u.id}) as allowed`;
-  if(!assigned[0]?.allowed)return fail('Your gate interface is inactive until invited and assigned by an organiser',403);
+  // Authentication may succeed, but gate access remains inactive until a verified invitation is assigned.
  }
  if(u.account_status!=='active' && !(portal==='organiser'&&u.account_status==='pending'))return fail('Account inactive',403);
  const token=await issueSession(u.id);
- const res=NextResponse.json({user:{id:u.id,email:u.email,full_name:u.full_name,role:u.role,account_status:u.account_status,requested_role:u.requested_role},token,pending:u.account_status!=='active'},{headers:{'Cache-Control':'no-store'}});
+ const res=NextResponse.json({user:{id:u.id,email:u.email,full_name:u.full_name,role:u.role,account_status:u.account_status,requested_role:u.requested_role},token,pending:portal==='organiser'&&u.role==='user'&&u.requested_role==='organiser'},{headers:{'Cache-Control':'no-store'}});
  res.cookies.set('eventpass_session',token,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax',path:'/',maxAge:604800});
  return res;
  }catch(e){return handleError(e)}

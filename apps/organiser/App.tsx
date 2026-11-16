@@ -16,9 +16,9 @@ export default function App(){
  const [bank,setBank]=useState(''),[accName,setAccName]=useState(''),[accNo,setAccNo]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[date,setDate]=useState(''),[price,setPrice]=useState('5000'),[capacity,setCapacity]=useState('100'),[keyword,setKeyword]=useState(''),[staff,setStaff]=useState('');
  async function load(t:string){
  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
- if(!(PORTAL==='organiser'&&me.user.account_status==='pending') && !(me.portals||[]).includes(PORTAL)){await SecureStore.deleteItemAsync('eventpass_token');setMember(null);setToken('');throw Error('This account is not authorised for this app')}
+ if(!(PORTAL==='organiser'&&(me.user.requested_role==='organiser'||me.user.account_status==='pending')) && !(me.portals||[]).includes(PORTAL)){await SecureStore.deleteItemAsync('eventpass_token');setMember(null);setToken('');throw Error('This account is not authorised for this app')}
  setMember(me.user);
- if(me.user.account_status==='pending')return;
+ if(me.user.account_status==='pending'||me.user.requested_role==='organiser')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
  const b=await api('organiser/payment-account',t);setBank(b.account?.bank_name||'');setAccName(b.account?.account_name||'');setAccNo(b.account?.account_number||'');
  }
@@ -31,7 +31,7 @@ export default function App(){
  return <View style={s.root}><View style={s.head}><Text style={s.brand}>◈ NEXX <Text style={{color:'#45D6C9'}}>EVENTPASS</Text></Text><Text style={s.hint}>{TITLE}</Text></View><ScrollView contentContainerStyle={s.body}>
  {!member?<><Text style={s.title}>{register?'Create account':'Sign in'}</Text>{register&&input('Full name',name,setName)}{input('Email',email,setEmail)}{input('Password',password,setPassword,true)}{button(register?'Register':'Sign in',()=>{void login()})}{(PORTAL==='user'||PORTAL==='organiser')&&button(register?'Sign in instead':'Create account',()=>setRegister(!register),true)}<Text style={s.hint}>Google OAuth for native apps requires a separate Android/iOS integration. Use web Google sign-in meanwhile.</Text></>:<>
  <Text style={s.title}>Welcome, {member.full_name}</Text><Text style={s.hint}>{member.email}</Text>
- {member.account_status==='pending'?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
+ {(member.account_status==='pending'||member.requested_role==='organiser')?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
  <Text style={s.title}>Your bank details</Text>{input('Bank',bank,setBank)}{input('Account name',accName,setAccName)}{input('Account number',accNo,setAccNo)}
 {button('Save details',()=>{void exec(async()=>{await api('organiser/payment-account',token,'POST',{bankName:bank,accountName:accName,accountNumber:accNo});Alert.alert('Saved')})})}
 <Text style={s.title}>Create event</Text>{input('Event name',eventTitle,setEventTitle)}{input('Venue',venue,setVenue)}{input('ISO start date',date,setDate)}{input('Price in NGN',price,setPrice)}{input('Capacity',capacity,setCapacity)}{input('Private QR keyword',keyword,setKeyword,true)}

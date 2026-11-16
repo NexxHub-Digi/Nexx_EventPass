@@ -6,7 +6,7 @@ export async function GET(){
  try{const u=await currentUser();if(!u||u.role!=='platform_admin'||u.account_status!=='active')return fail('Platform admin only',403);
   const accounts=await db()`select u.id,u.email,u.full_name,u.role,u.account_status,u.requested_role,u.created_at,u.approved_at,
   (select count(*)::int from events e where e.organiser_id=u.id) as event_count
-  from app_users u where u.requested_role='organiser' or u.role='organiser' order by case when u.account_status='pending' then 0 else 1 end,u.created_at desc limit 200`;
+  from app_users u where u.requested_role='organiser' or u.role='organiser' order by case when u.requested_role='organiser' then 0 else 1 end,u.created_at desc limit 200`;
   return ok({organisers:accounts});
  }catch(e){return handleError(e)}
 }
@@ -25,7 +25,7 @@ export async function POST(req:Request){
  const record=await db()`select id,role,account_status,requested_role from app_users where id=${id} limit 1`;
  if(!record[0]||record[0].role==='platform_admin')return fail('Cannot modify this account',403);
  if(action==='approve'){
-  if(record[0].requested_role!=='organiser'||record[0].account_status!=='pending')return fail('Not a pending organiser request',409);
+  if(record[0].requested_role!=='organiser'||record[0].role!=='user'||record[0].account_status!=='active')return fail('Not a pending organiser request',409);
   await db()`update app_users set role='organiser',requested_role=null,account_status='active',approved_by=${admin.id},approved_at=now() where id=${id}`;
  }else if(action==='reject'){
   if(record[0].requested_role!=='organiser')return fail('Not an organiser application',409);

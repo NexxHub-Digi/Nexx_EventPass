@@ -5,7 +5,7 @@ export type OAuthPortal = 'user' | 'organiser' | 'gate' | 'platform_admin';
 export const portals: OAuthPortal[] = ['user', 'organiser', 'gate', 'platform_admin'];
 export const isPortal = (v: string): v is OAuthPortal => portals.includes(v as OAuthPortal);
 const envPrefixes: Record<OAuthPortal,string> = {
-  user:'GOOGLE_GUEST', organiser:'GOOGLE_ORGANISER', gate:'GOOGLE_GATE', platform_admin:'GOOGLE_PLATFORM'
+  user:'GOOGLE_USER', organiser:'GOOGLE_ORGANISER', gate:'GOOGLE_GATE', platform_admin:'GOOGLE_PLATFORM'
 };
 export function oauthCredentials(portal: OAuthPortal) {
   const prefix=envPrefixes[portal];

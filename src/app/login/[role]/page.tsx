@@ -5,7 +5,7 @@ import Link from 'next/link';
 type Portal = 'user'|'organiser'|'gate'|'platform_admin';
 const portals: Record<Portal,{title:string;about:string;view:string;canRegister:boolean}> = {
  user:{title:'User',about:'Find events, request tickets and manage your personal QR wallet.',view:'explore',canRegister:true},
- organiser:{title:'Event Organiser',about:'Create events, confirm manual payments and manage gate access.',view:'manage',canRegister:true},
+ organiser:{title:'Event Organiser',about:'Apply with Google or email; manage events after platform approval.',view:'manage',canRegister:true},
  gate:{title:'Gate Operator',about:'Scan tickets only for events your organiser has assigned.',view:'scan',canRegister:false},
  platform_admin:{title:'Platform Administrator',about:'Restricted platform health and oversight.',view:'platform',canRegister:false}
 };
@@ -34,7 +34,7 @@ export default function RoleLogin(){
   {mode==='register'&&<label>Full name<input required minLength={2} autoComplete="name" value={name} onChange={e=>setName(e.target.value)}/></label>}
   <label>Email address<input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)}/></label>
   <label>Password<input required type="password" minLength={10} maxLength={128} autoComplete={mode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)}/></label>
-  {mode==='register'&&role==='organiser'&&<label>Organiser invitation code<input required type="password" value={invite} onChange={e=>setInvite(e.target.value)}/></label>}
+  
   {error&&<p role="alert" className="role-login-error">{error}</p>}
   <button type="submit" className="primary wide" disabled={busy}>{busy?'Verifying…':mode==='login'?'Sign in':'Create account'}</button></form>
   <div className="oauth-divider">or continue with</div>

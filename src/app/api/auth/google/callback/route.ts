@@ -56,7 +56,7 @@ export async function GET(req:NextRequest){
    const passwordHash=await bcrypt.hash(randomBytes(48).toString('base64url'),12);
    const created=await db().begin(async tx=>{
      const rows=await tx`insert into app_users(email,password_hash,full_name,role,account_status,requested_role)
-     values(${profile.email},${passwordHash},${profile.name},'user',${portal==='organiser'?'pending':'active'},${portal==='organiser'?'organiser':null})
+     values(${profile.email},${passwordHash},${profile.name},'user','active',${portal==='organiser'?'organiser':null})
      on conflict(email) do nothing returning id,role,email,account_status,requested_role`;
      if(!rows[0]) return null;
      await tx`insert into oauth_identities(provider,provider_sub,user_id,provider_email)
@@ -82,19 +82,22 @@ export async function GET(req:NextRequest){
       }
     });
   }
-  if(portal==='organiser'&&!['organiser','platform_admin'].includes(user.role)&&!(user.account_status==='pending'&&user.requested_role==='organiser')) throw new Error('organiser_access_required');
+  if(portal==='organiser'&&user.role==='user'&&user.account_status==='active'&&user.requested_role!=='organiser'){
+    await db()`update app_users set requested_role='organiser' where id=${user.id} and role='user' and account_status='active'`;
+    user.requested_role='organiser';
+  }
   if(portal==='platform_admin'&&user.role!=='platform_admin') throw new Error('admin_access_required');
   if(user.account_status!=='active'&&!(portal==='organiser'&&user.account_status==='pending')) throw new Error('account_inactive');
   if(portal==='gate'){
    const p=await db()`select exists(select 1 from gate_assignments where user_id=${user.id})
     or exists(select 1 from events where organiser_id=${user.id}) as permitted`;
-   if(!p[0]?.permitted) throw new Error('gate_assignment_required');
+   // Unassigned operators sign in to an inactive gate dashboard; permission remains server enforced.
   }
   const session=await issueSession(user.id);
   const destination=new URL('/dashboard/'+(portal==='platform_admin'?'platform-admin':portal),origin);
   destination.searchParams.set('oauth','success');
   destination.searchParams.set('portal',portal);
-  destination.searchParams.set('view',user.account_status==='pending'?'pending':portalDestination(portal));
+  destination.searchParams.set('view',(portal==='organiser'&&user.requested_role==='organiser')?'pending':portalDestination(portal));
   response=NextResponse.redirect(destination);
   response.cookies.set('eventpass_session',session,{httpOnly:true,secure:process.env.NODE_ENV==='production',
    sameSite:'lax',path:'/',maxAge:604800});
