@@ -1,10 +1,11 @@
 import { currentUser, qrToken } from '@/lib/security';
+import { createEncryptedQr } from '@/lib/qr-encryption';
 import { db } from '@/lib/db';
 import { fail, handleError, ok } from '@/lib/http';
 export const runtime='nodejs';
 export async function GET(){
   try {const u=await currentUser();if(!u)return fail('Sign in required',401);
-    const rows=await db()`select t.id,t.event_id,t.status,t.redeemed_at,t.created_at,e.title,e.venue,e.starts_at from tickets t join events e on e.id=t.event_id where t.owner_id=${u.id} order by t.created_at desc limit 200`;
-    return ok({tickets:rows.map(t=>({...t,qr:t.status==='issued'?qrToken(t.id,t.event_id):null}))});
+    const rows=await db()`select t.id,t.event_id,t.status,t.redeemed_at,t.created_at,e.title,e.venue,e.starts_at,e.qr_keyword_ciphertext from tickets t join events e on e.id=t.event_id where t.owner_id=${u.id} order by t.created_at desc limit 200`;
+    return ok({tickets:rows.map(t=>({id:t.id,event_id:t.event_id,status:t.status,redeemed_at:t.redeemed_at,created_at:t.created_at,title:t.title,venue:t.venue,starts_at:t.starts_at,qr:t.status==='issued'?(t.qr_keyword_ciphertext ? createEncryptedQr(t.id,t.event_id,t.qr_keyword_ciphertext) : qrToken(t.id,t.event_id)):null}))});
   }catch(e){return handleError(e);}
 }

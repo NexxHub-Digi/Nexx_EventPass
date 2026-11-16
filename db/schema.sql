@@ -10,3 +10,6 @@ create index if not exists idx_ticket_orders_event_status on ticket_orders(event
 create index if not exists idx_tickets_event_status on tickets(event_id,status);
 create index if not exists idx_tickets_owner on tickets(owner_id);
 create index if not exists idx_scans_event_time on entry_scans(event_id,scanned_at desc);
+
+-- Event-level QR encryption, organiser keyword stored encrypted at rest.
+alter table events add column if not exists qr_keyword_ciphertext text;

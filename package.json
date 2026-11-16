@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:qr": "node --experimental-strip-types --test tests/qr-encryption.test.mjs"
   },
   "dependencies": {
     "next": "15.5.29",
@@ -15,7 +16,8 @@
     "postgres": "3.4.7",
     "jose": "6.1.0",
     "bcryptjs": "3.0.2",
-    "qrcode.react": "4.2.0"
+    "qrcode.react": "4.2.0",
+    "@zxing/browser": "0.2.1"
   },
   "devDependencies": {
     "typescript": "5.9.3",

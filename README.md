@@ -11,7 +11,10 @@ An event ticketing and access-control application with a responsive **Next.js we
 - Organiser verifies payment independently and approves/rejects the submitted reference
 - On approval, the backend atomically checks capacity and issues unique QR credentials signed with HMAC-SHA256
 - Guest mobile and web ticket wallet, with QR display
-- Gate staff permissions assigned by the organiser; server validation of signed QR and atomic, one-time redemption
+- Explicit role-aware sign-in portals: guest, organiser, assigned gate operator and pre-provisioned platform administrator
+- Event-specific organiser QR keyword (8–80 characters), encrypted server-side at rest; tickets use authenticated AES-256-GCM encryption with per-event HKDF-derived keys
+- Gate staff permissions assigned by the organiser; server validation of signed/encrypted QR and atomic, one-time redemption
+- Android/iOS camera permission prompt, denial/settings recovery, rear-camera QR scanner with torch, external scanner input; browser camera scanning with ZXing and USB/Bluetooth keyboard scanners
 - Duplicate, invalid and revoked check-in outcomes with database audit trail
 - Legacy UI/UX prototype at `/prototype`
 
@@ -58,3 +61,22 @@ This is an early full-stack MVP, not a certified production ticketing system. Pa
 
 - [GitHub](https://github.com/NexxHub-Digi/Nexx_EventPass)
 - [Figma](https://www.figma.com/design/hIcS4ec1F0tX2BIkttaec0)
+
+## Role-based sign-in and encrypted QR (v0.3)
+
+On both web and mobile, the sign-in interface lets an account select **Guest**, **Organiser**, **Gate operator**, or **Platform administrator**. This selection does **not** create or elevate roles. The server enforces the selected portal against the user’s stored role or gate assignment. Public registration creates guest accounts only, unless a valid private organiser invitation is supplied in the organiser flow. Gate operators register as guests, then get assigned to specific events by an organiser. Platform admin accounts must be provisioned privately in the database; the UI has no public admin registration.
+
+For a new event, an organiser must supply a **private 8–80-character QR keyword**. The server encrypts this keyword at rest under a server-side master secret. Approved tickets receive fresh **EVP2** QR credentials encrypted using AES-256-GCM with a distinct event-derived key generated from the server secret plus the event keyword. QR payloads omit attendee personal details; the keyword is never sent to a guest’s phone or the scanner. The scanner submits the encrypted token to a server that decrypts it and performs the same *atomic single-entry* database check. The keyword is not an access-granting password: organisers cannot admit guests without backend authorisation and a valid ticket.
+
+Existing EVP1 events can enable encryption through the organiser UI **only before any tickets have been issued**. Existing issued EVP1 codes remain supported for events not migrated. Rotating the keyword after ticket issuance is intentionally disabled so previously issued QR codes cannot be silently invalidated.
+
+### Device permissions
+
+- iOS/Android ask for camera access **only when the authorised scanner is started**. Denied permission offers instructions to enable it in Settings.
+- Expo uses `expo-camera` for back camera and torch; audio recording permission is disabled.
+- Web requires HTTPS and camera permission and uses `@zxing/browser`; physical USB/Bluetooth scanner keyboards can paste tokens and submit with Enter.
+- No contacts, location, microphone or photo-library permission is needed to scan tickets.
+
+### Tests
+
+Run `npm run test:qr` to check encrypted ticket roundtrip, fresh nonces, keyword isolation and tampering resistance. Run `npm run typecheck` and `npm run build` in a dependency-enabled environment. Gate admission concurrency and device-camera tests must additionally run against a dedicated staging environment before commercial use.
