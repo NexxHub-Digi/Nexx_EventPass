@@ -8,7 +8,7 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
 const sql=postgres(process.env.DATABASE_URL,{ssl:false,prepare:false,max:1});
 try{
  for(const file of ['db/schema.sql','db/migrations/20261116_approval_receipts_gates.sql',
-  'db/migrations/20261116_gate_invite_tokens.sql','db/migrations/20261116_admin_audit.sql']){
+  'db/migrations/20261116_gate_invite_tokens.sql','db/migrations/20261116_admin_audit.sql','db/migrations/20261116_auth_session_revocations.sql']){
   await sql.unsafe(readFileSync(resolve(root,file),'utf8'));
   console.log('Applied',file);
  }
