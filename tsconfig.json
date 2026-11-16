@@ -38,6 +38,10 @@
     "node_modules",
     "apps/mobile",
     "apps/web",
-    "supabase"
+    "supabase",
+    "apps/user",
+    "apps/organiser",
+    "apps/gate",
+    "apps/platform-admin"
   ]
 }

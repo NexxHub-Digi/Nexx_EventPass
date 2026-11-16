@@ -3,7 +3,7 @@ import {Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,ActivityIndica
 import * as SecureStore from 'expo-secure-store';
 import QRCode from 'react-native-qrcode-svg';
 import * as DocumentPicker from 'expo-document-picker';
-const PORTAL="user",TITLE="Nexx EventPass User",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
+const PORTAL: string="user",TITLE="Nexx EventPass User",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
 type Event={id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type Ticket={id:string;title:string;qr:string|null;status:string;redeemed_at:string|null};
@@ -21,7 +21,7 @@ export default function App(){
  setMember(me.user);
  if(me.user.account_status==='pending')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
- const [t,o]=await Promise.all([api('tickets',t),api('orders',t)]);setTickets(t.tickets||[]);setOrders(o.orders||[]);
+ const [ticketResult,orderResult]=await Promise.all([api('tickets',t),api('orders',t)]);setTickets(ticketResult.tickets||[]);setOrders(orderResult.orders||[]);
  }
  useEffect(()=>{SecureStore.getItemAsync('eventpass_token').then(t=>{if(t){setToken(t);load(t).catch(e=>setError((e as Error).message))}}).catch(()=>{})},[]);
  async function exec(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
