@@ -37,15 +37,20 @@ export async function revokeCurrentSession(): Promise<void> {
   const cookie = (await cookies()).get('eventpass_session')?.value;
   const token = bearer || cookie;
   if (!token) return;
+  let jti: string | undefined;
+  let expiration: number | undefined;
   try {
     const {payload}=await jwtVerify(token,new TextEncoder().encode(secret('AUTH_SECRET')),{issuer:'nexx-eventpass',audience:'eventpass'});
-    if (typeof payload.jti !== 'string' || !/^[a-f0-9-]{36}$/i.test(payload.jti) || !payload.exp) return;
-    await db()`insert into auth_session_revocations(session_id,expires_at)
-      values(${payload.jti},${new Date(payload.exp * 1000).toISOString()})
-      on conflict(session_id) do nothing`;
+    jti=typeof payload.jti==='string'?payload.jti:undefined;
+    expiration=typeof payload.exp==='number'?payload.exp:undefined;
   } catch {
-    // Expired or malformed tokens have no active session to revoke.
+    return; // Expired or malformed tokens are already unusable.
   }
+  if (!jti || !/^[a-f0-9-]{36}$/i.test(jti) || !expiration) return;
+  // Do not swallow database failures: logout must not claim server revocation if persistence fails.
+  await db()`insert into auth_session_revocations(session_id,expires_at)
+    values(${jti},${new Date(expiration * 1000).toISOString()})
+    on conflict(session_id) do nothing`;
 }
 export function qrToken(ticketId: string, eventId: string) {
   const value = `${ticketId}.${eventId}`;
