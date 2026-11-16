@@ -109,10 +109,12 @@ export async function GET(req:NextRequest){
   const session=await issueSession(user.id);
   if(st.native===true){
    const schemes:Record<OAuthPortal,string>={user:'eventpassuser',organiser:'eventpassorganiser',gate:'eventpassgate',platform_admin:'eventpassplatformadmin'};
+   const nativeChallenge=st.nativeChallenge;
+   if(!nativeChallenge||!/^[a-f0-9]{64}$/.test(nativeChallenge))throw new Error('invalid_native_challenge');
    const exchangeCode=randomBytes(32).toString('base64url');
    const hashed=createHash('sha256').update(exchangeCode).digest('hex');
    await db()`insert into mobile_auth_codes(code_hash,user_id,client,expires_at,code_challenge)
-     values(${hashed},${user.id},${portal},now()+interval '2 minutes',${st.nativeChallenge})`;
+     values(${hashed},${user.id},${portal},now()+interval '2 minutes',${nativeChallenge})`;
    const deeplink=new URL(schemes[portal]+'://oauth');
    deeplink.searchParams.set('code',exchangeCode);
    response=NextResponse.redirect(deeplink);
