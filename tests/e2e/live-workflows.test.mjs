@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import postgres from 'postgres';
+import bcrypt from 'bcryptjs';
 import {randomUUID} from 'node:crypto';
 if(process.env.CI!=='true'||process.env.EVENTPASS_E2E!=='true'||!/@(localhost|127\.0\.0\.1):/.test(process.env.DATABASE_URL||''))throw Error('Refusing to run E2E outside isolated local CI');
 const sql=postgres(process.env.DATABASE_URL,{ssl:false,prepare:false});
@@ -14,14 +15,19 @@ async function req(path,{cookie,bearer,method='GET',body,form}={}){
 function expect(r,n,label){assert.equal(r.status,n,label+': '+JSON.stringify(r.data));return r.data;}
 const post=(path,cookie,body)=>req(path,{cookie,method:'POST',body});
 async function signUp(name,portal='user'){
- const r=await post('/api/auth/register',null,{portal,email:email(name),fullName:'Test '+name,password});
- const u=expect(r,200,'register '+name).user;
+ // CI fixture creates pre-existing password accounts. Public sign-up is Google only.
+ const hash=await bcrypt.hash(password,10);
+ const rows=await sql.unsafe('insert into app_users(email,password_hash,full_name,role,account_status,requested_role) values($1,$2,$3,$4,$5,$6) returning id',
+  [email(name),hash,'Test '+name,'user','active',portal==='organiser'?'organiser':null]);
+ const r=await post('/api/auth/login',null,{portal,email:email(name),password});
+ expect(r,200,'fixture login '+name);
  assert.ok(r.cookie?.includes('eventpass_session='));
- return {id:u.id,cookie:r.cookie,email:email(name),token:r.data.token};
+ return {id:rows[0].id,cookie:r.cookie,email:email(name),token:r.data.token};
 }
 test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic scan and suspension',async()=>{
  try{
   const admin=await signUp('admin'),org=await signUp('organiser','organiser'),buyer=await signUp('buyer'),wrong=await signUp('wrong');
+  expect(await post('/api/auth/register',null,{portal:'user',email:email('new'),password,fullName:'New User'}),403,'password sign-up disabled');
   for(const [portal,label] of [['user','User'],['organiser','Event Organiser'],['gate','Gate Operator'],['platform-admin','Platform Administrator']]){
     const page=await fetch(base+'/login/'+portal);
     assert.equal(page.status,200,'dedicated '+label+' sign-in route');
