@@ -64,9 +64,10 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(masks.length,5,'all five masquerade layout templates appear in Organiser theme catalogue');
   expect(await req('/api/auth/google?portal=gate&client=native'),400,'native OAuth requires PKCE challenge');
     const date=new Date(Date.now()+3600000).toISOString();
-  const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,qrKeyword:'private-test-keyword',ticketTheme:'stj-royal-gold',admissionLabel:'ADMIT ONE — MASK COMPULSORY'}),201,'create event').event;
+  const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,qrKeyword:'private-test-keyword',ticketTheme:'stj-royal-gold',admissionLabel:'ADMIT ONE — MASK COMPULSORY',posterTemplate:'stj-apartment-party'}),201,'create event').event;
   assert.equal(event.status,'draft','new event cannot auto-publish');
   assert.equal(event.verification_status,'pending','new event requires verification');
+  assert.equal(event.poster_template,'stj-apartment-party');
   assert.ok(!expect(await req('/api/events'),200,'pre-review discovery').events.some(x=>x.id===event.id),'unreviewed event hidden');
   const artwork=new Uint8Array(90);artwork.set([137,80,78,71,13,10,26,10]);
   const mediaForm=new FormData();mediaForm.set('eventId',event.id);mediaForm.set('file',new Blob([artwork],{type:'image/png'}),'event-poster.png');
