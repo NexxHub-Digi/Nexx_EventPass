@@ -12,6 +12,8 @@ type Organiser={id:string;email:string;full_name:string;role:string;account_stat
 type Invite={id:string;event_id:string;invitee_email:string;gate_label:string;status:string};
 type Scan={id:string;outcome:string;operator?:string;gate_label:string;scanned_at:string};
 type EventMedia={id:string;event_id?:string;media_type:string;file_name:string;approved?:boolean;url:string};
+type AdminAccount={id:string;email:string;full_name:string;role:string;account_status:string;google_verified:boolean;order_count:number;ticket_count:number;event_count:number;gate_event_count:number;created_at:string};
+type SupportCase={id:string;organiser_id:string;organiser_name:string;subject:string;description:string;status:string;priority:string;resolution:string};
 type ModerationEvent={id:string;title:string;venue:string;starts_at:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;pending_media:number};
 const roles={user:'User',organiser:'Event Organiser',gate:'Gate Operator','platform-admin':'Platform Administrator'} as const;
 type Role=keyof typeof roles;
@@ -34,6 +36,9 @@ export default function RoleWorkspace(){
  const [eventMedia,setEventMedia]=useState<EventMedia[]>([]),[moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<EventMedia[]>([]);
  const [organisers,setOrganisers]=useState<Organiser[]>([]),[stats,setStats]=useState<Record<string,number>>({});
  const [selectedOrganiser,setSelectedOrganiser]=useState(''),[editName,setEditName]=useState(''),[editBank,setEditBank]=useState(''),[editAccount,setEditAccount]=useState(''),[editNumber,setEditNumber]=useState('');
+ const [allUsers,setAllUsers]=useState<AdminAccount[]>([]),[userSearch,setUserSearch]=useState(''),[userFilter,setUserFilter]=useState(''),[userPage,setUserPage]=useState(1),[usersCount,setUsersCount]=useState(0),[selectedUser,setSelectedUser]=useState(''),[userEditName,setUserEditName]=useState(''),[accountReason,setAccountReason]=useState('');
+ const [cases,setCases]=useState<SupportCase[]>([]),[caseSubject,setCaseSubject]=useState(''),[caseDescription,setCaseDescription]=useState(''),[casePriority,setCasePriority]=useState('normal'),[caseResolution,setCaseResolution]=useState('');
+ const [platformSettings,setPlatformSettings]=useState<Record<string,string>>({}),[settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
  const [bankName,setBankName]=useState(''),[accountName,setAccountName]=useState(''),[accountNumber,setAccountNumber]=useState('');
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
@@ -59,7 +64,9 @@ export default function RoleWorkspace(){
   else if(role==='platform-admin'){
    const [a,overview]=await Promise.all([api('platform/organisers'),api('platform/overview')]);
    setOrganisers(a.organisers||[]);setStats(overview.stats||{});
-   const reviews=await api('platform/events');setModerationEvents(reviews.events||[]);setModerationMedia(reviews.media||[]);
+   const [reviews,people,support,configuration]=await Promise.all([api('platform/events'),api('platform/users'),api('support/cases'),api('platform/settings')]);
+   setModerationEvents(reviews.events||[]);setModerationMedia(reviews.media||[]);
+   setAllUsers(people.accounts||[]);setUsersCount(people.count||0);setCases(support.cases||[]);setPlatformSettings(configuration.settings||{});
   }
  }
  useEffect(()=>{setLoading(true);fetchAll().catch(e=>setMessage((e as Error).message)).finally(()=>setLoading(false));return ()=>{scanControls.current?.stop()}},[role]);
@@ -153,6 +160,16 @@ export default function RoleWorkspace(){
   await api('platform/organisers','POST',{action:'configure',userId:selectedOrganiser,fullName:editName,bankName:editBank,accountName:editAccount,accountNumber:editNumber});
   const res=await api('platform/organisers');setOrganisers(res.organisers||[]);setMessage('Organiser profile updated');
  })}
+ async function searchAdminUsers(page=1){await run(async()=>{const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(userFilter)+'&page='+page);setAllUsers(r.accounts||[]);setUsersCount(r.count||0);setUserPage(page)})}
+ function chooseUser(id:string){setSelectedUser(id);const a=allUsers.find(x=>x.id===id);setUserEditName(a?.full_name||'');setAccountReason('')}
+ async function changeUser(action:'configure'|'suspend'|'restore'|'deactivate'){await run(async()=>{if(!selectedUser)throw Error('Select a user first');
+  if(action==='deactivate'&&!window.confirm('Deactivate this account and retain financial records?'))return;
+  await api('platform/users','PATCH',{action,userId:selectedUser,fullName:userEditName,reason:accountReason});
+  const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(userFilter)+'&page='+userPage);setAllUsers(r.accounts||[]);setUsersCount(r.count||0);setMessage('Account updated and audited')})}
+ async function openSupportCase(){await run(async()=>{const r=await api('support/cases','POST',{subject:caseSubject,description:caseDescription,priority:casePriority});
+  setCaseSubject('');setCaseDescription('');setMessage('Support request sent: '+r.case.id);const x=await api('support/cases');setCases(x.cases||[])})}
+ async function updateCase(id:string,status:string,priority:string){await run(async()=>{await api('support/cases','PATCH',{id,status,priority,resolution:caseResolution});const x=await api('support/cases');setCases(x.cases||[]);setMessage('Support case updated')})}
+ async function saveSetting(){await run(async()=>{await api('platform/settings','PATCH',{key:settingKey,value:settingValue});setPlatformSettings({...platformSettings,[settingKey]:settingValue});setMessage('Platform setting saved')})}
  async function scan(value=scanCode){await run(async()=>{
   if(!eventId||!value.trim())throw Error('Select your event and scan a QR');
   const r=await api('scan','POST',{eventId,code:value.trim()});setScanOutcome(r.outcome);setMessage(r.message);setScanCode('');
