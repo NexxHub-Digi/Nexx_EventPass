@@ -68,7 +68,7 @@ export async function GET(req:NextRequest){
    user=created;
   }
   if(!user) throw new Error('account_not_found');
-  // Accept only invitations delivered to the *Google-verified* email of this identity.
+  // Legacy pending invites can still be accepted by Google-verified identities; new token invitations require explicit acceptance.
   if(user.account_status==='active'){
     await db().begin(async tx=>{
       const invites=await tx`select i.id,i.event_id,i.gate_label from gate_invitations i
@@ -95,7 +95,8 @@ export async function GET(req:NextRequest){
    // Unassigned operators sign in to an inactive gate dashboard; permission remains server enforced.
   }
   const session=await issueSession(user.id);
-  const destination=new URL('/dashboard/'+(portal==='platform_admin'?'platform-admin':portal),origin);
+  const safeInvite=portal==='user'&&typeof st.returnTo==='string'&&/^\/invite\/gate\?token=[A-Za-z0-9_-]{43}$/.test(st.returnTo);
+  const destination=new URL(safeInvite?st.returnTo:'/dashboard/'+(portal==='platform_admin'?'platform-admin':portal),origin);
   destination.searchParams.set('oauth','success');
   destination.searchParams.set('portal',portal);
   destination.searchParams.set('view',(portal==='organiser'&&user.requested_role==='organiser')?'pending':portalDestination(portal));

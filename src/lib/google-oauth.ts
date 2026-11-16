@@ -24,7 +24,7 @@ function stateKey() {
   if(!key || key.length<32) throw new Error('AUTH_SECRET is not configured');
   return new TextEncoder().encode(key);
 }
-export type GoogleState={portal:OAuthPortal;intent:'signin'|'link';state:string;nonce:string;verifier:string;subject?:string};
+export type GoogleState={portal:OAuthPortal;intent:'signin'|'link';state:string;nonce:string;verifier:string;subject?:string;returnTo?:string};
 export async function sealState(s:GoogleState){
  return new SignJWT({...s}).setProtectedHeader({alg:'HS256'}).setIssuer('nexx-eventpass')
  .setAudience('google-login-state').setIssuedAt().setExpirationTime('10m').sign(stateKey());
