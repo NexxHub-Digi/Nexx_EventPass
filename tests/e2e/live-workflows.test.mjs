@@ -42,7 +42,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(expect(await req('/api/platform/organisers',{cookie:adminCookie}),200,'admin directory').organisers.some(x=>x.id===org.id));
   expect(await post('/api/platform/organisers',adminCookie,{action:'approve',userId:org.id}),200,'approve organiser');
   assert.equal(expect(await req('/api/auth/me',{cookie:org.cookie}),200,'approved role').user.role,'organiser');
-  const date=new Date(Date.now()+3600000).toISOString();
+  expect(await post('/api/ticket-themes',wrong.cookie,{name:'Unauthorized Glow',label:'No',colorA:'#123456',colorB:'#456789',accent:'#ffffff'}),403,'only Admin may publish ticket themes');
+  const dynamicTheme=expect(await post('/api/ticket-themes',adminCookie,{name:'E2E Ocean Glow',label:'Concert',colorA:'#1450aa',colorB:'#00baa1',accent:'#ffffff'}),201,'Admin adds ticket theme').theme;
+  assert.ok(expect(await req('/api/ticket-themes'),200,'public ticket theme catalogue').themes.some(t=>t.id===dynamicTheme.id));
+  expect(await req('/api/auth/google?portal=gate&client=native'),400,'native OAuth requires PKCE challenge');
+    const date=new Date(Date.now()+3600000).toISOString();
   const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,qrKeyword:'private-test-keyword'}),201,'create event').event;
   assert.equal(event.status,'draft','new event cannot auto-publish');
   assert.equal(event.verification_status,'pending','new event requires verification');
@@ -83,7 +87,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.deepEqual(scans.map((r,i)=>expect(r,200,'concurrent scan '+i).outcome).sort(),['approved','duplicate']);
   const history=expect(await req('/api/gates/activity?eventId='+event.id,{cookie:operator.cookie}),200,'gate log');
   assert.equal(Number(history.stats.admitted),1);assert.equal(Number(history.stats.duplicates),1);
-  const otherEvent=expect(await post('/api/events',org.cookie,{title:'E2E Other Event',venue:'E2E Other Venue',startsAt:date,capacity:3,priceNgn:0,qrKeyword:'other-private-keyword'}),201,'second event').event;
+  const otherEvent=expect(await post('/api/events',org.cookie,{title:'E2E Other Event',venue:'E2E Other Venue',startsAt:date,capacity:3,priceNgn:0,qrKeyword:'other-private-keyword',ticketTheme:dynamicTheme.id}),201,'second event').event;
   expect(await post('/api/platform/events',adminCookie,{eventId:otherEvent.id,action:'verify'}),200,'verify second event');
   expect(await post('/api/gates',org.cookie,{eventId:otherEvent.id,email:wrong.email,gateLabel:'Other Gate',mode:'add'}),409,'unverified direct addition rejected');
   expect(await post('/api/gates',org.cookie,{eventId:otherEvent.id,email:operator.email,gateLabel:'Other Gate',mode:'add'}),200,'existing verified operator added');
