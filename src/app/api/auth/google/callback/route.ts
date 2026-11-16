@@ -7,7 +7,8 @@ import { callbackUrl, oauthCredentials, portalDestination, readState, verifyGoog
 export const runtime='nodejs';
 const compare=(a:string,b:string)=>{const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length && timingSafeEqual(x,y)};
 function back(origin:string,portal:OAuthPortal,code:string){
- const u=new URL('/',origin);u.searchParams.set('portal',portal);u.searchParams.set('oauth_error',code);return NextResponse.redirect(u);
+ const path=portal==='platform_admin'?'platform-admin':portal;
+ const u=new URL('/login/'+path,origin);u.searchParams.set('oauth_error',code);return NextResponse.redirect(u);
 }
 export async function GET(req:NextRequest){
  let portal:OAuthPortal='user';
