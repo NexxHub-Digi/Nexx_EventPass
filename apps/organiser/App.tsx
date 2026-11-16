@@ -19,7 +19,7 @@ export default function App(){
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [bank,setBank]=useState(''),[accName,setAccName]=useState(''),[accNo,setAccNo]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[date,setDate]=useState(''),[time,setTime]=useState('19:00'),[price,setPrice]=useState('5000'),[capacity,setCapacity]=useState('100'),[keyword,setKeyword]=useState(''),[staff,setStaff]=useState('');
  const [description,setDescription]=useState(''),[category,setCategory]=useState('Music'),[theme,setTheme]=useState('aurora'),[media,setMedia]=useState<{id:string;media_type:string;url:string;approved:boolean}[]>([]);
- const themes=[['aurora','Aurora Glow'],['midnight','Midnight Gold'],['sunset','Sunset Social'],['neon','Neon Pulse'],['minimal','Minimal Ivory'],['custom','Custom Artwork']];
+ const [themes,setThemes]=useState<[string,string][]>([['aurora','Aurora Glow'],['midnight','Midnight Gold'],['sunset','Sunset Social'],['neon','Neon Pulse'],['minimal','Minimal Ivory'],['custom','Custom Artwork']]);
  async function uploadEventFile(purpose=''){if(!eventId)throw Error('Select an event');
   const result=await DocumentPicker.getDocumentAsync({type:purpose==='ticket_art'?['image/jpeg','image/png','image/webp']:['image/jpeg','image/png','image/webp','video/mp4','video/webm']});
   if(result.canceled)return;const file=result.assets[0];
@@ -43,7 +43,9 @@ export default function App(){
  setMember(me.user);
  if(me.user.account_status==='pending'||me.user.requested_role==='organiser')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
- const b=await api('organiser/payment-account',t);setBank(b.account?.bank_name||'');setAccName(b.account?.account_name||'');setAccNo(b.account?.account_number||'');
+ const [b,themeList]=await Promise.all([api('organiser/payment-account',t),api('ticket-themes',t)]);
+ if(themeList.themes?.length)setThemes(themeList.themes.map((x:{id:string;name:string})=>[x.id,x.name]));
+ setBank(b.account?.bank_name||'');setAccName(b.account?.account_name||'');setAccNo(b.account?.account_number||'');
  }
  useEffect(()=>{SecureStore.getItemAsync('eventpass_token').then(t=>{if(t){setToken(t);load(t).catch(e=>setError((e as Error).message))}}).catch(()=>{})},[]);
  async function exec(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
