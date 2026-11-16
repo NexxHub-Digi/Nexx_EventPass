@@ -1,9 +1,14 @@
+# Nexx EventPass full-stack Next.js App Router/API + shared Neon database.
+# Netlify automatically installs its OpenNext runtime. No SPA catch-all rewrites.
 [build]
-command = "npm run build"
+  command = "npm run build"
+  publish = ".next"
 
 [build.environment]
-NODE_VERSION = "22"
+  NODE_VERSION = "22"
 
-# Next.js runtime adapter is detected automatically by Netlify.
-# Set DATABASE_URL, AUTH_SECRET, QR_SIGNING_SECRET, ORGANISER_INVITE_CODE
-# privately in the hosting environment.
+[functions]
+  node_bundler = "esbuild"
+
+# Runtime secrets go in Netlify Environment Variables (Builds + Functions scopes).
+# Never put DATABASE_URL, AUTH_SECRET, QR_SIGNING_SECRET or Google Client Secrets here.
