@@ -1,0 +1,6 @@
+import {createHmac,randomBytes,timingSafeEqual} from "node:crypto";
+export type TicketClaims={v:1;id:string;event_id:string;nonce:string};
+function secret(){const s=process.env.EVENTPASS_SIGNING_SECRET;if(!s||s.length<32)throw new Error("NOT_CONFIGURED");return s;}
+function mac(payload:string){return createHmac("sha256",secret()).update(payload).digest("base64url");}
+export function signTicket(id:string,event_id:string){const claims:TicketClaims={v:1,id,event_id,nonce:randomBytes(24).toString("base64url")};const body=Buffer.from(JSON.stringify(claims)).toString("base64url");return "ep1."+body+"."+mac(body);}
+export function verifyTicket(token:string):TicketClaims|null{try{if(token.length>2048)return null;const [version,body,sig,...rest]=token.split(".");if(version!=="ep1"||!body||!sig||rest.length)return null;const expected=Buffer.from(mac(body));const actual=Buffer.from(sig);if(expected.length!==actual.length||!timingSafeEqual(expected,actual))return null;const value=JSON.parse(Buffer.from(body,"base64url").toString()) as TicketClaims;if(value.v!==1||typeof value.id!=="string"||typeof value.event_id!=="string"||typeof value.nonce!=="string"||!value.nonce)return null;return value;}catch{return null}}
