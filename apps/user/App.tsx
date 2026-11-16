@@ -19,13 +19,16 @@ export default function App(){
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [ref,setRef]=useState(''),[qty,setQty]=useState('1'),[proof,setProof]=useState<DocumentPicker.DocumentPickerAsset|null>(null);
  const [query,setQuery]=useState(''),[category,setCategory]=useState('All'),[gallery,setGallery]=useState<{id:string;media_type:string;url:string}[]>([]);
+ const [palette,setPalette]=useState<Record<string,string>>({});
  async function load(t:string){
  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
  if(!(PORTAL==='organiser'&&me.user.account_status==='pending') && !(me.portals||[]).includes(PORTAL)){await SecureStore.deleteItemAsync('eventpass_token');setMember(null);setToken('');throw Error('This account is not authorised for this app')}
  setMember(me.user);
  if(me.user.account_status==='pending')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
- const [ticketResult,orderResult]=await Promise.all([api('tickets',t),api('orders',t)]);setTickets(ticketResult.tickets||[]);setOrders(orderResult.orders||[]);
+ const [ticketResult,orderResult,themesResult]=await Promise.all([api('tickets',t),api('orders',t),api('ticket-themes',t)]);
+ setTickets(ticketResult.tickets||[]);setOrders(orderResult.orders||[]);
+ setPalette(Object.fromEntries((themesResult.themes||[]).map((x:{id:string;color_a:string})=>[x.id,x.color_a])));
  }
  useEffect(()=>{SecureStore.getItemAsync('eventpass_token').then(t=>{if(t){setToken(t);load(t).catch(e=>setError((e as Error).message))}}).catch(()=>{})},[]);
  async function exec(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
@@ -80,7 +83,7 @@ export default function App(){
   {button('Request tickets',()=>{void exec(async()=>{if(e.price_ngn>0&&!proof)throw Error('Receipt required for paid tickets');const o=await api('orders',token,'POST',{eventId:e.id,quantity:Number(qty),paymentReference:e.price_ngn>0?ref:'FREE-TICKET'});if(proof&&e.price_ngn>0){const form=new FormData();form.append('orderId',o.order.id);form.append('receipt',{uri:proof.uri,name:proof.name,type:proof.mimeType||'application/pdf'} as unknown as Blob);await api('orders/receipt',token,'POST',form)}setEventId('');setRef('');setProof(null);await load(token);Alert.alert('Request submitted','Your organiser will review the ticket request.')})})}
  </>}</View></View>)}
 {!events.length&&<Text style={s.hint}>No verified events yet. Check again after organisers publish new experiences.</Text>}
-<Text style={s.title}>My ticket wallet</Text>{tickets.map(t=><View key={t.id} style={[s.card,{backgroundColor:t.ticket_theme==='sunset'?'#78305e':t.ticket_theme==='neon'?'#402c76':t.ticket_theme==='midnight'?'#363046':'#1c4e72'}]}>{t.ticket_art_id&&<Image source={{uri:BASE+'/api/events/media?id='+t.ticket_art_id}} style={{height:140,borderRadius:9,marginBottom:10}}/>}<Text style={s.title}>{t.title}</Text>{t.qr&&<View style={{backgroundColor:'#fff',padding:14,alignSelf:'center',marginVertical:14,borderRadius:12}}><QRCode value={t.qr} size={200}/></View>}<Text style={s.hint}>{t.redeemed_at?'Already scanned':t.status}</Text></View>)}
+<Text style={s.title}>My ticket wallet</Text>{tickets.map(t=><View key={t.id} style={[s.card,{backgroundColor:palette[t.ticket_theme||'aurora']||'#1c4e72'}]}>{t.ticket_art_id&&<Image source={{uri:BASE+'/api/events/media?id='+t.ticket_art_id}} style={{height:140,borderRadius:9,marginBottom:10}}/>}<Text style={s.title}>{t.title}</Text>{t.qr&&<View style={{backgroundColor:'#fff',padding:14,alignSelf:'center',marginVertical:14,borderRadius:12}}><QRCode value={t.qr} size={200}/></View>}<Text style={s.hint}>{t.redeemed_at?'Already scanned':t.status}</Text></View>)}
 <Text style={s.title}>My orders</Text>{orders.map(o=><View key={o.id} style={s.card}><Text style={s.hint}>{o.event_title} · {o.status} · Receipt {o.receipt_uploaded_at?'submitted':'missing'}</Text></View>)}
  </>}
  {button('Sign out',()=>{void logout()},true)}</>}
