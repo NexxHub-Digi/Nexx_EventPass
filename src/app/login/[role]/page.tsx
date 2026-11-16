@@ -1,64 +1,39 @@
 'use client';
-import { useParams } from 'next/navigation';
-import { useState, useEffect, type FormEvent } from 'react';
+import {useEffect,useState} from 'react';
+import {useParams} from 'next/navigation';
 import Link from 'next/link';
-type Portal = 'user'|'organiser'|'gate'|'platform_admin';
-const portals: Record<Portal,{title:string;about:string;view:string;canRegister:boolean}> = {
- user:{title:'User',about:'Find events, request tickets and manage your personal QR wallet.',view:'explore',canRegister:true},
- organiser:{title:'Event Organiser',about:'Apply with Google or email; manage events after platform approval.',view:'manage',canRegister:true},
- gate:{title:'Gate Operator',about:'Scan tickets only for events your organiser has assigned.',view:'scan',canRegister:false},
- platform_admin:{title:'Platform Administrator',about:'Restricted platform health and oversight.',view:'platform',canRegister:false}
-};
+const portals={user:['User','Discover events, explore media and keep your ticket wallet'],organiser:['Event Organiser','Create events, request verification and design tickets'],gate:['Gate Operator','Access only the events your organiser assigned'],platform_admin:['Platform Admin','Review organisers, approve event listings and manage access']} as const;
 export default function RoleLogin(){
- const params=useParams<{role:string}>();
- const role=(params.role==='platform-admin'?'platform_admin':params.role) as Portal;
- const choice=portals[role];
- const [mode,setMode]=useState<'login'|'register'>('login');
- const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[invite,setInvite]=useState('');
- const [busy,setBusy]=useState(false),[error,setError]=useState('');
- useEffect(()=>{
-  const code=new URLSearchParams(window.location.search).get('oauth_error');
+ const params=useParams<{role:string}>(),role=params.role as keyof typeof portals,details=portals[role];
+ const [error,setError]=useState('');
+ useEffect(()=>{const code=new URLSearchParams(window.location.search).get('oauth_error');
   if(!code)return;
-  const errors:Record<string,string>={
-   google_cancelled:'Google sign-in was cancelled. You can try again.',
-   state_missing:'Google authentication expired. Start a fresh sign-in from this page.',
-   invalid_oauth_state:'Google security verification failed. Please restart sign-in.',
-   google_exchange_failed:'Google rejected the authentication exchange. Check the configured OAuth redirect URI.',
-   oauth_not_configured:'Google OAuth is not configured for this role.',
-   link_existing_account_first:'This email already has an EventPass account. Sign in with your existing password, then link Google from your dashboard.',
-   privileged_account_required:'Sign in to an approved account and link Google to it first.',
-   organiser_access_required:'Your organiser application is not approved yet.',
-   admin_access_required:'This Google identity is not authorised as a Platform Administrator.',
-   account_inactive:'Your account is inactive. Contact Platform Administration.',
-   google_sign_in_failed:'Google sign-in failed. Confirm this OAuth client uses the EventPass callback URL and try again.'
+  const messages:Record<string,string>={
+   google_cancelled:'Google sign-in was cancelled.',
+   state_missing:'The sign-in session expired. Try again.',
+   invalid_oauth_state:'Security verification failed. Start again.',
+   google_exchange_failed:'Google could not complete sign-in. Check the authorised redirect URI.',
+   oauth_not_configured:'Google sign-in is not configured for this role.',
+   link_existing_account_first:'An older account has this email. Contact the platform administrator for account linking.',
+   privileged_account_required:'This Google identity is not an approved administrator.',
+   admin_access_required:'You do not have administrator privileges.',
+   gate_invitation_required:'Your email is not on an active gate invitation. Ask an organiser to invite you first.',
+   account_inactive:'This account is inactive. Contact platform administration.',
+   google_sign_in_failed:'Google sign-in could not be completed. Please try again.'
   };
-  setError(errors[code]||'Google sign-in failed. Please retry.');
+  setError(messages[code]||'Sign-in failed. Please try again.');
   window.history.replaceState(null,'',window.location.pathname);
  },[]);
- if(!choice)return <main className="role-login-shell"><div className="role-login-card"><h1>Interface not found</h1><Link href="/login/user">User login</Link></div></main>;
- async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError('');
-  try{
-   const result=await fetch('/api/auth/'+mode,{method:'POST',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({portal:role,email,password,fullName:name,organiserCode:role==='organiser'?invite:''})});
-   const value=await result.json();if(!result.ok)throw Error(value.error||'Sign-in failed');
-   window.location.assign('/dashboard/'+(role==='platform_admin'?'platform-admin':role));
-  }catch(err){setError(err instanceof Error?err.message:'Sign-in failed');setBusy(false)}
- }
+ if(!details)return <main className="role-login-shell"><div className="role-login-card"><h1>Interface not found</h1><Link href="/login/user">Open User sign-in</Link></div></main>;
+ const oauthRole=role==='platform-admin'?'platform_admin':role;
  return <main className="role-login-shell"><div className="role-login-card">
   <Link href="/" className="role-login-brand">◈ NEXX <strong>EVENTPASS</strong></Link>
-  <div className="eyebrow">ROLE-BASED ACCESS</div><h1>{choice.title}</h1><p>{choice.about}</p>
-  <nav className="role-login-switch" aria-label="Choose interface">{Object.entries(portals).map(([k,v])=><Link key={k} aria-current={role===k?'page':undefined} className={role===k?'selected':''} href={'/login/'+k.replace('_','-')}>{v.title}</Link>)}</nav>
-  <div className="role-login-tabs"><button type="button" className={mode==='login'?'selected':''} onClick={()=>setMode('login')}>Sign in</button>{choice.canRegister&&<button type="button" className={mode==='register'?'selected':''} onClick={()=>setMode('register')}>Create account</button>}</div>
-  <form className="role-login-form" onSubmit={submit}>
-  {mode==='register'&&<label>Full name<input required minLength={2} autoComplete="name" value={name} onChange={e=>setName(e.target.value)}/></label>}
-  <label>Email address<input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)}/></label>
-  <label>Password<input required type="password" minLength={10} maxLength={128} autoComplete={mode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)}/></label>
-  
+  <div className="eyebrow">SECURE GOOGLE ACCESS</div><h1>{details[0]}</h1><p>{details[1]}</p>
+  <div className="role-login-switch">{Object.entries(portals).map(([key,info])=><Link href={'/login/'+key} key={key} className={key===role?'selected':''}>{info[0]}</Link>)}</div>
   {error&&<p role="alert" className="role-login-error">{error}</p>}
-  <button type="submit" className="primary wide" disabled={busy}>{busy?'Verifying…':mode==='login'?'Sign in':'Create account'}</button></form>
-  <div className="oauth-divider">or continue with</div>
-  <a className="google-auth-button" href={'/api/auth/google?portal='+encodeURIComponent(role)}><span className="google-g" aria-hidden="true">G</span> Continue with Google</a>
-  <p className="hint">{role==='user'?'New Google accounts can register as Users.':'Existing accounts can sign in with their password, then link Google from their role dashboard. New organisers may apply using Google.'}</p>
+  <a className="google-auth-button" href={'/api/auth/google?portal='+encodeURIComponent(oauthRole)}>
+   <span className="google-g" aria-hidden="true">G</span> Continue with Google</a>
+  <p className="hint">{role==='organiser'?'New organiser applications stay inactive until Platform Admin approval.':role==='gate'?'No separate registration required. Your organiser must first invite your Google email.':role==='platform-admin'?'Only pre-authorised Platform Administrators may enter.':'Your Google account is your secure registration and sign-in.'}</p>
   <Link href="/" className="role-login-back">← Back to EventPass</Link>
  </div></main>;
 }
