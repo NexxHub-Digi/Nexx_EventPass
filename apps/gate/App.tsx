@@ -68,7 +68,6 @@ async function openCamera(){if(!eventId)return;const perm=permission?.granted?pe
   </View>}
  </View>}
  </>}
- </>}
  {button('Sign out',()=>{void logout()},true)}</>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
  </ScrollView></View>
