@@ -71,6 +71,10 @@ export default function RoleWorkspace(){
   }
  }
  useEffect(()=>{setLoading(true);fetchAll().catch(e=>setMessage((e as Error).message)).finally(()=>setLoading(false));return ()=>{scanControls.current?.stop()}},[role]);
+ useEffect(()=>{if(role!=='user'||!me||me.account_status!=='active')return;
+ const refresh=()=>{if(document.visibilityState==='visible')api('tickets').then(v=>setTickets(v.tickets||[])).catch(()=>{})};
+ const id=setInterval(refresh,12000);return ()=>clearInterval(id);
+ },[role,me?.id,me?.account_status]);
  useEffect(()=>{if(!eventId){setOrders([]);setScans([]);return}
  if(role==='organiser')api('orders?eventId='+encodeURIComponent(eventId)).then(v=>setOrders(v.orders||[])).catch(e=>setMessage((e as Error).message));
  if(role==='gate')api('gates/activity?eventId='+encodeURIComponent(eventId)).then(v=>setScans(v.scans||[])).catch(e=>setMessage((e as Error).message));
