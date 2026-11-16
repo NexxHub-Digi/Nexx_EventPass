@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { fail, handleError, ok, payload, str } from '@/lib/http';
 export const runtime='nodejs';
 export async function POST(req: Request) {
-  try {const u=await currentUser();if(!u)return fail('Sign in required',401);
+  try {const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active account required',403);
     const b=await payload(req), id=str(b.orderId,40),decision=str(b.decision,20);
     if(!id || !['approved','rejected'].includes(decision))return fail('Invalid review decision');
     const result=await db().begin(async tx=>{

@@ -1,6 +1,6 @@
 import { currentUser } from '@/lib/security';import {db} from '@/lib/db';import {fail,handleError,ok,payload,str} from '@/lib/http';
 export const runtime='nodejs';
-export async function GET(){try{const u=await currentUser();if(!u)return fail('Sign in required',401);
+export async function GET(){try{const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active account required',403);
   const rows=await db()`select g.event_id,g.gate_label,e.title,e.starts_at from gate_assignments g join events e on e.id=g.event_id where g.user_id=${u.id} union select e.id,'Organiser'::text,e.title,e.starts_at from events e where e.organiser_id=${u.id} order by starts_at desc`;
   return ok({gates:rows});}catch(e){return handleError(e);}}
 export async function POST(req:Request){try{const u=await currentUser();if(!u)return fail('Sign in required',401);

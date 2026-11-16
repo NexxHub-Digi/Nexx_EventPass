@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { fail, handleError, ok, payload, positiveInt, str } from '@/lib/http';
 export const runtime='nodejs';
 export async function GET(req: Request) {
-  try { const u=await currentUser();if(!u)return fail('Sign in required',401);
+  try { const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active account required',403);
     const url=new URL(req.url); const eventId=url.searchParams.get('eventId');
     if(eventId){ const allowed=await db()`select id from events where id=${eventId} and organiser_id=${u.id}`; if(!allowed[0]) return fail('Not authorised',403);
       const orders=await db()`select o.*,u.full_name as buyer_name,u.email as buyer_email,e.title as event_title from ticket_orders o join app_users u on u.id=o.buyer_id join events e on e.id=o.event_id where o.event_id=${eventId} order by o.created_at desc limit 100`;
@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   }catch(e){return handleError(e);}
 }
 export async function POST(req: Request) {
-  try { const u=await currentUser();if(!u)return fail('Sign in required',401);
+  try { const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active account required',403);
     const b=await payload(req);const eventId=str(b.eventId,40),quantity=positiveInt(b.quantity,10),reference=str(b.paymentReference,250);
     if(!eventId || !quantity || reference.length<5) return fail('Event, quantity and manual payment reference required');
     const e=await db()`select id,price_ngn,capacity from events where id=${eventId} and status='published' and starts_at>now()`;

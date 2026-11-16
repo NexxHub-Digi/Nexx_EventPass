@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies, headers } from 'next/headers';
 import { db } from '@/lib/db';
-export type CurrentUser = { id: string; email: string; full_name: string; role: 'user' | 'organiser' | 'platform_admin' };
+export type CurrentUser = { id: string; email: string; full_name: string; role: 'user' | 'organiser' | 'platform_admin'; account_status: 'active'|'pending'|'rejected'|'suspended'; requested_role: string|null };
 function secret(name: 'AUTH_SECRET' | 'QR_SIGNING_SECRET') {
   const value = process.env[name];
   if (!value || value.length < 32) throw new Error(name + ' must be at least 32 characters');
@@ -22,7 +22,7 @@ export async function currentUser(): Promise<CurrentUser | null> {
   try {
     const { payload } = await jwtVerify(token, new TextEncoder().encode(secret('AUTH_SECRET')), { issuer: 'nexx-eventpass', audience: 'eventpass' });
     if (!payload.sub) return null;
-    const users = await db()`select id, email, full_name, role from app_users where id = ${payload.sub} limit 1`;
+    const users = await db()`select id, email, full_name, role, account_status, requested_role from app_users where id = ${payload.sub} limit 1`;
     return (users[0] || null) as CurrentUser | null;
   } catch { return null; }
 }

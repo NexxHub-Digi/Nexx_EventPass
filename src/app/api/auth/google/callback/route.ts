@@ -31,7 +31,7 @@ export async function GET(req:NextRequest){
   const token=await tokenResponse.json();
   if(typeof token.id_token!=='string') throw new Error('google_id_token_missing');
   const profile=await verifyGoogleIdToken(token.id_token,creds.clientId,st.nonce);
-  let identity=await db()`select u.id,u.role,u.email from oauth_identities i join app_users u on u.id=i.user_id
+  let identity=await db()`select u.id,u.role,u.email,u.account_status,u.requested_role from oauth_identities i join app_users u on u.id=i.user_id
    where i.provider='google' and i.provider_sub=${profile.subject} limit 1`;
   let user=identity[0];
   if(st.intent==='link'){
@@ -43,7 +43,7 @@ export async function GET(req:NextRequest){
     await db()`insert into oauth_identities(provider,provider_sub,user_id,provider_email)
      values('google',${profile.subject},${existing.id},${profile.email})
      on conflict(provider,provider_sub) do nothing`;
-    identity=await db()`select u.id,u.role,u.email from oauth_identities i join app_users u on u.id=i.user_id
+    identity=await db()`select u.id,u.role,u.email,u.account_status,u.requested_role from oauth_identities i join app_users u on u.id=i.user_id
      where i.provider='google' and i.provider_sub=${profile.subject}`;
     if(identity[0]?.id!==existing.id) throw new Error('google_account_already_linked');
     user=identity[0];
@@ -52,12 +52,12 @@ export async function GET(req:NextRequest){
    // Never promote Google users merely because an email address matches a privileged account.
    const sameEmail=await db()`select id from app_users where email=${profile.email} limit 1`;
    if(sameEmail.length) throw new Error('link_existing_account_first');
-   if(portal!=='user') throw new Error('privileged_account_required');
+   if(portal==='platform_admin') throw new Error('privileged_account_required');
    const passwordHash=await bcrypt.hash(randomBytes(48).toString('base64url'),12);
    const created=await db().begin(async tx=>{
-     const rows=await tx`insert into app_users(email,password_hash,full_name,role)
-     values(${profile.email},${passwordHash},${profile.name},'user')
-     on conflict(email) do nothing returning id,role,email`;
+     const rows=await tx`insert into app_users(email,password_hash,full_name,role,account_status,requested_role)
+     values(${profile.email},${passwordHash},${profile.name},'user',${portal==='organiser'?'pending':'active'},${portal==='organiser'?'organiser':null})
+     on conflict(email) do nothing returning id,role,email,account_status,requested_role`;
      if(!rows[0]) return null;
      await tx`insert into oauth_identities(provider,provider_sub,user_id,provider_email)
        values('google',${profile.subject},${rows[0].id},${profile.email})`;
@@ -67,8 +67,9 @@ export async function GET(req:NextRequest){
    user=created;
   }
   if(!user) throw new Error('account_not_found');
-  if(portal==='organiser'&&!['organiser','platform_admin'].includes(user.role)) throw new Error('organiser_access_required');
+  if(portal==='organiser'&&!['organiser','platform_admin'].includes(user.role)&&!(user.account_status==='pending'&&user.requested_role==='organiser')) throw new Error('organiser_access_required');
   if(portal==='platform_admin'&&user.role!=='platform_admin') throw new Error('admin_access_required');
+  if(user.account_status!=='active'&&!(portal==='organiser'&&user.account_status==='pending')) throw new Error('account_inactive');
   if(portal==='gate'){
    const p=await db()`select exists(select 1 from gate_assignments where user_id=${user.id})
     or exists(select 1 from events where organiser_id=${user.id}) as permitted`;
@@ -78,7 +79,7 @@ export async function GET(req:NextRequest){
   const destination=new URL('/',origin);
   destination.searchParams.set('oauth','success');
   destination.searchParams.set('portal',portal);
-  destination.searchParams.set('view',portalDestination(portal));
+  destination.searchParams.set('view',user.account_status==='pending'?'pending':portalDestination(portal));
   response=NextResponse.redirect(destination);
   response.cookies.set('eventpass_session',session,{httpOnly:true,secure:process.env.NODE_ENV==='production',
    sameSite:'lax',path:'/',maxAge:604800});

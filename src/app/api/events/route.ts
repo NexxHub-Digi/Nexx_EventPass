@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const user = await currentUser();
-    if (!user || !['organiser', 'platform_admin'].includes(user.role)) return fail('Organiser access required', 403);
+    if (!user || user.account_status!=='active' || !['organiser', 'platform_admin'].includes(user.role)) return fail('Organiser access required', 403);
     const b = await payload(req); const title = str(b.title, 160); const venue = str(b.venue, 250);
     const startsAt = str(b.startsAt, 60); const start = new Date(startsAt);
     const price = Number(b.priceNgn); const capacity = positiveInt(b.capacity, 1000000);
