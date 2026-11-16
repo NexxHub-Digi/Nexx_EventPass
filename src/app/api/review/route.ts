@@ -5,7 +5,7 @@ export const runtime='nodejs';
 export async function POST(req: Request) {
   try {const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active account required',403);
     const b=await payload(req), id=str(b.orderId,40),decision=str(b.decision,20);
-    if(!id || !['approved','rejected'].includes(decision))return fail('Invalid review decision');
+    if(!/^[0-9a-f-]{36}$/i.test(id) || !['approved','rejected'].includes(decision))return fail('Invalid review decision');
     const result=await db().begin(async tx=>{
       const orders=await tx`select o.*,e.organiser_id,e.capacity,e.starts_at,e.status as event_status,a.account_status as organiser_status from ticket_orders o join events e on e.id=o.event_id join app_users a on a.id=e.organiser_id where o.id=${id} for update of o,e`;
       const order=orders[0];if(!order)return {error:'Order not found',status:404};

@@ -5,7 +5,7 @@ import { fail, handleError, ok, payload, str } from '@/lib/http';
 export const runtime='nodejs';
 export async function POST(req:Request){
   try {
-    const u=await currentUser();if(!u)return fail('Sign in required',401);
+    const u=await currentUser();if(!u||u.account_status!=='active'||u.role!=='organiser')return fail('Active owning organiser required',403);
     const b=await payload(req);const eventId=str(b.eventId,40),keyword=str(b.qrKeyword,80);
     if(!/^[a-f0-9-]{36}$/i.test(eventId)||keyword.length<8)return fail('Valid event ID and private QR keyword required');
     const cipher=encryptOrganiserKeyword(eventId,keyword);
