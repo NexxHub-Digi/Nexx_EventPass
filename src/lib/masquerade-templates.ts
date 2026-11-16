@@ -12,3 +12,10 @@ export const masqueradeTemplates=[
  {id:'stj-gold-script',name:'Gold Script Gala',label:'Classic Elegance',color_a:'#200821',color_b:'#43104b',accent:'#f6d68b',style:'script'}
 ] as const;
 export function isMasqueradeTemplate(id:string){return masqueradeTemplates.some(x=>x.id===id)}
+
+/** Promotional designs are separate from admission passes; they never carry QR codes. */
+export const masqueradePosterTemplates=[
+ {id:'stj-apartment-party',name:'Masked Apartment Evening',label:'Luxury Apartment Flyer'},
+ {id:'stj-lounge-nights',name:'Lounge Masquerade Night',label:'Nightlife Poster'}
+] as const;
+export function isMasqueradePoster(id:string){return masqueradePosterTemplates.some(x=>x.id===id)}
