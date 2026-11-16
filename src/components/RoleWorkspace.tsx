@@ -7,7 +7,7 @@ type Event={id:string;organiser_id:string;title:string;venue:string;starts_at:st
 type Order={id:string;event_id:string;event_title:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
 type Ticket={id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;redeemed_at?:string|null};
 type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string};
-type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number};
+type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null};
 type Invite={id:string;event_id:string;invitee_email:string;gate_label:string;status:string};
 type Scan={id:string;outcome:string;operator?:string;gate_label:string;scanned_at:string};
 const roles={user:'User',organiser:'Event Organiser',gate:'Gate Operator','platform-admin':'Platform Administrator'} as const;
@@ -25,6 +25,7 @@ export default function RoleWorkspace(){
  const [me,setMe]=useState<Member|null>(null),[portals,setPortals]=useState<string[]>([]),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[orders,setOrders]=useState<Order[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[gates,setGates]=useState<Gate[]>([]),[invites,setInvites]=useState<Invite[]>([]);
  const [organisers,setOrganisers]=useState<Organiser[]>([]),[stats,setStats]=useState<Record<string,number>>({});
+ const [selectedOrganiser,setSelectedOrganiser]=useState(''),[editName,setEditName]=useState(''),[editBank,setEditBank]=useState(''),[editAccount,setEditAccount]=useState(''),[editNumber,setEditNumber]=useState('');
  const [bankName,setBankName]=useState(''),[accountName,setAccountName]=useState(''),[accountNumber,setAccountNumber]=useState('');
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
@@ -92,6 +93,16 @@ export default function RoleWorkspace(){
   await api('platform/organisers','POST',{action,userId:id,email:newOrganiser});setMessage('Organiser action completed');setNewOrganiser('');
   const a=await api('platform/organisers');setOrganisers(a.organisers||[]);
  })}
+ function chooseOrganiser(id:string){
+  setSelectedOrganiser(id);const org=organisers.find(x=>x.id===id);
+  setEditName(org?.full_name||'');setEditBank(org?.bank_name||'');
+  setEditAccount(org?.account_name||'');setEditNumber(org?.account_number||'');
+ }
+ async function configureOrganiser(){await run(async()=>{
+  if(!selectedOrganiser)throw Error('Select an organiser');
+  await api('platform/organisers','POST',{action:'configure',userId:selectedOrganiser,fullName:editName,bankName:editBank,accountName:editAccount,accountNumber:editNumber});
+  const res=await api('platform/organisers');setOrganisers(res.organisers||[]);setMessage('Organiser profile updated');
+ })}
  async function scan(value=scanCode){await run(async()=>{
   if(!eventId||!value.trim())throw Error('Select your event and scan a QR');
   const r=await api('scan','POST',{eventId,code:value.trim()});setScanOutcome(r.outcome);setMessage(r.message);setScanCode('');
@@ -112,7 +123,7 @@ export default function RoleWorkspace(){
  if(!valid)return <main className="rw-shell"><h1>Unknown interface</h1><a href="/login/user">User login</a></main>;
  if(loading)return <main className="rw-shell"><p>Loading your EventPass account…</p></main>;
  if(!me)return <main className="rw-shell"><h1>{title}</h1><p>Sign in to continue.</p><a className="rw-primary-link" href={'/login/'+role}>Sign in to {title}</a></main>;
- if(role==='organiser'&&me.role==='user'&&me.requested_role==='organiser')return <main className="rw-shell"><h1>Organiser approval pending</h1><p>Your Google or email account is registered. The Platform Administrator must approve your organiser request before your management interface becomes active.</p><p>{me.email}</p><button onClick={()=>{void signout()}}>Sign out</button></main>;
+ if(role==='organiser'&&me.role==='user'&&me.requested_role==='organiser')return <main className="rw-shell"><h1>Organiser approval pending</h1><p>Your Google or email account is registered. The Platform Administrator must approve your organiser request before your management interface becomes active.</p><p>{me.email}</p><a className="google-auth-button" href="/api/auth/google?portal=organiser&intent=link"><span className="google-g" aria-hidden="true">G</span> Link Google account</a><button onClick={()=>{void signout()}}>Sign out</button></main>;
  if(!allowed)return <main className="rw-shell"><h1>{title} access inactive</h1><p>Your account does not have permission to access this interface.</p><p>Organisers require administrator approval. Gate operators require an invitation from an organiser and a Google-verified email.</p><a href="/login/user">Open User interface</a></main>;
  return <main className="rw-shell"><div className="rw-top"><div><a href="/" className="rw-brand">◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title}</div></div><div className="rw-tools"><span>{me.full_name}</span>{btn('Sign out',()=>{void signout()},true)}</div></div>
  {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
@@ -120,11 +131,38 @@ export default function RoleWorkspace(){
   <section className="rw-panel"><h2>Platform overview</h2><div className="rw-stats">{Object.entries(stats).map(([k,v])=><div className="rw-stat" key={k}><b>{Number(v).toLocaleString()}</b><small>{k}</small></div>)}</div>
   <h3>Create organiser from verified User</h3><p>Only a Google-verified existing account can be promoted. No default password is created.</p>
   {input('Verified User email',newOrganiser,setNewOrganiser,'email')}{btn('Create organiser',()=>{void adminAction('create')})}</section>
-  <section className="rw-panel"><h2>Organiser approval and access control</h2>{organisers.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.full_name}</b><p>{o.email}</p><small>{o.account_status} · {o.role} · {o.event_count} events</small></div><div className="rw-actions">
-  {o.requested_role==='organiser'&&o.role==='user'&&<>{btn('Approve',()=>{void adminAction('approve',o.id)})}{btn('Reject',()=>{void adminAction('reject',o.id)},true)}</>}
-  {o.role==='organiser'&&o.account_status==='active'&&btn('Suspend',()=>{void adminAction('suspend',o.id)},true)}
-  {o.role==='organiser'&&o.account_status==='suspended'&&btn('Restore',()=>{void adminAction('restore',o.id)})}
-  </div></div>)}{!organisers.length&&<p>No organiser applications yet.</p>}</section></div>}
+  <section className="rw-panel"><h2>Organiser directory and access control</h2>
+   <p>Review all organiser applications and existing profiles. Revoke access without deleting tickets or historical events.</p>
+   {organisers.map(o=><div className="rw-list-item" key={o.id}>
+    <div><b>{o.full_name}</b><p>{o.email}</p><small>{o.role==='user'&&o.requested_role==='organiser'?'PENDING APPROVAL':o.account_status.toUpperCase()} · {o.event_count} events · {o.tickets_issued} tickets · {o.gate_operators} operators</small></div>
+    <div className="rw-actions">
+    {btn('Profile',()=>chooseOrganiser(o.id),true)}
+    {o.role==='user'&&o.requested_role==='organiser'&&<>{btn('Approve',()=>{void adminAction('approve',o.id)})}{btn('Reject',()=>{void adminAction('reject',o.id)},true)}</>}
+    {o.role==='organiser'&&o.account_status==='active'&&btn('Revoke access',()=>{void adminAction('revoke',o.id)},true)}
+    {o.role==='organiser'&&o.account_status==='suspended'&&btn('Restore access',()=>{void adminAction('restore',o.id)})}
+    </div></div>)}
+   {!organisers.length&&<p>No organiser applicants or approved accounts yet.</p>}
+   {selectedOrganiser&&organisers.filter(o=>o.id===selectedOrganiser).map(o=><div className="rw-profile" key={o.id}>
+    <h3>Organiser profile: {o.full_name}</h3>
+    <p>{o.email} · {o.role} · {o.account_status}</p>
+    <p>Joined: {nice(o.created_at)} {o.approved_at?' · Approved: '+nice(o.approved_at):''}</p>
+    <div className="rw-stats">
+     <div className="rw-stat"><b>{o.event_count}</b><small>Events</small></div>
+     <div className="rw-stat"><b>{o.pending_orders}</b><small>Pending payments</small></div>
+     <div className="rw-stat"><b>{o.tickets_issued}</b><small>Tickets issued</small></div>
+     <div className="rw-stat"><b>{o.gate_operators}</b><small>Gate operators</small></div>
+    </div>
+    {o.role==='organiser'?<>
+      <h3>Configure organiser profile</h3>
+      {input('Display name',editName,setEditName)}
+      {input('Bank name',editBank,setEditBank)}
+      {input('Bank account holder',editAccount,setEditAccount)}
+      {input('Bank account number',editNumber,setEditNumber)}
+      <p>Changes to bank instructions are audited. Verify new bank details independently before saving.</p>
+      {btn('Save organiser configuration',()=>{void configureOrganiser()})}
+    </>:<p>This applicant is not approved. Approve before configuring the organiser profile.</p>}
+   </div>)}
+  </section></div>}
  {role==='organiser'&&<div className="rw-layout">
   <section className="rw-panel"><h2>Bank transfer instructions</h2><p>Users see these account details on your published events. Only approve a ticket after confirming funds in your own bank records.</p>
     {input('Bank name',bankName,setBankName)}{input('Account name',accountName,setAccountName)}{input('Account number',accountNumber,setAccountNumber)}
