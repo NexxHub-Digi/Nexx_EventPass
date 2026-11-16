@@ -1,6 +1,8 @@
 import React,{useEffect,useState} from 'react';
 import {Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,ActivityIndicator} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import * as WebBrowser from 'expo-web-browser';
+WebBrowser.maybeCompleteAuthSession();
 import QRCode from 'react-native-qrcode-svg';
 import * as DocumentPicker from 'expo-document-picker';
 const PORTAL: string="user",TITLE="Nexx EventPass User",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
@@ -25,12 +27,24 @@ export default function App(){
  }
  useEffect(()=>{SecureStore.getItemAsync('eventpass_token').then(t=>{if(t){setToken(t);load(t).catch(e=>setError((e as Error).message))}}).catch(()=>{})},[]);
  async function exec(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
- async function login(){await exec(async()=>{const d=await api('auth/'+(register?'register':'login'),'','POST',{portal:PORTAL,email,password,fullName:name});await SecureStore.setItemAsync('eventpass_token',d.token);setToken(d.token);setPassword('');await load(d.token)})}
+ async function login(){await exec(async()=>{
+   const redirect='eventpassuser://oauth';
+   const result=await WebBrowser.openAuthSessionAsync(BASE+'/api/auth/google?portal='+encodeURIComponent(PORTAL)+'&client=native',redirect);
+   if(result.type!=='success')throw Error('Google sign-in was cancelled');
+   const code=new URL(result.url).searchParams.get('code');
+   if(!code)throw Error('Google did not return a valid sign-in code');
+   const data=await api('auth/mobile','','POST',{code,client:PORTAL});
+   await SecureStore.setItemAsync('eventpass_token',data.token);
+   setToken(data.token);await load(data.token);
+ })}
  async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null)}}
  const input=(hint:string,value:string,update:(x:string)=>void,secret=false)=><TextInput style={s.input} placeholder={hint} placeholderTextColor="#94a3b8" value={value} onChangeText={update} autoCapitalize="none" secureTextEntry={secret}/>;
  const button=(label:string,fn:()=>void,sub=false)=><Pressable onPress={fn} disabled={busy} style={[s.button,sub&&s.subButton]}><Text style={s.buttonText}>{label}</Text></Pressable>;
  return <View style={s.root}><View style={s.head}><Text style={s.brand}>◈ NEXX <Text style={{color:'#45D6C9'}}>EVENTPASS</Text></Text><Text style={s.hint}>{TITLE}</Text></View><ScrollView contentContainerStyle={s.body}>
- {!member?<><Text style={s.title}>{register?'Create account':'Sign in'}</Text>{register&&input('Full name',name,setName)}{input('Email',email,setEmail)}{input('Password',password,setPassword,true)}{button(register?'Register':'Sign in',()=>{void login()})}{(PORTAL==='user'||PORTAL==='organiser')&&button(register?'Sign in instead':'Create account',()=>setRegister(!register),true)}<Text style={s.hint}>Google OAuth for native apps requires a separate Android/iOS integration. Use web Google sign-in meanwhile.</Text></>:<>
+ {!member?<><Text style={s.title}>Google sign-in</Text>
+ <Text style={s.hint}>Browse events and collect tickets using your Google identity.</Text>
+ {button('Continue with Google',()=>{void login()})}
+ </>:<>
  <Text style={s.title}>Welcome, {member.full_name}</Text><Text style={s.hint}>{member.email}</Text>
  {member.account_status==='pending'?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
  <Text style={s.title}>Discover events</Text>{events.filter(e=>e.status==='published').map(e=><View key={e.id} style={s.card}><Text style={s.title}>{e.title}</Text><Text style={s.hint}>{e.venue} · {new Date(e.starts_at).toLocaleString()}</Text><Text style={s.title}>₦{Number(e.price_ngn).toLocaleString()}</Text>{button('Request ticket',()=>setEventId(eventId===e.id?'':e.id))}
