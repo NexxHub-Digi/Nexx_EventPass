@@ -1,88 +1,78 @@
 # Nexx EventPass
 
-An event ticketing and access-control application with a responsive **Next.js web app**, **Expo React Native (Android/iOS)** client, and **Neon PostgreSQL** backend.
+Nexx EventPass is a branded event-discovery, manual ticket-payment approval and secure QR-entry platform with a **Next.js web/API**, **Neon PostgreSQL**, and **four independent Expo Android/iOS projects**.
 
-## Current functionality
+**Current implementation is a testing MVP, not yet certified for real paid events or published to app stores.**
 
-- Email/password signup and login (bcrypt password hashes, httpOnly signed web session, bearer sessions for Expo)
-- Organiser invite-code signup (other users are guests by default)
-- Create and publish an event, set ticket price and event capacity
-- Guest booking request with bank transfer reference for **manual payment review** (no payment processor)
-- Organiser verifies payment independently and approves/rejects the submitted reference
-- On approval, the backend atomically checks capacity and issues unique QR credentials signed with HMAC-SHA256
-- Guest mobile and web ticket wallet, with QR display
-- Explicit role-aware sign-in portals: guest, organiser, assigned gate operator and pre-provisioned platform administrator
-- Event-specific organiser QR keyword (8–80 characters), encrypted server-side at rest; tickets use authenticated AES-256-GCM encryption with per-event HKDF-derived keys
-- Gate staff permissions assigned by the organiser; server validation of signed/encrypted QR and atomic, one-time redemption
-- Android/iOS camera permission prompt, denial/settings recovery, rear-camera QR scanner with torch, external scanner input; browser camera scanning with ZXing and USB/Bluetooth keyboard scanners
-- Duplicate, invalid and revoked check-in outcomes with database audit trail
-- Legacy UI/UX prototype at `/prototype`
+## Four separate interfaces
 
-## Architecture
+| Portal | Sign in | Mobile source | Permissions |
+|---|---|---|---|
+| **User** | /login/user | apps/user | Discover all published events, use organiser bank instructions, submit transfers + receipt, view approved QR wallet |
+| **Event Organiser** | /login/organiser | apps/organiser | Apply for approval, configure bank details, create events, review receipts, verify bank transfers, invite and revoke gate operators |
+| **Gate Operator** | /login/gate | apps/gate | Assigned event scans, camera + QR scanner, admission and per-gate activity only |
+| **Platform Administrator** | /login/platform-admin | apps/platform-admin | Approve/reject/activate/suspend organisers, create organisers from existing Google-verified Users, platform metrics |
 
-- `src/app`: Next.js App Router frontend and server-side HTTP API
-- `src/lib`: Postgres connector, signed-session and QR security
-- `db/schema.sql`: Neon/PostgreSQL schema for the event and ticket system
-- `apps/mobile`: Expo Android/iOS app using the same authenticated APIs
-- `public/prototype.html`: original Figma-inspired design prototype
+Web workspaces: /dashboard/user, /dashboard/organiser, /dashboard/gate, /dashboard/platform-admin. Login portals **do not grant roles**.
 
-## Quick start
+## Administrator and organiser rules
 
-1. Provision a Neon Postgres database (the dedicated `nexx-eventpass` project is created).
-2. Execute `db/schema.sql` if the schema has not yet been applied.
-3. Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `AUTH_SECRET`, `QR_SIGNING_SECRET` and `ORGANISER_INVITE_CODE` (keep all secrets server-side).
-4. Run `npm install`, `npm run build`, `npm run dev`.
-5. Register your organiser account using the private `ORGANISER_INVITE_CODE`. Guests can register without one.
-6. For Expo: `cd apps/mobile && npm install && cp .env.example .env && npx expo start`. Set `EXPO_PUBLIC_API_URL` to the deployed Next.js web URL.
+- The default platform administrator is an existing, verified, owner-authorised account provisioned directly in Neon, not a publicly registered account. **No default password is stored or distributed**.
+- Only Platform Admin can approve a User's organiser application or create an organiser from an existing Google-verified User account.
+- Anyone may apply to be an organiser using Google or email/password. Their organiser dashboard stays **pending** until approval; normal User access remains available during review.
+- The Platform Admin can suspend/restore organiser access. Inactive/suspended organisers cannot create events, review payment or assign gates.
+- A gate operator is an event-specific *assignment* to an existing User account, **not** a global privileged role. Only the owning organiser may issue or revoke invitations; the invited email must be verified through Google before the assignment is activated.
+- Organisers can scan their own event tickets and view gate activity. Gate operators may scan only their assigned events and cannot create events, approve payments, view other organisers' data or access platform administration.
 
-## Manual payment workflow
+## Manual bank-transfer and receipt workflow
 
-1. Event organiser publishes an event and independently shares trusted bank payment instructions.
-2. Guest submits quantity and a bank transfer reference through the web or mobile app.
-3. Order stays `pending`. **A reference is not proof of payment.** Organiser confirms money arrived in their bank statement, then approves/rejects the order.
-4. Approval issues tickets; an approval cannot exceed event capacity.
-5. Gate staff scan the issued QR; online first redemption succeeds, subsequent attempts are denied.
+1. Organiser publishes a verified bank name, account name and account number from their private organiser dashboard.
+2. User discovers any published event from any active organiser, independently confirms the bank details and transfers funds to the organiser.
+3. User submits the ticket order, payment reference and **PNG/JPG/WebP/PDF receipt (max 2 MB)** through the secured backend.
+4. Order remains *pending*. Organiser views the receipt privately and independently verifies bank settlement; the receipt/reference alone is **not** confirmation of payment.
+5. Organiser approves or rejects the pending order. Paid orders **cannot be approved until a receipt has been submitted**.
+6. On approval, the backend atomically checks event capacity and creates ticket records. The User wallet displays server-issued signed or encrypted, event-bound QR codes.
+7. Event-assigned operator (or owning organiser) verifies QR with an online server request. Atomic redemption approves the first valid scan and denies a duplicate. Audit logs record the operator, gate and outcome.
 
-### Important operational safeguards
+No online payment processor is configured. Never approve a receipt without independently checking actual funds.
 
-- Do not approve an order without independently confirming its payment.
-- Do not share `DATABASE_URL`, `AUTH_SECRET`, `QR_SIGNING_SECRET` or the organiser invitation code with mobile clients or in Git.
-- In the initial version the event organiser also has gate scan permissions, and can assign registered staff accounts.
-- Offline admission is **not** supported; a network connection is required to prevent duplicate entries across gates.
-- QR codes do not contain attendee personal information.
-- Registration and login should receive rate limiting and anti-bot protection before a high-volume public launch.
-- Web browser scanning uses `BarcodeDetector` when available; Expo camera scanning is the more consistent option.
+## Security and stack
 
-## Current release limitations
+- **Next.js** App Router API routes: src/app/api
+- **Neon PostgreSQL**: app_users, oauth_identities, events, organiser_payment_accounts, ticket_orders, tickets, entry_scans, gate_assignments, gate_invitations
+- **Auth**: bcrypt email passwords; JWT web httpOnly cookie and mobile bearer tokens; Google OIDC with authorization code + PKCE, state/nonce validation and Google JWKS audience checks.
+- **Roles**: database role and account approval status, organiser ownership, event-scoped gate invitations and scan permissions.
+- **QR**: AES-256-GCM encrypted event-specific credentials with organiser keyword and server secret, or legacy signed HMAC tickets; atomic Postgres redemption, fail-closed offline.
+- **Web camera**: @zxing/browser and keyboard-style USB/Bluetooth QR readers.
+- **Expo**: four separately branded source projects and bundle identifiers. Only the Gate app requests CAMERA. User app uses a document picker for receipts.
+- **Google Search Console**: verification HTML preserved in public/; branded favicon and Open Graph metadata.
 
-This is an early full-stack MVP, not a certified production ticketing system. Payment receipt file uploads, refund workflows, invitations by email, multi-ticket tier structures, offline entry reconciliation, notification delivery and app-store publication are not implemented. Perform live end-to-end, concurrency, security and real-device tests before using it to admit paying guests.
+Separate client IDs for User, Organiser, Gate and Platform Admin are configured in Vercel. Native Google OAuth for the four Expo binaries, app store releases, and production-grade device testing are **not yet complete**. Previously disclosed OAuth client secrets must be rotated in Google Cloud and the replacements entered directly into Vercel.
 
-## Links
+## Start locally
 
-- [GitHub](https://github.com/NexxHub-Digi/Nexx_EventPass)
-- [Figma](https://www.figma.com/design/hIcS4ec1F0tX2BIkttaec0)
+Configure Neon DATABASE_URL, AUTH_SECRET (32+ chars), QR_SIGNING_SECRET (32+ chars), Next.js NEXT_PUBLIC_SITE_URL, and Google client credentials in an untracked .env.local (see .env.example). Never place private API keys in EXPO_PUBLIC_ variables.
 
-## Role-based sign-in and encrypted QR (v0.3)
+Web: npm install && npm run dev
 
-On both web and mobile, the sign-in interface lets an account select **Guest**, **Organiser**, **Gate operator**, or **Platform administrator**. This selection does **not** create or elevate roles. The server enforces the selected portal against the user’s stored role or gate assignment. Public registration creates guest accounts only, unless a valid private organiser invitation is supplied in the organiser flow. Gate operators register as guests, then get assigned to specific events by an organiser. Platform admin accounts must be provisioned privately in the database; the UI has no public admin registration. Once authenticated, admins receive a read-only system summary (accounts, events, orders, issued tickets and redeemed admissions). Privileged administrative mutations remain disabled pending separate security review.
+CI: npm run typecheck && npm run test:qr && npm run build
 
-For a new event, an organiser must supply a **private 8–80-character QR keyword**. The server encrypts this keyword at rest under a server-side master secret. Approved tickets receive fresh **EVP2** QR credentials encrypted using AES-256-GCM with a distinct event-derived key generated from the server secret plus the event keyword. QR payloads omit attendee personal details; the keyword is never sent to a guest’s phone or the scanner. The scanner submits the encrypted token to a server that decrypts it and performs the same *atomic single-entry* database check. The keyword is not an access-granting password: organisers cannot admit guests without backend authorisation and a valid ticket.
+Individual mobile app (example): cd apps/gate && npm install && EXPO_PUBLIC_API_URL=https://nexx-eventpass.vercel.app npx expo start
 
-Existing EVP1 events can enable encryption through the organiser UI **only before any tickets have been issued**. Existing issued EVP1 codes remain supported for events not migrated. Rotating the keyword after ticket issuance is intentionally disabled so previously issued QR codes cannot be silently invalidated.
+Repeat for apps/user, apps/organiser and apps/platform-admin. Native installable binaries require EAS Build and signing credentials.
 
-### Device permissions
+## Operational caveats
 
-- iOS/Android ask for camera access **only when the authorised scanner is started**. Denied permission offers instructions to enable it in Settings.
-- Expo uses `expo-camera` for back camera and torch; audio recording permission is disabled.
-- Web requires HTTPS and camera permission and uses `@zxing/browser`; physical USB/Bluetooth scanner keyboards can paste tokens and submit with Enter.
-- No contacts, location, microphone or photo-library permission is needed to scan tickets.
+- **Live web release:** Vercel Hobby has a daily deployment quota; the most recent GitHub code can be ahead of the production deployment. Inspect deployments before claiming the site is updated.
+- Vercel Hobby use is noncommercial; commercial hosting must be arranged before public paid admissions.
+- Complete real-device camera/USB scanner testing, cross-role negative tests, Google login + session/link testing, payment approval and receipt upload validation, and concurrent duplicate QR scans before launch.
+- Add public login and gate-scan rate limiting/anti-abuse controls, audit monitoring, dependency vulnerability remediation, automated backups and recovery tests.
+- Historical apps/mobile and apps/web are pre-split reference prototypes, **not** the current role-specific applications. Old Supabase migrations are historical references; production DB is Neon.
 
-### Tests
+## Docs
 
-Run `npm run test:qr` to check encrypted ticket roundtrip, fresh nonces, keyword isolation and tampering resistance. Run `npm run typecheck` and `npm run build` in a dependency-enabled environment. Gate admission concurrency and device-camera tests must additionally run against a dedicated staging environment before commercial use.
-
-
-## Google sign-in (web)
-Four role-specific Google OAuth clients support Guest, Organiser, Gate Operator and Platform Administrator sign-in. Verified Google identity alone never elevates roles. First-time Google login can register a **guest** account. Existing accounts must sign in via password first and choose **Link Google account**; privileged roles are not created by Google login. Callback: `/api/auth/google/callback`. See [Google Cloud setup](docs/GOOGLE_OAUTH_SETUP.md). Native Expo Google sign-in is not included in this web integration.
-
-After adding the OAuth client secrets in Vercel, redeploy the app and test successful login, cancellation, role denial, linking, logout and session persistence. Rotate any secrets previously disclosed in a conversation.
+- [Role applications](docs/ROLE_APPS.md)
+- [Google OAuth setup](docs/GOOGLE_OAUTH_SETUP.md)
+- [Brand guide](docs/BRAND_GUIDE.md)
+- [Previous technical audit](docs/PROJECT_AUDIT_2026-11-16.md)
+- [Original Figma design](https://www.figma.com/design/hIcS4ec1F0tX2BIkttaec0)
