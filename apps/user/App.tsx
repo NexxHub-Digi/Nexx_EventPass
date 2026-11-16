@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,ActivityIndicator} from 'react-native';
+import {Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,ActivityIndicator,Image,Linking} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 WebBrowser.maybeCompleteAuthSession();
@@ -7,8 +7,8 @@ import QRCode from 'react-native-qrcode-svg';
 import * as DocumentPicker from 'expo-document-picker';
 const PORTAL: string="user",TITLE="Nexx EventPass User",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
-type Event={id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
-type Ticket={id:string;title:string;qr:string|null;status:string;redeemed_at:string|null};
+type Event={id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;description?:string;category?:string;ticket_theme?:string;cover_media_id?:string|null;video_media_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
+type Ticket={id:string;title:string;qr:string|null;status:string;redeemed_at:string|null;ticket_theme?:string;ticket_art_id?:string|null};
 type Order={id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number};
 type Gate={event_id:string;title:string;gate_label:string};
 type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
@@ -17,6 +17,7 @@ export default function App(){
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [ref,setRef]=useState(''),[qty,setQty]=useState('1'),[proof,setProof]=useState<DocumentPicker.DocumentPickerAsset|null>(null);
+ const [query,setQuery]=useState(''),[category,setCategory]=useState('All'),[gallery,setGallery]=useState<{id:string;media_type:string;url:string}[]>([]);
  async function load(t:string){
  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
  if(!(PORTAL==='organiser'&&me.user.account_status==='pending') && !(me.portals||[]).includes(PORTAL)){await SecureStore.deleteItemAsync('eventpass_token');setMember(null);setToken('');throw Error('This account is not authorised for this app')}
@@ -47,11 +48,36 @@ export default function App(){
  </>:<>
  <Text style={s.title}>Welcome, {member.full_name}</Text><Text style={s.hint}>{member.email}</Text>
  {member.account_status==='pending'?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
- <Text style={s.title}>Discover events</Text>{events.filter(e=>e.status==='published').map(e=><View key={e.id} style={s.card}><Text style={s.title}>{e.title}</Text><Text style={s.hint}>{e.venue} · {new Date(e.starts_at).toLocaleString()}</Text><Text style={s.title}>₦{Number(e.price_ngn).toLocaleString()}</Text>{button('Request ticket',()=>setEventId(eventId===e.id?'':e.id))}
-{eventId===e.id&&<><Text style={s.hint}>Pay to {e.bank_name||'Bank not configured'} — {e.bank_account_name||''} — {e.bank_account_number||''}</Text>{input('Quantity 1–10',qty,setQty)}{input('Transfer reference',ref,setRef)}
-{button(proof?'Receipt: '+proof.name:'Select receipt',()=>{void DocumentPicker.getDocumentAsync({type:['image/png','image/jpeg','image/webp','application/pdf']}).then(v=>{if(!v.canceled)setProof(v.assets[0])})},true)}
-{button('Submit payment for review',()=>{void exec(async()=>{if(e.price_ngn>0&&!proof)throw Error('Receipt required');const o=await api('orders',token,'POST',{eventId:e.id,quantity:Number(qty),paymentReference:ref});if(proof){const f=new FormData();f.append('orderId',o.order.id);f.append('receipt',{uri:proof.uri,name:proof.name,type:proof.mimeType||'application/pdf'} as unknown as Blob);await api('orders/receipt',token,'POST',f)}setEventId('');setRef('');setProof(null);await load(token);Alert.alert('Submitted','Organiser will review payment')})})}</>}</View>)}
-<Text style={s.title}>My tickets</Text>{tickets.map(t=><View key={t.id} style={s.card}><Text style={s.title}>{t.title}</Text>{t.qr&&<View style={{backgroundColor:'#fff',padding:14,alignSelf:'center',marginVertical:14,borderRadius:12}}><QRCode value={t.qr} size={200}/></View>}<Text style={s.hint}>{t.redeemed_at?'Already scanned':t.status}</Text></View>)}
+ <View style={{padding:19,borderRadius:17,backgroundColor:'#27275b',marginBottom:16}}>
+ <Text style={{color:'#6AF5D2',fontSize:11,letterSpacing:1.6,fontWeight:'800'}}>NEXX EVENTPASS DISCOVERY</Text>
+ <Text style={{fontSize:29,fontWeight:'900',color:'#fff',marginTop:9}}>Your next experience awaits.</Text>
+ <Text style={s.hint}>Discover verified events, videos and tickets from organisers near and far.</Text>
+</View>
+{input('Search events, venues, experiences...',query,setQuery)}
+<ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginVertical:12}} contentContainerStyle={{gap:9}}>
+ {['All',...new Set(events.map(e=>e.category||'Other'))].map(c=><Pressable key={c} style={[s.button,{marginVertical:0,paddingHorizontal:17},category!==c&&s.subButton]} onPress={()=>setCategory(c)}><Text style={s.buttonText}>{c}</Text></Pressable>)}
+</ScrollView>
+{events.filter(e=>e.status==='published'&&(category==='All'||(e.category||'Other')===category)&&[e.title,e.venue,e.description||''].join(' ').toLowerCase().includes(query.toLowerCase())).map(e=><View key={e.id} style={[s.card,{overflow:'hidden',padding:0}]}>
+ {e.cover_media_id?<Image source={{uri:BASE+'/api/events/media?id='+e.cover_media_id}} style={{height:210,width:'100%'}} resizeMode="cover"/>:
+ <View style={{height:145,backgroundColor:'#50368d',padding:24,justifyContent:'center'}}><Text style={{fontSize:38,color:'#fff'}}>◈</Text><Text style={s.title}>{e.title}</Text></View>}
+ <View style={{padding:18}}><Text style={{color:'#6AF5D2',fontSize:12,fontWeight:'800'}}>{e.category||'Event'} · {new Date(e.starts_at).toLocaleString()}</Text>
+ <Text style={s.title}>{e.title}</Text><Text style={s.hint}>{e.venue}</Text><Text style={s.hint}>{e.description||'Explore this event and available tickets.'}</Text>
+ <Text style={{color:'#8AFFE7',fontSize:20,fontWeight:'800'}}>₦{Number(e.price_ngn).toLocaleString()}</Text>
+ {e.video_media_id&&button('Watch event preview video',()=>{void Linking.openURL(BASE+'/api/events/media?id='+e.video_media_id)},true)}
+ {button(eventId===e.id?'Close event':'Explore tickets',()=>{if(eventId===e.id){setEventId('');setGallery([])}else{setEventId(e.id);void api('events/media?eventId='+e.id,token).then(r=>setGallery(r.media||[])).catch(()=>setGallery([]))}})}
+ {eventId===e.id&&<>
+  <Text style={s.title}>Event gallery</Text>
+  <ScrollView horizontal contentContainerStyle={{gap:10,marginVertical:10}}>{gallery.map(m=><Pressable key={m.id} onPress={()=>{if(m.media_type==='video')void Linking.openURL(BASE+m.url)}}>
+   {m.media_type==='video'?<View style={{width:150,height:115,backgroundColor:'#493b7f',justifyContent:'center',alignItems:'center'}}><Text style={{color:'#fff'}}>▶ Play video</Text></View>:
+   <Image source={{uri:BASE+m.url}} style={{width:150,height:115,borderRadius:10}}/>}</Pressable>)}</ScrollView>
+  {e.price_ngn>0?<Text style={s.hint}>Bank transfer: {e.bank_name||'Not configured'} — {e.bank_account_name||''} — {e.bank_account_number||''}</Text>:<Text style={s.hint}>Free ticket (organiser approval required)</Text>}
+  {input('Number of tickets',qty,setQty)}
+  {e.price_ngn>0&&<>{input('Bank transfer reference',ref,setRef)}
+  {button(proof?'Receipt: '+proof.name:'Select payment receipt',()=>{void DocumentPicker.getDocumentAsync({type:['image/png','image/jpeg','image/webp','application/pdf']}).then(v=>{if(!v.canceled)setProof(v.assets[0])})},true)}</>}
+  {button('Request tickets',()=>{void exec(async()=>{if(e.price_ngn>0&&!proof)throw Error('Receipt required for paid tickets');const o=await api('orders',token,'POST',{eventId:e.id,quantity:Number(qty),paymentReference:e.price_ngn>0?ref:'FREE-TICKET'});if(proof&&e.price_ngn>0){const form=new FormData();form.append('orderId',o.order.id);form.append('receipt',{uri:proof.uri,name:proof.name,type:proof.mimeType||'application/pdf'} as unknown as Blob);await api('orders/receipt',token,'POST',form)}setEventId('');setRef('');setProof(null);await load(token);Alert.alert('Request submitted','Your organiser will review the ticket request.')})})}
+ </>}</View></View>)}
+{!events.length&&<Text style={s.hint}>No verified events yet. Check again after organisers publish new experiences.</Text>}
+<Text style={s.title}>My ticket wallet</Text>{tickets.map(t=><View key={t.id} style={[s.card,{backgroundColor:t.ticket_theme==='sunset'?'#78305e':t.ticket_theme==='neon'?'#402c76':t.ticket_theme==='midnight'?'#363046':'#1c4e72'}]}>{t.ticket_art_id&&<Image source={{uri:BASE+'/api/events/media?id='+t.ticket_art_id}} style={{height:140,borderRadius:9,marginBottom:10}}/>}<Text style={s.title}>{t.title}</Text>{t.qr&&<View style={{backgroundColor:'#fff',padding:14,alignSelf:'center',marginVertical:14,borderRadius:12}}><QRCode value={t.qr} size={200}/></View>}<Text style={s.hint}>{t.redeemed_at?'Already scanned':t.status}</Text></View>)}
 <Text style={s.title}>My orders</Text>{orders.map(o=><View key={o.id} style={s.card}><Text style={s.hint}>{o.event_title} · {o.status} · Receipt {o.receipt_uploaded_at?'submitted':'missing'}</Text></View>)}
  </>}
  {button('Sign out',()=>{void logout()},true)}</>}
