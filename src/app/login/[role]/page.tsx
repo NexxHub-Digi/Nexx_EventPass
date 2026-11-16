@@ -1,6 +1,6 @@
 'use client';
 import { useParams } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import Link from 'next/link';
 type Portal = 'user'|'organiser'|'gate'|'platform_admin';
 const portals: Record<Portal,{title:string;about:string;view:string;canRegister:boolean}> = {
@@ -16,6 +16,25 @@ export default function RoleLogin(){
  const [mode,setMode]=useState<'login'|'register'>('login');
  const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[invite,setInvite]=useState('');
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
+ useEffect(()=>{
+  const code=new URLSearchParams(window.location.search).get('oauth_error');
+  if(!code)return;
+  const errors:Record<string,string>={
+   google_cancelled:'Google sign-in was cancelled. You can try again.',
+   state_missing:'Google authentication expired. Start a fresh sign-in from this page.',
+   invalid_oauth_state:'Google security verification failed. Please restart sign-in.',
+   google_exchange_failed:'Google rejected the authentication exchange. Check the configured OAuth redirect URI.',
+   oauth_not_configured:'Google OAuth is not configured for this role.',
+   link_existing_account_first:'This email already has an EventPass account. Sign in with your existing password, then link Google from your dashboard.',
+   privileged_account_required:'Sign in to an approved account and link Google to it first.',
+   organiser_access_required:'Your organiser application is not approved yet.',
+   admin_access_required:'This Google identity is not authorised as a Platform Administrator.',
+   account_inactive:'Your account is inactive. Contact Platform Administration.',
+   google_sign_in_failed:'Google sign-in failed. Confirm this OAuth client uses the EventPass callback URL and try again.'
+  };
+  setError(errors[code]||'Google sign-in failed. Please retry.');
+  window.history.replaceState(null,'',window.location.pathname);
+ },[]);
  if(!choice)return <main className="role-login-shell"><div className="role-login-card"><h1>Interface not found</h1><Link href="/login/user">User login</Link></div></main>;
  async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError('');
   try{
@@ -39,7 +58,7 @@ export default function RoleLogin(){
   <button type="submit" className="primary wide" disabled={busy}>{busy?'Verifying…':mode==='login'?'Sign in':'Create account'}</button></form>
   <div className="oauth-divider">or continue with</div>
   <a className="google-auth-button" href={'/api/auth/google?portal='+encodeURIComponent(role)}><span className="google-g" aria-hidden="true">G</span> Continue with Google</a>
-  <p className="hint">{role==='user'?'New Google accounts can register as Users.':'Existing authorised accounts must link their Google identity before privileged login.'}</p>
+  <p className="hint">{role==='user'?'New Google accounts can register as Users.':'Existing accounts can sign in with their password, then link Google from their role dashboard. New organisers may apply using Google.'}</p>
   <Link href="/" className="role-login-back">← Back to EventPass</Link>
  </div></main>;
 }
