@@ -24,7 +24,8 @@ export async function POST(req: Request) {
         const design=await tx`select ticket_theme,qr_keyword_ciphertext,
           (select m.id from event_media m where m.event_id=e.id and m.media_type='ticket_art' and m.approved order by m.created_at asc limit 1) as ticket_art_id
           from events e where e.id=${order.event_id}`;
-        if(!design[0]?.qr_keyword_ciphertext)return {error:'Event secure QR configuration is missing',status:409};
+        // Existing legacy events use signed EVP1 tickets; new configured events use encrypted EVP2.
+        // Never mark a payment approved without issuing every ticket inside this same transaction.
         for(let i=0;i<Number(order.quantity);i++){
           const ticket=await tx`insert into tickets(event_id,order_id,owner_id)
            values(${order.event_id},${id},${order.buyer_id}) returning id,event_id,status,created_at`;
