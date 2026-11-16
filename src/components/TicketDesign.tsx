@@ -10,7 +10,7 @@ export type PassDesignProps={
  status?:string; admissionLabel?:string;
 };
 const cash=(value:number)=>value? '₦'+Number(value).toLocaleString('en-NG'):'FREE';
-function MasqueradeArt({variant}:{variant:string}){
+export function MasqueradeArt({variant}:{variant:string}){
  return <svg className="masque-art" viewBox="0 0 410 370" aria-hidden="true" focusable="false">
   <defs>
    <linearGradient id={'masque-gold-'+variant} x1="0%" y1="0%" x2="95%" y2="100%">
