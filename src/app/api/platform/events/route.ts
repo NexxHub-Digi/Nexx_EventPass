@@ -43,7 +43,9 @@ export async function POST(req:Request){
    });
   }else{
    if(!uuid(mediaId))return fail('Media ID required');
-   const result=await db()`update event_media set approved=${action==='approve_media'} where event_id=${eventId} and id=${mediaId} returning id`;
+   const result=action==='reject_media'
+    ?await db()`delete from event_media where event_id=${eventId} and id=${mediaId} returning id`
+    :await db()`update event_media set approved=true where event_id=${eventId} and id=${mediaId} returning id`;
    if(!result[0])return fail('Media not found for event',404);
    await db()`insert into platform_admin_actions(admin_id,action,details) values(${u.id},${action},${JSON.stringify({eventId,mediaId})}::jsonb)`;
   }
