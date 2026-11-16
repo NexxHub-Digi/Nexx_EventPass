@@ -44,6 +44,7 @@ export default function RoleWorkspace(){
  const [bankName,setBankName]=useState(''),[accountName,setAccountName]=useState(''),[accountNumber,setAccountNumber]=useState('');
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
+ const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string}|null>(null);
  const [staffEmail,setStaffEmail]=useState(''),[gateLabel,setGateLabel]=useState('Main gate'),[newOrganiser,setNewOrganiser]=useState(''),[latestInvite,setLatestInvite]=useState('');
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
  const valid=role==='user'||role==='organiser'||role==='gate'||role==='platform-admin';
@@ -384,12 +385,19 @@ export default function RoleWorkspace(){
     {!visibleEvents.length&&<div className="rw-empty"><h3>No matching events yet</h3><p>Try another search or choose a different category.</p></div>}
   </section>
   <section className="rw-panel"><h2>My orders</h2>{orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.event_title}</b><p>{o.status} · {money(o.amount_ngn)}</p><small>{o.payment_reference}</small>{!o.receipt_uploaded_at&&o.status==='pending'&&o.amount_ngn>0&&<label className="rw-field">Upload missing receipt<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={e=>setReceiptUploads({...receiptUploads,[o.id]:e.target.files?.[0]||null})}/>{btn('Send receipt',()=>{void upload(o.id)})}</label>}</div></div>)}{!orders.length&&<p>Your event orders will appear here.</p>}</section>
-  <section className="rw-panel"><h2>My ticket wallet</h2>{tickets.map(t=>isMasqueradeTemplate(t.ticket_theme||'')?<div key={t.id} className="rw-wallet-masquerade"><TicketDesign themeId={t.ticket_theme} title={t.title} venue={t.venue} startsAt={t.starts_at} priceNgn={events.find(e=>e.id===t.event_id)?.price_ngn||0} organiser={events.find(e=>e.id===t.event_id)?.organiser||'Event Organiser'} qr={t.qr} ticketCode={t.id} customArtwork={t.ticket_art_id?'/api/events/media?id='+t.ticket_art_id:null} admissionLabel={t.admission_label||'ADMIT ONE'} status={t.redeemed_at?'redeemed':t.status}/><small>{t.redeemed_at?'Already checked in':'Approved ticket · Unique entry QR'} · {t.id.slice(0,12).toUpperCase()}</small></div>:<div key={t.id} className="rw-ticket rw-designed-ticket" style={{background:themeFor(t.ticket_theme||'aurora').gradient}}>
+  <section className="rw-panel"><h2>My ticket wallet</h2>{tickets.map(t=>isMasqueradeTemplate(t.ticket_theme||'')?<div key={t.id} className="rw-wallet-masquerade"><TicketDesign themeId={t.ticket_theme} title={t.title} venue={t.venue} startsAt={t.starts_at} priceNgn={events.find(e=>e.id===t.event_id)?.price_ngn||0} organiser={events.find(e=>e.id===t.event_id)?.organiser||'Event Organiser'} qr={t.qr} ticketCode={t.id} customArtwork={t.ticket_art_id?'/api/events/media?id='+t.ticket_art_id:null} admissionLabel={t.admission_label||'ADMIT ONE'} status={t.redeemed_at?'redeemed':t.status}/><small>{t.redeemed_at?'Already checked in':'Approved ticket · Unique entry QR'} · {t.id.slice(0,12).toUpperCase()}</small>{t.qr&&btn('Enlarge secure entry QR',()=>setExpandedQr({value:t.qr!,eventName:t.title}),true)}</div>:<div key={t.id} className="rw-ticket rw-designed-ticket" style={{background:themeFor(t.ticket_theme||'aurora').gradient}}>
     {t.ticket_art_id&&<img className="rw-ticket-art" src={'/api/events/media?id='+t.ticket_art_id} alt="Custom event ticket design"/>}
     <div className="rw-ticket-details"><small>NEXX EVENTPASS • OFFICIAL ENTRY</small><h3>{t.title}</h3><p>{t.venue} · {nice(t.starts_at)}</p>
       {t.qr&&<div className="rw-qr"><QRCodeSVG value={t.qr} size={182} level="H" includeMargin/></div>}
       <b>{t.redeemed_at?'ALREADY CHECKED IN':t.status.toUpperCase()}</b></div>
     </div>)}{!tickets.length&&<p>Approved event passes will appear here with a unique encrypted QR code.</p>}</section>
+ </div>}
+ {role==='user'&&expandedQr&&<div className="masque-qr-modal-backdrop" role="presentation" onClick={()=>setExpandedQr(null)}>
+  <div className="masque-qr-modal" role="dialog" aria-modal="true" aria-label="Enlarged ticket QR" onClick={e=>e.stopPropagation()}>
+   <h3>{expandedQr.eventName}</h3><p>Show this secure QR to the assigned Gate Operator.</p>
+   <div className="masque-expanded-code"><QRCodeSVG value={expandedQr.value} size={288} level="H" includeMargin/></div>
+   {btn('Close',()=>setExpandedQr(null))}
+  </div>
  </div>}
  {role==='gate'&&<div className="rw-gate-flow"><div className="eyebrow">ASSIGNED ENTRY CONTROL</div>
   <h1>{eventId?'Ready for entry':'Choose your assigned event'}</h1>
