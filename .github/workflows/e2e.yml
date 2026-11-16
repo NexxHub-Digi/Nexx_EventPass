@@ -28,6 +28,8 @@ jobs:
       NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3210
       AUTH_SECRET: ci-auth-test-only-never-use-in-production-123456789
       QR_SIGNING_SECRET: ci-qr-test-only-never-use-in-production-123456789
+      GOOGLE_GATE_CLIENT_ID: 123456-e2e-test.apps.googleusercontent.com
+      GOOGLE_GATE_CLIENT_SECRET: ci-dummy-not-real-oauth-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
