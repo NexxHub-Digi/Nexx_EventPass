@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import {useParams} from 'next/navigation';
 import Link from 'next/link';
-const portals={user:['User','Discover events, explore media and keep your ticket wallet'],organiser:['Event Organiser','Create events, request verification and design tickets'],gate:['Gate Operator','Access only the events your organiser assigned'],platform_admin:['Platform Admin','Review organisers, approve event listings and manage access']} as const;
+const portals={user:['User','Discover events, explore media and keep your ticket wallet'],organiser:['Event Organiser','Create events, request verification and design tickets'],gate:['Gate Operator','Access only the events your organiser assigned'],'platform-admin':['Platform Admin','Review organisers, approve event listings and manage access']} as const;
 export default function RoleLogin(){
  const params=useParams<{role:string}>(),role=params.role as keyof typeof portals,details=portals[role];
  const [error,setError]=useState('');
