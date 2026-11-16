@@ -46,3 +46,8 @@ Never trust a locally decoded QR payload as admission authorization. The backend
 ## License
 
 Copyright Nexx EventPass. License to be selected by the project owner.
+
+
+## Mobile UX refinement v2
+
+The `Refined mobile UX` navigation section provides 10 Android/iOS screen mockups: discovery, event detail, checkout, wallet, staff sign-in, QR scanner, valid/duplicate/invalid states, and organiser analytics. On narrow screens the website uses a collapsible menu. These are demonstrative UI layouts, not implemented payment or gate verification services.
