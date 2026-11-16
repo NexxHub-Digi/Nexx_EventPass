@@ -1,0 +1,19 @@
+{
+  "name": "Nexx EventPass",
+  "tagline": "Events Made Simple. Entry Made Secure.",
+  "colors": {
+    "navy": "#0B1020",
+    "surface": "#171F33",
+    "violet": "#8B5CF6",
+    "teal": "#45D6C9",
+    "success": "#43D7A1",
+    "warning": "#FBBF24",
+    "danger": "#FB7185",
+    "text": "#F8FAFF",
+    "muted": "#A4B1C8"
+  },
+  "fonts": [
+    "Inter",
+    "Plus Jakarta Sans"
+  ]
+}
