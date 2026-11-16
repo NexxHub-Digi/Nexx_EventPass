@@ -40,7 +40,9 @@ export async function PATCH(req:Request){
   if(!/^[0-9a-f-]{36}$/i.test(eventId))return fail('Invalid event');
   const selectedTheme=await db()`select id from ticket_theme_catalog where id=${ticketTheme} and active=true limit 1`;
   if(!selectedTheme[0])return fail('Invalid or inactive ticket theme');
-  const rows=await db()`update events set description=${description},category=${category},ticket_theme=${ticketTheme},verification_status='pending'
+  const issued=await db()`select exists(select 1 from tickets where event_id=${eventId}) as has_tickets`;
+  if(issued[0]?.has_tickets)return fail('This event already has issued tickets. Contact Platform Admin to change a live event without disrupting existing passes.',409);
+  const rows=await db()`update events set description=${description},category=${category},ticket_theme=${ticketTheme},verification_status='pending',status='draft'
     where id=${eventId} and organiser_id=${u.id} returning id,description,category,ticket_theme`;
   if(!rows[0])return fail('Event not found or not owned by you',404);
   return ok({event:rows[0],message:'Changes are pending Platform Admin review before they appear publicly.'});

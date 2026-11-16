@@ -30,9 +30,10 @@ export async function POST(req:Request){
   if(action==='verify'){
    if(owned[0].account_status!=='active')return fail('Organiser is not active',409);
    if(new Date(owned[0].starts_at).getTime()<=Date.now())return fail('Cannot verify a past event',409);
+   const pending=await db()`select count(*)::int as count from event_media where event_id=${eventId} and approved=false`;
+   if(Number(pending[0]?.count)>0)return fail('Review every pending media asset before verifying the event',409);
    await db().begin(async tx=>{
     await tx`update events set status='published',verification_status='verified',verified_by=${u.id},verified_at=now() where id=${eventId}`;
-    await tx`update event_media set approved=true where event_id=${eventId}`;
     await tx`insert into platform_admin_actions(admin_id,action,details) values(${u.id},'verify_event',${JSON.stringify({eventId})}::jsonb)`;
    });
   }else if(action==='reject'){

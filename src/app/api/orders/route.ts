@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   try { const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active account required',403);
     const b=await payload(req);const eventId=str(b.eventId,40),quantity=positiveInt(b.quantity,10),reference=str(b.paymentReference,250);
     if(!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(eventId) || !quantity || reference.length<5) return fail('Event, quantity and manual payment reference required');
-    const e=await db()`select e.id,e.price_ngn,e.capacity,p.bank_name,p.account_number from events e join app_users a on a.id=e.organiser_id left join organiser_payment_accounts p on p.organiser_id=e.organiser_id where e.id=${eventId} and e.status='published' and e.starts_at>now() and a.account_status='active'`;
+    const e=await db()`select e.id,e.price_ngn,e.capacity,p.bank_name,p.account_number from events e join app_users a on a.id=e.organiser_id left join organiser_payment_accounts p on p.organiser_id=e.organiser_id where e.id=${eventId} and e.status='published' and e.verification_status='verified' and e.starts_at>now() and a.account_status='active'`;
     if(!e[0])return fail('Event is not available');
     if(Number(e[0].price_ngn)>0 && (!e[0].bank_name || !e[0].account_number))return fail('Organiser has not configured payment instructions',409);
     const orders=await db()`insert into ticket_orders (event_id,buyer_id,quantity,amount_ngn,payment_reference,status) values (${eventId},${u.id},${quantity},${quantity*Number(e[0].price_ngn)},${reference},'pending') returning id,event_id,buyer_id,quantity,amount_ngn,payment_reference,status,created_at`;

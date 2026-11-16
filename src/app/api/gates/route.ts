@@ -11,9 +11,9 @@ export async function GET(){
  const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active account required',403);
  const gates=await db()`select g.event_id,g.gate_label,e.title,e.starts_at,e.organiser_id,o.full_name as organiser_name
  from gate_assignments g join events e on e.id=g.event_id join app_users o on o.id=e.organiser_id
- where g.user_id=${u.id} and o.role='organiser' and o.account_status='active'
+ where g.user_id=${u.id} and e.status='published' and e.verification_status='verified' and o.role='organiser' and o.account_status='active'
  union select e.id,'Organiser'::text,e.title,e.starts_at,e.organiser_id,u.full_name
- from events e where e.organiser_id=${u.id} and u.role='organiser' and u.account_status='active'
+ from events e where e.organiser_id=${u.id} and e.status='published' and e.verification_status='verified' and u.role='organiser' and u.account_status='active'
  order by starts_at desc`;
  const invitations=u.role==='organiser'?await db()`select i.id,i.event_id,i.invitee_email,i.gate_label,i.status,
  i.created_at,i.token_expires_at,i.accepted_at from gate_invitations i where i.organiser_id=${u.id}
@@ -26,7 +26,7 @@ export async function POST(req:Request){
  const u=await currentUser();if(!u||u.role!=='organiser'||u.account_status!=='active')return fail('Active organiser required',403);
  const b=await payload(req),eventId=str(b.eventId,40),email=str(b.email,254).toLowerCase(),gateLabel=str(b.gateLabel,60)||'Main gate';
  if(!validUuid(eventId)||!validEmail(email))return fail('Valid event and email required',400);
- const owned=await db()`select id from events where id=${eventId} and organiser_id=${u.id} and status='published'`;
+ const owned=await db()`select id from events where id=${eventId} and organiser_id=${u.id} and status='published' and verification_status='verified'`;
  if(!owned[0])return fail('Only the owning organiser can invite operators to a published event',403);
  if(email===u.email.toLowerCase())return fail('Organiser already has gate access',409);
  const alreadyAssigned=await db()`select 1 from gate_assignments g join app_users assigned on assigned.id=g.user_id

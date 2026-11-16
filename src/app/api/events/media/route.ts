@@ -14,8 +14,9 @@ export async function GET(req:Request){
     or (e.organiser_id=${u?.id||null} and ${u?.role==='organiser'})
     or ${u?.role==='platform_admin'&&u?.account_status==='active'}) limit 1`;
    if(!results[0])return fail('Media not found',404);
+   const isPrivate=Boolean(u);
    return new Response(new Uint8Array(results[0].media_data as Uint8Array),{headers:{
-     'Content-Type':String(results[0].mime_type),'Cache-Control':'public, max-age=600',
+     'Content-Type':String(results[0].mime_type),'Cache-Control':isPrivate?'private, no-store':'public, max-age=600',
      'Content-Disposition':'inline','X-Content-Type-Options':'nosniff',
      'Content-Security-Policy':"default-src 'none'; sandbox"
    }});
