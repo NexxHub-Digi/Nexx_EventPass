@@ -1,0 +1,3 @@
+import {adminClient,requestUser,errorResponse} from "@/lib/supabase";
+export const runtime="nodejs";
+export async function POST(request:Request){try{const user=await requestUser(request);const {event_id,email,role}=await request.json();if(typeof event_id!=="string"||typeof email!=="string"||!email.includes("@")||!["gate","supervisor"].includes(role))throw Error("Invalid staff assignment details");const {data,error}=await adminClient().rpc("assign_event_staff_by_email",{p_event_id:event_id,p_owner_uid:user.id,p_email:email,p_role:role});if(error)throw error;return Response.json({staff:data},{headers:{"Cache-Control":"no-store"}})}catch(e){return errorResponse(e)}}
