@@ -64,7 +64,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(masks.length,5,'all five masquerade layout templates appear in Organiser theme catalogue');
   expect(await req('/api/auth/google?portal=gate&client=native'),400,'native OAuth requires PKCE challenge');
     const date=new Date(Date.now()+3600000).toISOString();
-  const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,qrKeyword:'private-test-keyword',ticketTheme:'stj-royal-gold'}),201,'create event').event;
+  const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,qrKeyword:'private-test-keyword',ticketTheme:'stj-royal-gold',admissionLabel:'ADMIT ONE — MASK COMPULSORY'}),201,'create event').event;
   assert.equal(event.status,'draft','new event cannot auto-publish');
   assert.equal(event.verification_status,'pending','new event requires verification');
   assert.ok(!expect(await req('/api/events'),200,'pre-review discovery').events.some(x=>x.id===event.id),'unreviewed event hidden');
@@ -99,6 +99,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const ticket=tickets.find(t=>t.event_id===event.id);assert.ok(ticket?.qr?.startsWith('EVP2.'));
   assert.ok(ticket?.delivered_at,'ticket is immediately delivered into User wallet');
   assert.equal(ticket?.ticket_theme,'stj-royal-gold','issued ticket retains the selected luxurious STJ design');
+  assert.equal(ticket?.admission_label,'ADMIT ONE — MASK COMPULSORY','issued ticket preserves approved admission wording');
   expect(await req('/api/events/media?id='+artworkId),200,'verified poster publicly accessible');
   expect(await req('/api/events/media?eventId='+event.id,{cookie:buyer.cookie}),200,'buyer can browse gallery');
   expect(await req('/api/tickets',{cookie:buyer.cookie}),200,'tickets remain accessible');
