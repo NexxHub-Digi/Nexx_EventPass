@@ -2,14 +2,17 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {QRCodeSVG} from 'qrcode.react';
 import {useParams} from 'next/navigation';
+import {ticketThemes,findTicketTheme} from '@/lib/ticket-themes';
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null};
-type Event={id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
+type Event={id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;verification_status?:string;organiser?:string;description?:string;category?:string;ticket_theme?:string;cover_media_id?:string|null;video_media_id?:string|null;ticket_art_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type Order={id:string;event_id:string;event_title:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
-type Ticket={id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;redeemed_at?:string|null};
+type Ticket={id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;redeemed_at?:string|null;ticket_theme?:string;ticket_art_id?:string|null};
 type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string};
 type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null};
 type Invite={id:string;event_id:string;invitee_email:string;gate_label:string;status:string};
 type Scan={id:string;outcome:string;operator?:string;gate_label:string;scanned_at:string};
+type EventMedia={id:string;media_type:string;file_name:string;approved?:boolean;url:string};
+type ModerationEvent={id:string;title:string;venue:string;starts_at:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;pending_media:number};
 const roles={user:'User',organiser:'Event Organiser',gate:'Gate Operator','platform-admin':'Platform Administrator'} as const;
 type Role=keyof typeof roles;
 const money=(v:number)=>'₦'+Number(v).toLocaleString('en-NG');
@@ -24,6 +27,9 @@ export default function RoleWorkspace(){
  const p=useParams<{role:string}>(),role=p.role as Role,title=roles[role],scanControls=useRef<{stop:()=>void}|null>(null);
  const [me,setMe]=useState<Member|null>(null),[portals,setPortals]=useState<string[]>([]),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[orders,setOrders]=useState<Order[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[gates,setGates]=useState<Gate[]>([]),[invites,setInvites]=useState<Invite[]>([]);
+ const [search,setSearch]=useState(''),[filterCategory,setFilterCategory]=useState('All'),[sortBy,setSortBy]=useState('soonest');
+ const [eventDescription,setEventDescription]=useState(''),[eventCategory,setEventCategory]=useState('Music'),[ticketTheme,setTicketTheme]=useState('aurora');
+ const [eventMedia,setEventMedia]=useState<EventMedia[]>([]),[moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<EventMedia[]>([]);
  const [organisers,setOrganisers]=useState<Organiser[]>([]),[stats,setStats]=useState<Record<string,number>>({});
  const [selectedOrganiser,setSelectedOrganiser]=useState(''),[editName,setEditName]=useState(''),[editBank,setEditBank]=useState(''),[editAccount,setEditAccount]=useState(''),[editNumber,setEditNumber]=useState('');
  const [bankName,setBankName]=useState(''),[accountName,setAccountName]=useState(''),[accountNumber,setAccountNumber]=useState('');
@@ -50,19 +56,49 @@ export default function RoleWorkspace(){
   else if(role==='platform-admin'){
    const [a,overview]=await Promise.all([api('platform/organisers'),api('platform/overview')]);
    setOrganisers(a.organisers||[]);setStats(overview.stats||{});
+   const reviews=await api('platform/events');setModerationEvents(reviews.events||[]);setModerationMedia(reviews.media||[]);
   }
  }
  useEffect(()=>{setLoading(true);fetchAll().catch(e=>setMessage((e as Error).message)).finally(()=>setLoading(false));return ()=>{scanControls.current?.stop()}},[role]);
  useEffect(()=>{if(!eventId){setOrders([]);setScans([]);return}
  if(role==='organiser')api('orders?eventId='+encodeURIComponent(eventId)).then(v=>setOrders(v.orders||[])).catch(e=>setMessage((e as Error).message));
  if(role==='gate')api('gates/activity?eventId='+encodeURIComponent(eventId)).then(v=>setScans(v.scans||[])).catch(e=>setMessage((e as Error).message));
+ if(role==='organiser')api('events/media?eventId='+encodeURIComponent(eventId)).then(v=>setEventMedia(v.media||[])).catch(e=>setMessage((e as Error).message));
  },[eventId,role]);
  async function run(fn:()=>Promise<void>){setBusy(true);setMessage('');try{await fn()}catch(e){setMessage((e as Error).message)}finally{setBusy(false)}}
  async function createEvent(){await run(async()=>{
   const date=new Date(startsAt);if(!Number.isFinite(date.getTime()))throw Error('Choose an event date');
-  await api('events','POST',{title:eventTitle,venue,startsAt:date.toISOString(),capacity:Number(capacity),priceNgn:Number(ticketPrice),qrKeyword:keyword});
-  setEventTitle('');setKeyword('');await fetchAll();setMessage('Event published');
+  const result=await api('events','POST',{title:eventTitle,venue,description:eventDescription,category:eventCategory,ticketTheme,startsAt:date.toISOString(),capacity:Number(capacity),priceNgn:Number(ticketPrice),qrKeyword:keyword});
+  setEventTitle('');setKeyword('');await fetchAll();setEventId(result.event.id);setMessage('Event created! Add promotional media and send your listing for Platform Admin verification.');
  })}
+ async function saveEventDesign(){await run(async()=>{
+  if(!eventId)throw Error('Select your event first');
+  await api('events','PATCH',{eventId,description:eventDescription,category:eventCategory,ticketTheme});
+  await fetchAll();setMessage('Event design saved. Updated event content awaits platform review.');
+ })}
+ async function uploadMedia(file:File|null,purpose=''){
+  if(!eventId||!file)return;
+  await run(async()=>{
+   const form=new FormData();form.append('eventId',eventId);form.append('file',file);
+   if(purpose)form.append('purpose',purpose);
+   await api('events/media','POST',form);
+   const v=await api('events/media?eventId='+encodeURIComponent(eventId));setEventMedia(v.media||[]);
+   setMessage('Media uploaded for administrator review.');
+  });
+ }
+ async function deleteMedia(id:string){await run(async()=>{
+  await api('events/media','DELETE',{id});const v=await api('events/media?eventId='+encodeURIComponent(eventId));setEventMedia(v.media||[]);
+  setMessage('Media removed');
+ })}
+ async function moderateEvent(eventId:string,action:string,mediaId?:string){await run(async()=>{
+  await api('platform/events','POST',{eventId,action,mediaId});
+  const result=await api('platform/events');setModerationEvents(result.events||[]);setModerationMedia(result.media||[]);
+  setMessage('Event review completed');
+ })}
+ async function loadUserMedia(id:string){setSelectedEvent(id);if(!id){setEventMedia([]);return}
+  try{const v=await api('events/media?eventId='+encodeURIComponent(id));setEventMedia(v.media||[])}
+  catch(e){setMessage(e instanceof Error?e.message:'Media unavailable')}
+ }
  async function saveBank(){await run(async()=>{await api('organiser/payment-account','POST',{bankName,accountName,accountNumber});setMessage('Bank instructions saved. They are displayed on your published events.');await fetchAll()})}
  async function book(e:Event){await run(async()=>{
   if(!receipt&&e.price_ngn>0)throw Error('Upload payment receipt before submitting a paid order');
@@ -125,6 +161,11 @@ export default function RoleWorkspace(){
  }
  async function signout(){await api('auth/logout','POST');window.location.assign('/login/'+role)}
  const input=(label:string,value:string,onChange:(v:string)=>void,type='text')=><label className="rw-field">{label}<input value={value} onChange={e=>onChange(e.target.value)} type={type}/></label>;
+ const categories=['All',...new Set(events.filter(e=>e.status==='published').map(e=>e.category||'Other'))];
+ const visibleEvents=events.filter(e=>e.status==='published'&&e.verification_status!=='pending')
+  .filter(e=>filterCategory==='All'||(e.category||'Other')===filterCategory)
+  .filter(e=>[e.title,e.venue,e.organiser||'',e.description||''].join(' ').toLowerCase().includes(search.toLowerCase()))
+  .sort((a,b)=>sortBy==='price'?a.price_ngn-b.price_ngn:sortBy==='latest'?new Date(b.starts_at).getTime()-new Date(a.starts_at).getTime():new Date(a.starts_at).getTime()-new Date(b.starts_at).getTime());
  const btn=(text:string,callback:()=>void,secondary=false)=><button className={secondary?'ghost':'primary'} disabled={busy} onClick={callback}>{text}</button>;
  if(!valid)return <main className="rw-shell"><h1>Unknown interface</h1><a href="/login/user">User login</a></main>;
  if(loading)return <main className="rw-shell"><p>Loading your EventPass account…</p></main>;
