@@ -94,11 +94,13 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/events',org.cookie,{title:'Nope',venue:'E2E',startsAt:date,capacity:1,priceNgn:0,qrKeyword:'secrettest123'}),403,'suspended organiser');
   expect(await post('/api/platform/organisers',adminCookie,{action:'restore',userId:org.id}),200,'restore organiser');
   const nativeCode=randomBytes(32).toString('base64url');
-  await sql.unsafe('insert into mobile_auth_codes(code_hash,user_id,client,expires_at) values($1,$2,$3,now()+interval \'2 minutes\')',
-  [createHash('sha256').update(nativeCode).digest('hex'),buyer.id,'user']);
-  const native=expect(await post('/api/auth/mobile',null,{code:nativeCode,client:'user'}),200,'single-use Google native exchange');
+  const nativeVerifier=randomBytes(32).toString('hex');const nativeChallenge=createHash('sha256').update(nativeVerifier).digest('hex');
+  await sql.unsafe('insert into mobile_auth_codes(code_hash,user_id,client,expires_at,code_challenge) values($1,$2,$3,now()+interval \'2 minutes\',$4)',
+  [createHash('sha256').update(nativeCode).digest('hex'),buyer.id,'user',nativeChallenge]);
+  expect(await post('/api/auth/mobile',null,{code:nativeCode,client:'user',codeVerifier:randomBytes(32).toString('hex')}),410,'invalid verifier does not redeem code');
+  const native=expect(await post('/api/auth/mobile',null,{code:nativeCode,client:'user',codeVerifier:nativeVerifier}),200,'single-use Google native exchange');
   assert.ok(native.token,'native app receives scoped server JWT');
-  expect(await post('/api/auth/mobile',null,{code:nativeCode,client:'user'}),410,'native exchange code is one time');
+  expect(await post('/api/auth/mobile',null,{code:nativeCode,client:'user',codeVerifier:nativeVerifier}),410,'native exchange code is one time');
     expect(await req('/api/tickets',{bearer:buyer.token}),200,'mobile bearer access before logout');
   expect(await post('/api/auth/logout',buyer.cookie,{}),200,'server-side session revocation');
   expect(await req('/api/tickets',{bearer:buyer.token}),403,'revoked mobile token cannot access wallet');
