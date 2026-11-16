@@ -48,7 +48,7 @@ alter table public.tickets enable row level security;
 alter table public.entry_audit enable row level security;
 drop policy if exists eventpass_events_select on public.events;
 create policy eventpass_events_select on public.events for select to anon,authenticated using (
- status='published' or owner_id=(select auth.uid()) or exists(select 1 from public.event_staff s where s.event_id=id and s.user_id=(select auth.uid()))
+ status='published' or owner_id=(select auth.uid())
 );
 drop policy if exists eventpass_events_owner_insert on public.events;
 create policy eventpass_events_owner_insert on public.events for insert to authenticated with check(owner_id=(select auth.uid()));
