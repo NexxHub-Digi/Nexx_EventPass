@@ -29,6 +29,27 @@ export async function POST(req:Request){
  const owned=await db()`select id from events where id=${eventId} and organiser_id=${u.id} and status='published'`;
  if(!owned[0])return fail('Only the owning organiser can invite operators to a published event',403);
  if(email===u.email.toLowerCase())return fail('Organiser already has gate access',409);
+ if(str(b.mode,10)==='add'){
+  // Direct assignment is restricted to an already-registered, Google-verified account.
+  // Unregistered and password-only recipients use the private invitation acceptance flow.
+  const verified=await db()`select user_account.id from app_users user_account
+   where lower(user_account.email)=${email} and user_account.account_status='active'
+   and user_account.role!='platform_admin'
+   and exists(select 1 from oauth_identities ident where ident.user_id=user_account.id
+    and ident.provider='google' and lower(ident.provider_email)=${email}) limit 1`;
+  if(!verified[0])return fail('This person is not yet Google-verified. Use Invite to send a secure acceptance link instead.',409);
+  await db().begin(async tx=>{
+   await tx`insert into gate_assignments(event_id,user_id,gate_label)
+    values(${eventId},${verified[0].id},${gateLabel})
+    on conflict(event_id,user_id) do update set gate_label=excluded.gate_label`;
+   await tx`insert into gate_invitations(event_id,organiser_id,invitee_email,gate_label,status,token_hash,token_expires_at,accepted_by,accepted_at)
+    values(${eventId},${u.id},${email},${gateLabel},'accepted',null,null,${verified[0].id},now())
+    on conflict(event_id,invitee_email) do update set gate_label=excluded.gate_label,status='accepted',
+    token_hash=null,token_expires_at=null,accepted_by=excluded.accepted_by,accepted_at=now()`;
+  });
+  return ok({success:true,status:'accepted',message:'Verified registered person added to this event gate'});
+ }
+
  const token=randomBytes(32).toString('base64url'),tokenHash=hash(token);
  const invited=await db()`insert into gate_invitations(event_id,organiser_id,invitee_email,gate_label,status,token_hash,token_expires_at,accepted_by,accepted_at)
  values(${eventId},${u.id},${email},${gateLabel},'pending',${tokenHash},now()+interval '72 hours',null,null)
