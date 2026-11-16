@@ -96,7 +96,7 @@ export async function GET(req:NextRequest){
   }
   const session=await issueSession(user.id);
   const safeInvite=portal==='user'&&typeof st.returnTo==='string'&&/^\/invite\/gate\?token=[A-Za-z0-9_-]{43}$/.test(st.returnTo);
-  const destination=new URL(safeInvite?st.returnTo:'/dashboard/'+(portal==='platform_admin'?'platform-admin':portal),origin);
+  const destination=new URL(safeInvite?st.returnTo!:'/dashboard/'+(portal==='platform_admin'?'platform-admin':portal),origin);
   destination.searchParams.set('oauth','success');
   destination.searchParams.set('portal',portal);
   destination.searchParams.set('view',(portal==='organiser'&&user.requested_role==='organiser')?'pending':portalDestination(portal));
