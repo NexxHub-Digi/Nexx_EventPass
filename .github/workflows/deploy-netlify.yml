@@ -1,0 +1,29 @@
+name: EventPass Netlify Production Deploy
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: eventpass-netlify-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Netlify secrets
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          test -n "$NETLIFY_AUTH_TOKEN" || { echo "Configure NETLIFY_AUTH_TOKEN in GitHub Actions secrets"; exit 1; }
+          test -n "$NETLIFY_SITE_ID" || { echo "Configure NETLIFY_SITE_ID in GitHub Actions secrets"; exit 1; }
+      - name: Deploy full-stack Next.js to Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: npx --yes netlify-cli@latest deploy --build --prod --site "$NETLIFY_SITE_ID"
