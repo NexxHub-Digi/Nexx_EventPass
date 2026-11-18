@@ -37,3 +37,10 @@ jobs:
       - name: Check TypeScript
         working-directory: apps/${{ matrix.app }}
         run: npx tsc --noEmit
+      - name: Build Android JavaScript bundle
+        working-directory: apps/${{ matrix.app }}
+        run: npx expo export --platform android --output-dir /tmp/eventpass-android-${{ matrix.app }}
+      - name: Build iOS JavaScript bundle
+        working-directory: apps/${{ matrix.app }}
+        run: npx expo export --platform ios --output-dir /tmp/eventpass-ios-${{ matrix.app }}
+
