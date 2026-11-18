@@ -6,7 +6,7 @@ import {SignJWT} from 'jose';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 if(process.env.CI!=='true'||process.env.EVENTPASS_E2E!=='true'||!/@(localhost|127\.0\.0\.1):/.test(process.env.DATABASE_URL||''))throw Error('Refusing to run E2E outside isolated local CI');
 const sql=postgres(process.env.DATABASE_URL,{ssl:false,prepare:false});
-const base='http://127.0.0.1:3210', tag=randomUUID().slice(0,8),password='EventPass-E2E-Password-123456789!';
+const base='http://localhost:3210', tag=randomUUID().slice(0,8),password='EventPass-E2E-Password-123456789!';
 const email=name=>'e2e-'+name+'-'+tag+'@example.invalid';
 async function req(path,{cookie,bearer,method='GET',body,form}={}){
  const resp=await fetch(base+path,{method,headers:{...(cookie?{Cookie:cookie}:{}),...(bearer?{Authorization:'Bearer '+bearer}:{}),...(!form&&body?{'Content-Type':'application/json'}:{})},body:form||(body?JSON.stringify(body):undefined)});
