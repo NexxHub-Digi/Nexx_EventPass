@@ -29,6 +29,29 @@ jobs:
         run: |
           test -n "$NETLIFY_AUTH_TOKEN" || { echo "Configure NETLIFY_AUTH_TOKEN in GitHub Actions secrets"; exit 1; }
           test -n "$NETLIFY_SITE_ID" || { echo "Configure NETLIFY_SITE_ID in GitHub Actions secrets"; exit 1; }
+      - name: Verify Netlify token and project permissions
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          set -euo pipefail
+          check_netlify() {
+            local endpoint="$1" label="$2" status
+            status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --connect-timeout 10 --max-time 30 \
+              --header "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" \
+              --header "Accept: application/json" \
+              "https://api.netlify.com/api/v1/${endpoint}")
+            case "$status" in
+              200) echo "${label}: access verified" ;;
+              401) echo "::error::${label}: Netlify rejected the access token (HTTP 401). Replace NETLIFY_AUTH_TOKEN."; exit 1 ;;
+              403) echo "::error::${label}: Netlify denied access (HTTP 403). Check token owner, project membership and deployment permissions."; exit 1 ;;
+              404) echo "::error::${label}: Netlify resource not found or inaccessible (HTTP 404). Check NETLIFY_SITE_ID and token owner's access."; exit 1 ;;
+              *) echo "::error::${label}: Netlify API returned HTTP ${status}. Check Netlify service status and permissions."; exit 1 ;;
+            esac
+          }
+          check_netlify "user" "Token authentication"
+          check_netlify "sites/${NETLIFY_SITE_ID}" "Target project"
       - name: Deploy full-stack Next.js to Netlify
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
