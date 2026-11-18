@@ -1,2 +1,7 @@
+import {redirect} from 'next/navigation';
 import RoleWorkspace from '@/components/RoleWorkspace';
-export default function Page(){return <RoleWorkspace/>}
+export default async function Page({params}:{params:Promise<{role:string}>}){
+ const {role}=await params;
+ if(role==='organiser')redirect('/organiser');
+ return <RoleWorkspace/>;
+}
