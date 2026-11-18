@@ -369,7 +369,7 @@ export default function RoleWorkspace(){
    <div className="rw-actions">{btn('Manage events',()=>setOrganiserTab('events'))}{btn('Review payments',()=>setOrganiserTab('payments'),true)}{btn('Manage gate team',()=>setOrganiserTab('team'),true)}</div>
    <h3>Recent events</h3>{eventReports.slice(0,5).map(e=><div className="rw-list-item" key={e.id}><div><b>{e.title}</b><p>{e.tickets_issued} tickets issued · {e.checked_in} admitted · {money(e.confirmed_revenue_ngn)}</p></div></div>)}
    {!eventReports.length&&<p>No events yet. Open Events to create your first event.</p>}
-  </section>
+  </section>}
   <section className="rw-panel" style={{display:organiserTab==='settings'?'':'none'}}><div className="eyebrow">ORGANISER HELPDESK</div><h2>Get Platform Support</h2><p>Report issues with event verification, bank payments, QR tickets, or gate staff. Only you and Platform Admin can see your cases.</p>
    {input('Subject',caseSubject,setCaseSubject)}
    <label className="rw-field">Description<textarea rows={3} value={caseDescription} onChange={e=>setCaseDescription(e.target.value)}/></label>
