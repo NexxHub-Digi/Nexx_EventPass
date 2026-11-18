@@ -18,9 +18,11 @@ export default function App(){
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [code,setCode]=useState(''),[scanning,setScanning]=useState(false),[outcome,setOutcome]=useState(''),[permission,askPermission]=useCameraPermissions();
  const [tab,setTab]=useState<'home'|'scan'|'history'|'profile'>('home');
- const [history,setHistory]=useState<{id:number;eventId:string;outcome:string;at:string}[]>([]);
+ const [history,setHistory]=useState<{id:string|number;eventId:string;outcome:string;at:string}[]>([]);
+ const [counts,setCounts]=useState({approved:0,denied:0});
+ async function refreshHistory(id:string,t=token){if(!id||!t)return;try{const r=await api('gate-history?eventId='+encodeURIComponent(id),t);setHistory((r.scans||[]).map((x:{id:string;outcome:string;created_at:string})=>({id:x.id,eventId:id,outcome:x.outcome,at:new Date(x.created_at).toLocaleTimeString()})));setCounts({approved:r.counts?.approved||0,denied:r.counts?.denied||0})}catch(e){setError((e as Error).message)}}
  const scanLock=useRef(false);
-async function verify(v:string){if(scanLock.current)return;scanLock.current=true;setScanning(false);try{await exec(async()=>{if(!eventId)throw Error('Select an event');const r=await api('scan',token,'POST',{eventId,code:v});setOutcome(r.outcome);setHistory(h=>[{id:Date.now(),eventId,outcome:r.outcome,at:new Date().toLocaleTimeString()},...h].slice(0,100));setTab('scan');setCode('')})}finally{scanLock.current=false}}
+async function verify(v:string){if(scanLock.current)return;scanLock.current=true;setScanning(false);try{await exec(async()=>{if(!eventId)throw Error('Select an event');const r=await api('scan',token,'POST',{eventId,code:v});setOutcome(r.outcome);setHistory(h=>[{id:Date.now(),eventId,outcome:r.outcome,at:new Date().toLocaleTimeString()},...h].slice(0,100));setTab('scan');await refreshHistory(eventId);setCode('')})}finally{scanLock.current=false}}
 async function openCamera(){if(!eventId)return;const perm=permission?.granted?permission:await askPermission();if(!perm.granted){Alert.alert('Camera denied','Enable camera access in device settings');return}setTab('scan');setScanning(true)}
  async function load(t:string){
  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
@@ -28,7 +30,7 @@ async function openCamera(){if(!eventId)return;const perm=permission?.granted?pe
  setMember(me.user);
  if(me.user.account_status==='pending')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
- const v=await api('gates',t);setGates(v.gates||[]);if((v.gates||[]).length===1)setEventId(v.gates[0].event_id);
+ const v=await api('gates',t);setGates(v.gates||[]);if((v.gates||[]).length===1){setEventId(v.gates[0].event_id);await refreshHistory(v.gates[0].event_id,t)}
  }
  useEffect(()=>{SecureStore.getItemAsync('eventpass_token').then(t=>{if(t){setToken(t);load(t).catch(e=>setError((e as Error).message))}}).catch(()=>{})},[]);
  async function exec(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
@@ -52,9 +54,9 @@ async function openCamera(){if(!eventId)return;const perm=permission?.granted?pe
  <ScrollView contentContainerStyle={s.body}>
  {!member?<View style={s.hero}><Text style={s.eyebrow}>OPERATOR ACCESS</Text><Text style={s.heroTitle}>Welcome to Nexx Gate</Text><Text style={s.hint}>Sign in with the Google account invited by your event organiser.</Text>{button('Continue with Google',()=>{void login()})}</View>:<>
  {tab==='home'&&<><Text style={s.eyebrow}>OPERATOR WORKSPACE</Text><Text style={s.heroTitle}>Hello, {member.full_name?.split(' ')[0]||'Operator'} 👋</Text><Text style={s.hint}>Select your assigned event to begin secure admissions.</Text>
- <View style={s.metrics}><View style={s.metric}><Text style={s.metricValue}>{history.filter(x=>x.outcome==='approved').length}</Text><Text style={s.hint}>Admitted this session</Text></View><View style={s.metric}><Text style={s.metricValue}>{history.filter(x=>x.outcome!=='approved').length}</Text><Text style={s.hint}>Denied this session</Text></View></View>
+ <View style={s.metrics}><View style={s.metric}><Text style={s.metricValue}>{counts.approved}</Text><Text style={s.hint}>Approved scans</Text></View><View style={s.metric}><Text style={s.metricValue}>{counts.denied}</Text><Text style={s.hint}>Denied scans</Text></View></View>
  <Text style={s.section}>Assigned events</Text>
- {gates.map(g=><Pressable key={g.event_id} accessibilityRole="button" style={[s.card,eventId===g.event_id&&s.selected]} onPress={()=>{setEventId(g.event_id);setOutcome('');setScanning(false)}}><Text style={s.eventTitle}>{g.title}</Text><Text style={s.hint}>⌖ {g.gate_label}</Text><Text style={s.eventStatus}>{eventId===g.event_id?'✓ ACTIVE EVENT':'Tap to select event'}</Text></Pressable>)}
+ {gates.map(g=><Pressable key={g.event_id} accessibilityRole="button" style={[s.card,eventId===g.event_id&&s.selected]} onPress={()=>{setEventId(g.event_id);setOutcome('');setScanning(false);setHistory([]);setCounts({approved:0,denied:0});void refreshHistory(g.event_id)}}><Text style={s.eventTitle}>{g.title}</Text><Text style={s.hint}>⌖ {g.gate_label}</Text><Text style={s.eventStatus}>{eventId===g.event_id?'✓ ACTIVE EVENT':'Tap to select event'}</Text></Pressable>)}
  {!gates.length&&<View style={s.card}><Text style={s.hint}>No active gate assignments. Ask your organiser to invite your verified Google account.</Text></View>}
  {eventId&&button('▣  OPEN QR SCANNER',()=>{void openCamera()})}</>}
  {tab==='scan'&&<><Text style={s.eyebrow}>LIVE VERIFICATION</Text><Text style={s.heroTitle}>Ticket scanner</Text><Text style={s.hint}>{gates.find(g=>g.event_id===eventId)?.title||'Select an assigned event first'}</Text>
@@ -63,7 +65,7 @@ async function openCamera(){if(!eventId)return;const perm=permission?.granted?pe
  {button(scanning?'STOP CAMERA':outcome?'SCAN NEXT TICKET':'START SCANNING',()=>{if(scanning)setScanning(false);else void openCamera()})}
  </View>}
  {!!outcome&&<View accessibilityRole="alert" style={[s.result,{borderColor:outcome==='approved'?'#22C55E':outcome==='duplicate'?'#F59E0B':'#EF4444'}]}><Text style={[s.resultTitle,{color:outcome==='approved'?'#4ADE80':outcome==='duplicate'?'#FBBF24':'#F87171'}]}>{outcome==='approved'?'✓ ENTRY APPROVED':outcome==='duplicate'?'⚠ ALREADY USED':outcome==='wrong_event'?'✕ WRONG EVENT':'✕ ENTRY DENIED'}</Text><Text style={s.hint}>{outcome==='approved'?'Ticket redeemed. Admit this attendee.':'Do not admit. Contact the event organiser if assistance is required.'}</Text></View>}</>}
- {tab==='history'&&<><Text style={s.eyebrow}>THIS DEVICE SESSION</Text><Text style={s.heroTitle}>Scan history</Text><Text style={s.hint}>Recent results from this app session. This is not the server-wide audit log.</Text>{history.length===0?<View style={s.card}><Text style={s.hint}>No tickets scanned in this session.</Text></View>:history.map(h=><View key={h.id} style={s.card}><Text style={s.eventTitle}>{h.outcome==='approved'?'✓ Approved':h.outcome==='duplicate'?'⚠ Duplicate':'✕ Rejected'}</Text><Text style={s.hint}>{gates.find(g=>g.event_id===h.eventId)?.title||'Assigned event'} · {h.at}</Text></View>)}</>}
+ {tab==='history'&&<><Text style={s.eyebrow}>SERVER AUDIT HISTORY</Text><Text style={s.heroTitle}>Scan history</Text><Text style={s.hint}>Your last 100 scans for the selected event, stored in Neon.</Text>{history.length===0?<View style={s.card}><Text style={s.hint}>No tickets scanned in this session.</Text></View>:history.map(h=><View key={h.id} style={s.card}><Text style={s.eventTitle}>{h.outcome==='approved'?'✓ Approved':h.outcome==='duplicate'?'⚠ Duplicate':'✕ Rejected'}</Text><Text style={s.hint}>{gates.find(g=>g.event_id===h.eventId)?.title||'Assigned event'} · {h.at}</Text></View>)}</>}
  {tab==='profile'&&<><Text style={s.eyebrow}>ACCOUNT</Text><Text style={s.heroTitle}>Operator profile</Text><View style={s.card}><Text style={s.eventTitle}>{member.full_name}</Text><Text style={s.hint}>{member.email}</Text><Text style={s.hint}>Assigned events: {gates.length}</Text></View>{button('Sign out',()=>{void logout()},true)}</>}
  </>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#A78BFA"/>}
