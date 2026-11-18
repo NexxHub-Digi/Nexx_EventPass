@@ -40,6 +40,8 @@ export async function PATCH(req:Request){
    if(action==='settled'&&!['initiated','review_required'].includes(order.refund_status))return {error:'Refund review must begin before settlement',status:409};
    await tx`update ticket_orders set refund_status=${action},refund_note=${note},refund_updated_at=now(),refund_updated_by=${u.id}
      where id=${orderId}`;
+   await tx`insert into ticket_payment_audit(order_id,actor_id,action,details)
+    values(${orderId},${u.id},'refund_'+${action},${JSON.stringify({note})}::jsonb)`;
    await tx`insert into platform_admin_actions(admin_id,action,details)
      select ${u.id},'refund_status',${JSON.stringify({orderId,action})}::jsonb
      where ${u.role==='platform_admin'}`;

@@ -40,6 +40,9 @@ export async function POST(req: Request) {
           issued.push({id:ticket[0].id});
         }
       }
+      await tx`insert into ticket_payment_audit(order_id,actor_id,action,details)
+        values(${id},${u.id},${decision==='approved'?'payment_approved':'payment_rejected'},
+        ${JSON.stringify({ticketsIssued:issued.length,manualVerification:true})}::jsonb)`;
       return {success:true,decision,issued:issued.length,delivery:'in_app'};
     });
     if('error' in result)return fail(String(result.error),Number(result.status));return ok(result);
