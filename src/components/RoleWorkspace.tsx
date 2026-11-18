@@ -32,8 +32,8 @@ async function api(route:string,method='GET',body?:unknown){
  let result;try{result=await res.json()}catch{throw Error('Service unavailable')}
  if(!res.ok)throw Error(result.error||'Request failed');return result;
 }
-export default function RoleWorkspace(){
- const p=useParams<{role:string}>(),role=p.role as Role,title=roles[role],scanControls=useRef<{stop:()=>void}|null>(null);
+export default function RoleWorkspace({portal}:{portal?:Role}={}){
+ const p=useParams<{role:string}>(),role=(portal||p.role) as Role,title=roles[role],scanControls=useRef<{stop:()=>void}|null>(null);
  const [me,setMe]=useState<Member|null>(null),[portals,setPortals]=useState<string[]>([]),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[orders,setOrders]=useState<Order[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[gates,setGates]=useState<Gate[]>([]),[invites,setInvites]=useState<Invite[]>([]);
  const [search,setSearch]=useState(''),[filterCategory,setFilterCategory]=useState('All'),[sortBy,setSortBy]=useState('soonest');
