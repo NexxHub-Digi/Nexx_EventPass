@@ -1,2 +1,6 @@
 import PlatformAdminPortal from '@/components/PlatformAdminPortal';
-export default function PlatformAdminPage(){return <PlatformAdminPortal/>;}
+import {requirePortal} from '@/lib/portal-access';
+export default async function Page(){
+ await requirePortal('platform-admin');
+ return <PlatformAdminPortal/>;
+}
