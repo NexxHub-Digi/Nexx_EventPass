@@ -1,2 +1,6 @@
 import GatePortal from '@/components/GatePortal';
-export default function GatePage(){return <GatePortal/>;}
+import {requirePortal} from '@/lib/portal-access';
+export default async function Page(){
+ await requirePortal('gate');
+ return <GatePortal/>;
+}
