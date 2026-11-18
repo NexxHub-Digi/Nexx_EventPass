@@ -1,4 +1,4 @@
-import { colors, radius, spacing } from '../shared/theme';
+import { colors } from '../shared/theme';
 import React,{useEffect,useState} from 'react';
 import {Alert,Share,ScrollView,Pressable,Text,TextInput,View,StyleSheet,ActivityIndicator,Image} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
