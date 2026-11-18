@@ -1,2 +1,6 @@
 import OrganiserPortal from '@/components/OrganiserPortal';
-export default function OrganiserPage(){return <OrganiserPortal/>;}
+import {requirePortal} from '@/lib/portal-access';
+export default async function Page(){
+ await requirePortal('organiser');
+ return <OrganiserPortal/>;
+}
