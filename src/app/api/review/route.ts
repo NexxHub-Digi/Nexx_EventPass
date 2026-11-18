@@ -12,13 +12,17 @@ export async function POST(req: Request) {
       if(order.organiser_id!==u.id || u.role!=='organiser')return {error:'Only the owning organiser may review payments',status:403};
       if(order.organiser_status!=='active')return {error:'Organiser account inactive',status:403};
       if(order.status!=='pending')return {error:'Order already reviewed',status:409};
+      if(!order.reservation_expires_at||new Date(order.reservation_expires_at).getTime()<=Date.now()){
+        if(decision==='approved')return {error:'Reservation expired. Never approve it; check whether funds arrived and initiate refund review.',status:409};
+      }
       if(decision==='approved'){
         if(Number(order.amount_ngn)>0 && !order.receipt_data)return {error:'Buyer must upload payment receipt before approval',status:409};
         if(order.event_status!=='published' || new Date(order.starts_at).getTime()<Date.now())return {error:'Event cannot accept new tickets',status:409};
         const counts=await tx`select count(*)::int as issued from tickets where event_id=${order.event_id}`;
         if(Number(counts[0].issued)+Number(order.quantity)>Number(order.capacity))return {error:'Event capacity exceeded',status:409};
       }
-      await tx`update ticket_orders set status=${decision}, reviewed_by=${u.id},reviewed_at=now() where id=${id}`;
+      const refundStatus=decision==='rejected'&&Number(order.amount_ngn)>0&&Boolean(order.receipt_data)?'review_required':'not_required';
+      await tx`update ticket_orders set status=${decision},refund_status=${refundStatus},reviewed_by=${u.id},reviewed_at=now() where id=${id}`;
       const issued=[];
       if(decision==='approved'){
         const design=await tx`select ticket_theme,admission_label,qr_keyword_ciphertext,

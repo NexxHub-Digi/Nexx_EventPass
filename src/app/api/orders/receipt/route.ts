@@ -15,8 +15,8 @@ export async function POST(req:Request){
   const verifiedMime=(file.type==='image/png'&&isPng)||(file.type==='image/jpeg'&&isJpeg)||
     (file.type==='image/webp'&&isWebp)||(file.type==='application/pdf'&&isPdf);
   if(!verifiedMime)return fail('Receipt content does not match its file type',400);
-  const rows=await db()`update ticket_orders set receipt_data=${contents},receipt_mime=${file.type},receipt_uploaded_at=now() where id=${orderId} and buyer_id=${u.id} and status='pending' returning id`;
-  if(!rows[0])return fail('Pending order belonging to you required',403);
+  const rows=await db()`update ticket_orders set receipt_data=${contents},receipt_mime=${file.type},receipt_uploaded_at=now() where id=${orderId} and buyer_id=${u.id} and status='pending' and reservation_expires_at>now() returning id`;
+  if(!rows[0])return fail('Active reservation required; expired payments need organiser refund review',409);
   return ok({success:true});
  }catch(e){return handleError(e)}
 }
