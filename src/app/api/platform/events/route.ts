@@ -37,6 +37,10 @@ export async function POST(req:Request){
     await tx`insert into platform_admin_actions(admin_id,action,details) values(${u.id},'verify_event',${JSON.stringify({eventId})}::jsonb)`;
    });
   }else if(action==='reject'){
+   const outstanding=await db()`select exists(select 1 from tickets where event_id=${eventId}) as issued,
+    exists(select 1 from ticket_orders where event_id=${eventId} and status='pending' and reservation_expires_at>now()) as reserved`;
+   if(outstanding[0]?.issued||outstanding[0]?.reserved)
+    return fail('Cannot unpublish with issued tickets or active reservations. Use a supervised cancellation and refund workflow.',409);
    await db().begin(async tx=>{
     await tx`update events set status='draft',verification_status='rejected',verified_by=null,verified_at=null where id=${eventId} and status!='cancelled'`;
     await tx`insert into platform_admin_actions(admin_id,action,details) values(${u.id},'reject_event',${JSON.stringify({eventId})}::jsonb)`;
