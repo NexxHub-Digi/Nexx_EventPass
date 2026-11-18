@@ -10,7 +10,7 @@ const PORTAL: string="user",TITLE="Nexx EventPass User",BASE=(process.env.EXPO_P
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
 type Event={id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;description?:string;category?:string;ticket_theme?:string;cover_media_id?:string|null;video_media_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type Ticket={id:string;title:string;qr:string|null;status:string;redeemed_at:string|null;ticket_theme?:string;ticket_art_id?:string|null};
-type Order={id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number};
+type Order={id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number;reservation_expires_at?:string;refund_status?:string};
 type Gate={event_id:string;title:string;gate_label:string};
 type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
 async function api(p:string,t:string,method='GET',data?:unknown){const multi=data instanceof FormData;const r=await fetch(BASE+'/api/'+p,{method,headers:{...(multi?{}:{'Content-Type':'application/json'}),...(t?{Authorization:'Bearer '+t}:{})},body:multi?data: data?JSON.stringify(data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v}
@@ -88,7 +88,12 @@ export default function App(){
  </>}</View></View>)}
 {!events.length&&<Text style={s.hint}>No verified events yet. Check again after organisers publish new experiences.</Text>}
 <Text style={s.title}>My ticket wallet</Text>{tickets.map(t=><View key={t.id} style={[s.card,{backgroundColor:palette[t.ticket_theme||'aurora']||'#1c4e72'}]}>{t.ticket_art_id&&<Image source={{uri:BASE+'/api/events/media?id='+t.ticket_art_id}} style={{height:140,borderRadius:9,marginBottom:10}}/>}<Text style={s.title}>{t.title}</Text>{t.qr&&<View style={{backgroundColor:'#fff',padding:14,alignSelf:'center',marginVertical:14,borderRadius:12}}><QRCode value={t.qr} size={200}/></View>}<Text style={s.hint}>{t.redeemed_at?'Already scanned':t.status}</Text></View>)}
-<Text style={s.title}>My orders</Text>{orders.map(o=><View key={o.id} style={s.card}><Text style={s.hint}>{o.event_title} · {o.status} · Receipt {o.receipt_uploaded_at?'submitted':'missing'}</Text></View>)}
+<Text style={s.title}>My orders</Text>{orders.map(o=><View key={o.id} style={s.card}><Text style={{color:'#fff',fontWeight:'800'}}>{o.event_title}</Text>
+ <Text style={s.hint}>{o.status} · ₦{Number(o.amount_ngn).toLocaleString()} · Receipt {o.receipt_uploaded_at?'submitted':'missing'}</Text>
+ {o.status==='pending'&&o.reservation_expires_at&&<Text style={[s.hint,{color:new Date(o.reservation_expires_at).getTime()<=Date.now()?'#FDA4AF':'#68EBD1'}]}>
+ {new Date(o.reservation_expires_at).getTime()<=Date.now()?'Reservation expired. Contact organiser if money was sent.':'Reserved until '+new Date(o.reservation_expires_at).toLocaleString()}</Text>}
+ {o.refund_status&&o.refund_status!=='not_required'&&<Text style={s.hint}>Refund: {o.refund_status.replaceAll('_',' ')}</Text>}
+ </View>)}
  </>}
  {button('Sign out',()=>{void logout()},true)}</>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
