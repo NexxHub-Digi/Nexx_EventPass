@@ -12,6 +12,7 @@ type Order={id:string;event_id:string;event_title:string;reservation_expires_at?
 type Ticket={id:string;event_id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;redeemed_at?:string|null;ticket_theme?:string;admission_label?:string;ticket_art_id?:string|null};
 type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string};
 type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null;can_create_events?:boolean;can_invite_gates?:boolean;can_verify_payments?:boolean};
+type GateOperator={event_id:string;user_id:string;gate_label:string;email:string;full_name:string;account_status:string;scan_count:number;admitted_count:number;last_scan_at:string|null};
 type Invite={id:string;event_id:string;invitee_email:string;gate_label:string;status:string};
 type Scan={id:string;outcome:string;operator?:string;gate_label:string;scanned_at:string};
 type EventMedia={id:string;event_id?:string;media_type:string;file_name:string;approved?:boolean;url:string};
@@ -52,6 +53,7 @@ export default function RoleWorkspace(){
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
  const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string}|null>(null);
+ const [gateOperators,setGateOperators]=useState<GateOperator[]>([]);
  const [staffEmail,setStaffEmail]=useState(''),[gateLabel,setGateLabel]=useState('Main gate'),[newOrganiser,setNewOrganiser]=useState(''),[latestInvite,setLatestInvite]=useState('');
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
  const valid=role==='user'||role==='organiser'||role==='gate'||role==='platform-admin';
@@ -71,7 +73,7 @@ export default function RoleWorkspace(){
    setEventReports(report.events||[]);setRefundCases(refunds.orders||[]);
    setCases(support.cases||[]);
    setBankName(b.account?.bank_name||'');setAccountName(b.account?.account_name||'');setAccountNumber(b.account?.account_number||'');
-   setGates(g.gates||[]);setInvites(g.invitations||[]);
+   setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);setGateOperators(g.operators||[]);
   }else if(role==='gate'){const g=await api('gates');setGates(g.gates||[]);}
   else if(role==='platform-admin'){
    const [a,overview]=await Promise.all([api('platform/organisers'),api('platform/overview')]);
@@ -89,7 +91,7 @@ export default function RoleWorkspace(){
  },[role,me?.id,me?.account_status]);
  useEffect(()=>{if(!eventId){setOrders([]);setScans([]);return}
  if(role==='organiser')api('orders?eventId='+encodeURIComponent(eventId)).then(v=>setOrders(v.orders||[])).catch(e=>setMessage((e as Error).message));
- if(role==='gate')api('gates/activity?eventId='+encodeURIComponent(eventId)).then(v=>setScans(v.scans||[])).catch(e=>setMessage((e as Error).message));
+ if(role==='organiser'||role==='gate')api('gates/activity?eventId='+encodeURIComponent(eventId)).then(v=>setScans(v.scans||[])).catch(e=>setMessage((e as Error).message));
  if(role==='organiser')api('events/media?eventId='+encodeURIComponent(eventId)).then(v=>setEventMedia(v.media||[])).catch(e=>setMessage((e as Error).message));
  },[eventId,role]);
  async function run(fn:()=>Promise<void>){setBusy(true);setMessage('');try{await fn()}catch(e){setMessage((e as Error).message)}finally{setBusy(false)}}
@@ -151,17 +153,17 @@ export default function RoleWorkspace(){
  async function inviteGate(){await run(async()=>{
   if(!eventId)throw Error('Select an event first');
   const r=await api('gates','POST',{eventId,email:staffEmail,gateLabel});setMessage(r.message);setLatestInvite(r.invitationLink||'');setStaffEmail('');
-  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);
+  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
  })}
  async function addExistingOperator(){await run(async()=>{
   if(!eventId)throw Error('Select an event');
   const r=await api('gates','POST',{eventId,email:staffEmail,gateLabel,mode:'add'});
   setLatestInvite('');setStaffEmail('');setMessage(r.message);
-  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);
+  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
  })}
  async function revokeGate(i:Invite){await run(async()=>{
   await api('gates','DELETE',{eventId:i.event_id,email:i.invitee_email});setMessage('Gate invitation and access revoked');
-  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);
+  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
  })}
  async function adminAction(action:string,id?:string){await run(async()=>{
   await api('platform/organisers','POST',{action,userId:id,email:newOrganiser});setMessage('Organiser action completed');setNewOrganiser('');
@@ -421,7 +423,7 @@ export default function RoleWorkspace(){
   </section>}
   {eventId&&<section className="rw-panel rw-wide"><h2>Gate operators</h2><p>Invite anyone by email, including people without EventPass accounts. Copy and share the private link; they register or sign in and accept it. Links expire in 72 hours and grant access only to this event.</p>
     {input('Operator email',staffEmail,setStaffEmail,'email')}{input('Gate label',gateLabel,setGateLabel)}{btn('Create private invitation link',()=>{void inviteGate()})}{btn('Add existing verified operator',()=>{void addExistingOperator()},true)}{latestInvite&&<div className="rw-invite"><p>Private invitation link (visible only now; share it with the invited person):</p><input readOnly aria-label="New gate invitation URL" value={latestInvite} onFocus={e=>e.currentTarget.select()}/>{btn('Copy invitation link',()=>{void navigator.clipboard.writeText(latestInvite).then(()=>setMessage('Invitation link copied')).catch(()=>setMessage('Select and copy the link manually'))},true)}<p>Do not publish this link publicly. Creating a new invitation invalidates the old one.</p></div>}
-    {invites.filter(i=>i.event_id===eventId).map(i=><div className="rw-list-item" key={i.id}><div><b>{i.invitee_email}</b><p>{i.gate_label} · {i.status}</p></div>{i.status!=='revoked'&&btn('Revoke',()=>{void revokeGate(i)},true)}</div>)}</section>}
+    <h3>Assigned operators ({gateOperators.filter(o=>o.event_id===eventId).length})</h3>{gateOperators.filter(o=>o.event_id===eventId).map(o=><div className="rw-list-item" key={o.user_id}><div><b>{o.full_name||o.email}</b><p>{o.email} · {o.gate_label} · {o.account_status}</p><p>Scans: {o.scan_count} · Admitted: {o.admitted_count} · Last scan: {o.last_scan_at?nice(o.last_scan_at):'Never'}</p></div>{btn('Revoke',()=>{void revokeGate({id:o.user_id,event_id:o.event_id,invitee_email:o.email,gate_label:o.gate_label,status:'accepted'})},true)}</div>)}<h3>Invitation history</h3>{invites.filter(i=>i.event_id===eventId).map(i=><div className="rw-list-item" key={i.id}><div><b>{i.invitee_email}</b><p>{i.gate_label} · {i.status}</p></div>{i.status!=='revoked'&&btn('Revoke',()=>{void revokeGate(i)},true)}</div>)}<h3>Recent gate activity</h3>{scans.length?scans.slice(0,20).map(s=><div className="rw-list-item" key={s.id}><div><b>{s.operator||'Operator'}</b><p>{s.outcome} · {s.gate_label} · {nice(s.scanned_at)}</p></div></div>):<p>No scans recorded for this event yet.</p>}{btn('Refresh gate activity',()=>{void run(async()=>{const [a,g]=await Promise.all([api('gates/activity?eventId='+encodeURIComponent(eventId)),api('gates')]);setScans(a.scans||[]);setGateOperators(g.operators||[]);setInvites(g.invitations||[]);})},true)}</section>}
  </div>}
  {role==='user'&&<div className="rw-layout">
   <section className="rw-panel rw-wide rw-market">
