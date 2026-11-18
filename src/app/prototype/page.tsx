@@ -1,1 +1,3 @@
-export default function Prototype(){return <main style={{height:'100vh',margin:0}}><iframe title="EventPass legacy design prototype" src="/prototype.html" style={{border:0,width:'100%',height:'100%'}} /></main>}
+import {redirect} from 'next/navigation';
+/** Retired prototype URL: route visitors to the redesigned EventPass application. */
+export default function Prototype(){redirect('/');}
