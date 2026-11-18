@@ -63,7 +63,17 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(expect(await req('/api/ticket-themes'),200,'public ticket theme catalogue').themes.some(t=>t.id===dynamicTheme.id));
   const masks=expect(await req('/api/ticket-themes'),200,'masquerade templates included').themes.filter(t=>t.id.startsWith('stj-'));
   assert.equal(masks.length,5,'all five masquerade layout templates appear in Organiser theme catalogue');
-  expect(await req('/api/auth/google?portal=gate&client=native'),400,'native OAuth requires PKCE challenge');
+  for(const [portal,key] of [['user','GOOGLE_USER'],['organiser','GOOGLE_ORGANISER'],['gate','GOOGLE_GATE'],['platform_admin','GOOGLE_PLATFORM']]){
+    const res=await fetch(base+'/api/auth/google?portal='+portal,{redirect:'manual'});
+    assert.ok([302,303,307,308].includes(res.status),'Google initiates for '+portal);
+    const google=new URL(res.headers.get('location'));
+    assert.equal(google.hostname,'accounts.google.com');
+    assert.equal(google.searchParams.get('client_id'),process.env[key+'_CLIENT_ID']);
+    assert.equal(google.searchParams.get('redirect_uri'),base+'/api/auth/google/callback');
+    assert.equal(google.searchParams.get('code_challenge_method'),'S256');
+    assert.ok(google.searchParams.has('nonce'));
+  }
+    expect(await req('/api/auth/google?portal=gate&client=native'),400,'native OAuth requires PKCE challenge');
     const date=new Date(Date.now()+3600000).toISOString();
   const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,qrKeyword:'private-test-keyword',ticketTheme:'stj-royal-gold',admissionLabel:'ADMIT ONE — MASK COMPULSORY',posterTemplate:'stj-apartment-party'}),201,'create event').event;
   assert.equal(event.status,'draft','new event cannot auto-publish');
