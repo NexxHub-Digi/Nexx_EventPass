@@ -19,6 +19,11 @@
     "plugins": [
       "expo-secure-store"
     ],
-    "owner": "nexx-digital-hub"
+    "owner": "nexx-digital-hub",
+    "extra": {
+      "eas": {
+        "projectId": "98833d10-a4f5-4445-a717-1609e8762971"
+      }
+    }
   }
 }
