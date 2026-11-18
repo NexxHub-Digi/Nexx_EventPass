@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import postgres from 'postgres';
 import bcrypt from 'bcryptjs';
+import {SignJWT} from 'jose';
 import {randomUUID,randomBytes,createHash} from 'node:crypto';
 if(process.env.CI!=='true'||process.env.EVENTPASS_E2E!=='true'||!/@(localhost|127\.0\.0\.1):/.test(process.env.DATABASE_URL||''))throw Error('Refusing to run E2E outside isolated local CI');
 const sql=postgres(process.env.DATABASE_URL,{ssl:false,prepare:false});
@@ -19,15 +20,16 @@ async function signUp(name,portal='user'){
  const hash=await bcrypt.hash(password,10);
  const rows=await sql.unsafe('insert into app_users(email,password_hash,full_name,role,account_status,requested_role) values($1,$2,$3,$4,$5,$6) returning id',
   [email(name),hash,'Test '+name,'user','active',portal==='organiser'?'organiser':null]);
- const r=await post('/api/auth/login',null,{portal,email:email(name),password});
- expect(r,200,'fixture login '+name);
- assert.ok(r.cookie?.includes('eventpass_session='));
- return {id:rows[0].id,cookie:r.cookie,email:email(name),token:r.data.token};
+ const token=await new SignJWT({sub:rows[0].id}).setProtectedHeader({alg:'HS256'}).setIssuer('nexx-eventpass').setAudience('eventpass')
+  .setJti(randomUUID()).setIssuedAt().setExpirationTime('7d').sign(new TextEncoder().encode(process.env.AUTH_SECRET));
+ const cookie='eventpass_session='+token;
+ return {id:rows[0].id,cookie,email:email(name),token};
 }
 test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic scan and suspension',async()=>{
  try{
   const admin=await signUp('admin'),org=await signUp('organiser','organiser'),buyer=await signUp('buyer'),wrong=await signUp('wrong');
   expect(await post('/api/auth/register',null,{portal:'user',email:email('new'),password,fullName:'New User'}),403,'password sign-up disabled');
+  expect(await post('/api/auth/login',null,{portal:'user',email:email('buyer'),password}),403,'legacy password login disabled');
   for(const [portal,label] of [['user','User'],['organiser','Event Organiser'],['gate','Gate Operator'],['platform-admin','Platform Administrator']]){
     const page=await fetch(base+'/login/'+portal);
     assert.equal(page.status,200,'dedicated '+label+' sign-in route');
@@ -36,9 +38,8 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(expect(await req('/api/auth/me',{cookie:org.cookie}),200,'organiser pending').user.requested_role,'organiser');
   expect(await post('/api/events',org.cookie,{title:'Denied',venue:'E2E',startsAt:new Date(Date.now()+3600000),capacity:1,priceNgn:5000,qrKeyword:'secrettest123'}),403,'unapproved organiser');
   await sql.unsafe('update app_users set role=$1 where id=$2',['platform_admin',admin.id]);
-  const adminLogin=await post('/api/auth/login',null,{portal:'platform_admin',email:admin.email,password});
-  const adminCookie=expect(adminLogin,200,'admin login')&&adminLogin.cookie;
-  assert.ok(adminCookie);
+  const adminCookie=admin.cookie;
+  expect(await post('/api/auth/login',null,{portal:'platform_admin',email:admin.email,password}),403,'retired password sign-in blocked even for admins');
   assert.ok(expect(await req('/api/platform/organisers',{cookie:adminCookie}),200,'admin directory').organisers.some(x=>x.id===org.id));
   const accounts=expect(await req('/api/platform/users',{cookie:adminCookie}),200,'multi-tenant account directory');
   assert.ok(accounts.accounts.some(a=>a.id===buyer.id),'directory includes buyer');
