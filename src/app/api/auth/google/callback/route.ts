@@ -61,8 +61,27 @@ export async function GET(req:NextRequest){
    }
   }else if(!user){
    // Never promote Google users merely because an email address matches a privileged account.
-   const sameEmail=await db()`select id from app_users where email=${profile.email} limit 1`;
-   if(sameEmail.length) throw new Error('link_existing_account_first');
+   const sameEmail=await db()`select id,role,account_status from app_users where lower(email)=${profile.email} limit 1`;
+   if(sameEmail.length){
+    // Google has verified ownership of this email. Migrate ONLY an active,
+    // unprivileged legacy User; an Organiser or Platform Admin requires
+    // explicit privileged-account linkage, never an email-only promotion.
+    if(sameEmail[0].role!=='user'||sameEmail[0].account_status!=='active')throw new Error('link_existing_account_first');
+    const linked=await db().begin(async tx=>{
+      const rows=await tx`select id,role,email,account_status,requested_role from app_users
+        where id=${sameEmail[0].id} and role='user' and account_status='active' for update`;
+      if(!rows[0])return null;
+      const claimed=await tx`select 1 from oauth_identities where user_id=${rows[0].id} limit 1`;
+      if(claimed[0])return null;
+      const saved=await tx`insert into oauth_identities(provider,provider_sub,user_id,provider_email)
+        values('google',${profile.subject},${rows[0].id},${profile.email})
+        on conflict(provider,provider_sub) do nothing returning user_id`;
+      if(!saved[0])return null;
+      return rows[0];
+    });
+    if(!linked)throw new Error('link_existing_account_first');
+    user=linked;
+   }else{
    if(portal==='platform_admin') throw new Error('privileged_account_required');
    const passwordHash=await bcrypt.hash(randomBytes(48).toString('base64url'),12);
    const created=await db().begin(async tx=>{
@@ -76,6 +95,7 @@ export async function GET(req:NextRequest){
    });
    if(!created) throw new Error('link_existing_account_first');
    user=created;
+   }
   }
   if(!user) throw new Error('account_not_found');
   if(portal==='organiser'&&user.role==='user'&&user.account_status==='active'&&user.requested_role!=='organiser'){
