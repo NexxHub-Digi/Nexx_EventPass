@@ -1,0 +1,37 @@
+name: EventPass Native Preflight (no EAS builds)
+on:
+  push:
+    branches:
+      - feature/native-mobile-release-2026-11-18
+    paths:
+      - 'apps/**'
+      - '.github/workflows/native-preflight.yml'
+  workflow_dispatch:
+jobs:
+  native-preflight:
+    name: ${{ matrix.app }} / TypeScript + Expo Doctor + JS bundles
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [user, organiser, gate, platform-admin]
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Validate Expo configuration
+        run: npx expo config --type public --json > /tmp/eventpass-${{ matrix.app }}-config.json
+      - name: Expo Doctor
+        run: npx --yes expo-doctor@latest
+      - name: Export Android JavaScript bundle
+        run: npx expo export --platform android --output-dir /tmp/eventpass-${{ matrix.app }}-android
+      - name: Export iOS JavaScript bundle
+        run: npx expo export --platform ios --output-dir /tmp/eventpass-${{ matrix.app }}-ios
