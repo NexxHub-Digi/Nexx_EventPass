@@ -12,7 +12,8 @@ function back(origin:string,portal:OAuthPortal,code:string){
 }
 export async function GET(req:NextRequest){
  let portal:OAuthPortal='user';
- const origin=req.nextUrl.origin.includes('.netlify.app') ? req.nextUrl.origin : (process.env.AUTH_PUBLIC_ORIGIN || process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin);
+ // Redirect on the callback host itself. Environment site URLs may point to an older deployment.
+ const origin=req.nextUrl.origin;
  const stateCookie=req.cookies.get('eventpass_google_state')?.value;
  let response:NextResponse;
  try {
