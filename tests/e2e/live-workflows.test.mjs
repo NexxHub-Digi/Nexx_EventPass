@@ -87,6 +87,16 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(expect(await req('/api/platform/organisers',{cookie:adminCookie}),200,'admin profile after configuration').organisers.some(x=>x.id===org.id&&x.full_name==='E2E Approved Organiser'&&x.account_number==='0123456789'));
   assert.ok(expect(await req('/api/events'),200,'discover event').events.some(e=>e.id===event.id&&e.bank_account_number==='0123456789'));
   const order=expect(await post('/api/orders',buyer.cookie,{eventId:event.id,quantity:1,paymentReference:'E2E-TRANSFER-123'}),201,'create order').order;
+  assert.ok(new Date(order.reservation_expires_at).getTime()>Date.now(),'ticket reservation must have an expiry');
+  const attempts=await Promise.all([
+    post('/api/orders',wrong.cookie,{eventId:event.id,quantity:1,paymentReference:'E2E-SEAT-001'}),
+    post('/api/orders',wrong.cookie,{eventId:event.id,quantity:1,paymentReference:'E2E-SEAT-002'})
+  ]);
+  assert.deepEqual(attempts.map(x=>x.status).sort(),[201,409],'only one competing checkout gets the remaining seat');
+  const held=attempts.find(x=>x.status===201).data.order;
+  expect(await post('/api/review',org.cookie,{orderId:held.id,decision:'rejected'}),200,'rejection releases held seat');
+  expect(await post('/api/orders',wrong.cookie,{eventId:event.id,quantity:1,paymentReference:'E2E-SEAT-003'}),201,'released seat is available again');
+
   expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),409,'no receipt cannot approve');
   expect(await post('/api/review',wrong.cookie,{orderId:order.id,decision:'approved'}),403,'unauthorised approval');
   const bytes=new Uint8Array(90);bytes.set([137,80,78,71,13,10,26,10]);
