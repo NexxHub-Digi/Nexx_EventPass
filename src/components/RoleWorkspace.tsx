@@ -53,6 +53,7 @@ export default function RoleWorkspace(){
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
  const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string}|null>(null);
+ const [organiserTab,setOrganiserTab]=useState<'dashboard'|'events'|'tickets'|'payments'|'team'|'profile'|'settings'>('dashboard');
  const [gateOperators,setGateOperators]=useState<GateOperator[]>([]);
  const [staffEmail,setStaffEmail]=useState(''),[gateLabel,setGateLabel]=useState('Main gate'),[newOrganiser,setNewOrganiser]=useState(''),[latestInvite,setLatestInvite]=useState('');
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
@@ -73,7 +74,7 @@ export default function RoleWorkspace(){
    setEventReports(report.events||[]);setRefundCases(refunds.orders||[]);
    setCases(support.cases||[]);
    setBankName(b.account?.bank_name||'');setAccountName(b.account?.account_name||'');setAccountNumber(b.account?.account_number||'');
-   setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);setGateOperators(g.operators||[]);
+   setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
   }else if(role==='gate'){const g=await api('gates');setGates(g.gates||[]);}
   else if(role==='platform-admin'){
    const [a,overview]=await Promise.all([api('platform/organisers'),api('platform/overview')]);
@@ -354,27 +355,41 @@ export default function RoleWorkspace(){
    {!moderationEvents.length&&<p>No pending event or media submissions.</p>}
   </section></div>}
  {role==='organiser'&&<div className="rw-layout">
-  <section className="rw-panel"><div className="eyebrow">ORGANISER HELPDESK</div><h2>Get Platform Support</h2><p>Report issues with event verification, bank payments, QR tickets, or gate staff. Only you and Platform Admin can see your cases.</p>
+  <nav className="rw-panel rw-wide" aria-label="Organiser navigation" style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+   {(['dashboard','events','tickets','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>setOrganiserTab(tab)} style={{textTransform:'capitalize'}}>{tab==='tickets'?'Ticket designs':tab==='team'?'Gate team':tab}</button>)}
+  </nav>
+  {organiserTab==='dashboard'&&<section className="rw-panel rw-wide" style={{display:organiserTab==='dashboard'?'':'none'}}><div className="eyebrow">ORGANISER DASHBOARD</div><h2>Welcome, {me?.full_name||'Organiser'}</h2><p>Manage your events, tickets, payments and admissions from one place.</p><div className="rw-stats">
+   <div className="rw-stat"><b>{events.filter(e=>e.organiser_id===me?.id).length}</b><small>My events</small></div>
+   <div className="rw-stat"><b>{eventReports.reduce((n,e)=>n+Number(e.tickets_issued||0),0)}</b><small>Tickets issued</small></div>
+   <div className="rw-stat"><b>{eventReports.reduce((n,e)=>n+Number(e.pending_orders||0),0)}</b><small>Pending payments</small></div>
+   <div className="rw-stat"><b>{eventReports.reduce((n,e)=>n+Number(e.checked_in||0),0)}</b><small>Admissions</small></div>
+   <div className="rw-stat"><b>{money(eventReports.reduce((n,e)=>n+Number(e.confirmed_revenue_ngn||0),0))}</b><small>Confirmed revenue</small></div>
+   <div className="rw-stat"><b>{gateOperators.length}</b><small>Assigned gate operators</small></div></div>
+   <div className="rw-actions">{btn('Manage events',()=>setOrganiserTab('events'))}{btn('Review payments',()=>setOrganiserTab('payments'),true)}{btn('Manage gate team',()=>setOrganiserTab('team'),true)}</div>
+   <h3>Recent events</h3>{eventReports.slice(0,5).map(e=><div className="rw-list-item" key={e.id}><div><b>{e.title}</b><p>{e.tickets_issued} tickets issued · {e.checked_in} admitted · {money(e.confirmed_revenue_ngn)}</p></div></div>)}
+   {!eventReports.length&&<p>No events yet. Open Events to create your first event.</p>}
+  </section>
+  <section className="rw-panel" style={{display:organiserTab==='settings'?'':'none'}}><div className="eyebrow">ORGANISER HELPDESK</div><h2>Get Platform Support</h2><p>Report issues with event verification, bank payments, QR tickets, or gate staff. Only you and Platform Admin can see your cases.</p>
    {input('Subject',caseSubject,setCaseSubject)}
    <label className="rw-field">Description<textarea rows={3} value={caseDescription} onChange={e=>setCaseDescription(e.target.value)}/></label>
    <label className="rw-field">Priority<select value={casePriority} onChange={e=>setCasePriority(e.target.value)}>{['low','normal','high','urgent'].map(x=><option key={x}>{x}</option>)}</select></label>{btn('Create support request',()=>{void openSupportCase()})}
    {cases.map(c=><div className="rw-list-item" key={c.id}><div><b>{c.subject}</b><p>{c.status} · {c.priority}</p>{c.resolution&&<p>Response: {c.resolution}</p>}</div></div>)}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER REPORTS</div><h2>My event operations</h2>
+  <section className="rw-panel rw-wide" style={{display:organiserTab==='dashboard'?'':'none'}}><div className="eyebrow">ORGANISER REPORTS</div><h2>My event operations</h2>
    {eventReports.map(e=><div key={e.id} className="rw-list-item"><div><b>{e.title}</b><p>{e.tickets_issued} issued · {e.reserved_seats} reserved · {e.checked_in} admitted · {e.refund_cases} refund cases</p>
     <small>{money(e.confirmed_revenue_ngn)} confirmed revenue · Available {Math.max(0,e.capacity-e.tickets_issued-e.reserved_seats)} of {e.capacity}</small></div></div>)}
    {!eventReports.length&&<p>Event reporting will appear after you create an event.</p>}
   </section>
-  <section className="rw-panel rw-wide"><h2>Payment exceptions and refunds</h2>
+  <section className="rw-panel rw-wide" style={{display:organiserTab==='payments'?'':'none'}}><h2>Payment exceptions and refunds</h2>
    {input('Settlement reference / notes',refundNote,setRefundNote)}
    {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title}</b><p>{money(r.amount_ngn)} · {r.refund_status}</p><small>{r.buyer_email} · {r.refund_note||'Check bank settlement before taking action'}</small></div>
     <div className="rw-actions">{btn('Review',()=>{void updateRefund(r.id,'review_required')},true)}{btn('Refund initiated',()=>{void updateRefund(r.id,'initiated')},true)}{btn('Settled',()=>{void updateRefund(r.id,'settled')})}</div></div>)}
   </section>
-  <section className="rw-panel"><h2>Bank transfer instructions</h2><p>Users see these account details on your published events. Only approve a ticket after confirming funds in your own bank records.</p>
+  <section className="rw-panel" style={{display:organiserTab==='settings'?'':'none'}}><h2>Bank transfer instructions</h2><p>Users see these account details on your published events. Only approve a ticket after confirming funds in your own bank records.</p>
     {input('Bank name',bankName,setBankName)}{input('Account name',accountName,setAccountName)}{input('Account number',accountNumber,setAccountNumber)}
     {btn('Save bank details',()=>{void saveBank()})}
   </section>
-  <section className="rw-panel"><div className="eyebrow">EVENT STUDIO</div><h2>Create and design an event</h2><p>Create as many events as you need. Your listing is reviewed before it appears publicly.</p>
+  <section className="rw-panel" style={{display:organiserTab==='events'?'':'none'}}><div className="eyebrow">EVENT STUDIO</div><h2>Create and design an event</h2><p>Create as many events as you need. Your listing is reviewed before it appears publicly.</p>
   {input('Event name',eventTitle,setEventTitle)}{input('Venue',venue,setVenue)}
   <label className="rw-field">Event description<textarea rows={4} maxLength={2500} value={eventDescription} onChange={e=>setEventDescription(e.target.value)} placeholder="Describe the experience, performers, attractions and ticket benefits"/></label>
   <label className="rw-field">Event category<select value={eventCategory} onChange={e=>setEventCategory(e.target.value)}>{['Music','Nightlife','Festival','Business','Food','Sports','Arts','Education','Community','Other'].map(c=><option key={c}>{c}</option>)}</select></label>
@@ -392,12 +407,12 @@ export default function RoleWorkspace(){
    <span>{t.name}{posterTemplate===t.id?' ✓':''}</span></button>)}</div>
   {btn('Create event for verification',()=>{void createEvent()})}
   </section>
-  <section className="rw-panel rw-wide"><h2>Events and payment approvals</h2><label className="rw-field">Choose an event<select value={eventId} onChange={e=>{const id=e.target.value;setEventId(id);const selected=events.find(ev=>ev.id===id);if(selected){setEventDescription(selected.description||'');setEventCategory(selected.category||'Other');setTicketTheme(selected.ticket_theme||'aurora');setAdmissionLabel(selected.admission_label||'ADMIT ONE');setPosterTemplate(selected.poster_template||'none')}setLatestInvite('')}}><option value="">Select event</option>
+  <section className="rw-panel rw-wide" style={{display:organiserTab==='payments'?'':'none'}}><h2>Events and payment approvals</h2><label className="rw-field">Choose an event<select value={eventId} onChange={e=>{const id=e.target.value;setEventId(id);const selected=events.find(ev=>ev.id===id);if(selected){setEventDescription(selected.description||'');setEventCategory(selected.category||'Other');setTicketTheme(selected.ticket_theme||'aurora');setAdmissionLabel(selected.admission_label||'ADMIT ONE');setPosterTemplate(selected.poster_template||'none')}setLatestInvite('')}}><option value="">Select event</option>
   {events.filter(e=>e.organiser_id===me.id).map(e=><option value={e.id} key={e.id}>{e.title}</option>)}</select></label>
   {orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.buyer_name||o.buyer_email||'User'}</b><p>{o.quantity} tickets · {money(o.amount_ngn)} · {o.status}</p><small>Bank reference: {o.payment_reference}</small><p>{o.status==='pending'&&o.reservation_expires_at?('Reservation ends '+nice(o.reservation_expires_at)):''}{o.refund_status&&o.refund_status!=='not_required'?' · Refund: '+o.refund_status:''}</p><p>{o.receipt_uploaded_at?<a href={'/api/orders/receipt?orderId='+o.id} target="_blank" rel="noreferrer">View submitted receipt</a>:'Receipt not submitted'}</p></div><div className="rw-actions">
   {o.status==='pending'&&<>{btn('Approve',()=>{void review(o.id,'approved')})}{btn('Reject',()=>{void review(o.id,'rejected')},true)}</>}</div></div>)}
   {!eventId&&<p>Select an event to review payments and assign gate staff.</p>}</section>
-  {eventId&&<section className="rw-panel rw-wide"><div className="eyebrow">CREATIVE MANAGER</div><h2>Event media & ticket designs</h2>
+  {eventId&&<section className="rw-panel rw-wide" style={{display:organiserTab==='tickets'?'':'none'}}><div className="eyebrow">CREATIVE MANAGER</div><h2>Event media & ticket designs</h2>
     <p>Upload real event posters, image galleries, short videos, or your own ticket artwork. Media appears to Users only after platform review. Image limit 2 MB; video teasers up to 3.5 MB.</p>
     <div className="rw-media-inputs">
       <label className="rw-file-label">Upload posters & photos<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{void uploadMedia(e.target.files?.[0]||null);e.currentTarget.value=''}}/></label>
@@ -421,7 +436,7 @@ export default function RoleWorkspace(){
     <label className="rw-field">Public event description<textarea rows={3} maxLength={2500} value={eventDescription} onChange={e=>setEventDescription(e.target.value)}/></label>
     {btn('Save design for review',()=>{void saveEventDesign()})}
   </section>}
-  {eventId&&<section className="rw-panel rw-wide"><h2>Gate operators</h2><p>Invite anyone by email, including people without EventPass accounts. Copy and share the private link; they register or sign in and accept it. Links expire in 72 hours and grant access only to this event.</p>
+  {eventId&&<section className="rw-panel rw-wide" style={{display:organiserTab==='team'?'':'none'}}><h2>Gate operators</h2><p>Invite anyone by email, including people without EventPass accounts. Copy and share the private link; they register or sign in and accept it. Links expire in 72 hours and grant access only to this event.</p>
     {input('Operator email',staffEmail,setStaffEmail,'email')}{input('Gate label',gateLabel,setGateLabel)}{btn('Create private invitation link',()=>{void inviteGate()})}{btn('Add existing verified operator',()=>{void addExistingOperator()},true)}{latestInvite&&<div className="rw-invite"><p>Private invitation link (visible only now; share it with the invited person):</p><input readOnly aria-label="New gate invitation URL" value={latestInvite} onFocus={e=>e.currentTarget.select()}/>{btn('Copy invitation link',()=>{void navigator.clipboard.writeText(latestInvite).then(()=>setMessage('Invitation link copied')).catch(()=>setMessage('Select and copy the link manually'))},true)}<p>Do not publish this link publicly. Creating a new invitation invalidates the old one.</p></div>}
     <h3>Assigned operators ({gateOperators.filter(o=>o.event_id===eventId).length})</h3>{gateOperators.filter(o=>o.event_id===eventId).map(o=><div className="rw-list-item" key={o.user_id}><div><b>{o.full_name||o.email}</b><p>{o.email} · {o.gate_label} · {o.account_status}</p><p>Scans: {o.scan_count} · Admitted: {o.admitted_count} · Last scan: {o.last_scan_at?nice(o.last_scan_at):'Never'}</p></div>{btn('Revoke',()=>{void revokeGate({id:o.user_id,event_id:o.event_id,invitee_email:o.email,gate_label:o.gate_label,status:'accepted'})},true)}</div>)}<h3>Invitation history</h3>{invites.filter(i=>i.event_id===eventId).map(i=><div className="rw-list-item" key={i.id}><div><b>{i.invitee_email}</b><p>{i.gate_label} · {i.status}</p></div>{i.status!=='revoked'&&btn('Revoke',()=>{void revokeGate(i)},true)}</div>)}<h3>Recent gate activity</h3>{scans.length?scans.slice(0,20).map(s=><div className="rw-list-item" key={s.id}><div><b>{s.operator||'Operator'}</b><p>{s.outcome} · {s.gate_label} · {nice(s.scanned_at)}</p></div></div>):<p>No scans recorded for this event yet.</p>}{btn('Refresh gate activity',()=>{void run(async()=>{const [a,g]=await Promise.all([api('gates/activity?eventId='+encodeURIComponent(eventId)),api('gates')]);setScans(a.scans||[]);setGateOperators(g.operators||[]);setInvites(g.invitations||[]);})},true)}</section>}
  </div>}
