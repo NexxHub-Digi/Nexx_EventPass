@@ -11,12 +11,15 @@ type Event={id:string;organiser_id:string;title:string;venue:string;starts_at:st
 type Order={id:string;event_id:string;event_title:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
 type Ticket={id:string;event_id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;redeemed_at?:string|null;ticket_theme?:string;admission_label?:string;ticket_art_id?:string|null};
 type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string};
-type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null};
+type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null;can_create_events?:boolean;can_invite_gates?:boolean;can_verify_payments?:boolean};
 type Invite={id:string;event_id:string;invitee_email:string;gate_label:string;status:string};
 type Scan={id:string;outcome:string;operator?:string;gate_label:string;scanned_at:string};
 type EventMedia={id:string;event_id?:string;media_type:string;file_name:string;approved?:boolean;url:string};
 type AdminAccount={id:string;email:string;full_name:string;role:string;account_status:string;google_verified:boolean;order_count:number;ticket_count:number;event_count:number;gate_event_count:number;created_at:string};
 type SupportCase={id:string;organiser_id:string;organiser_name:string;subject:string;description:string;status:string;priority:string;resolution:string};
+type EventReport={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;status:string;verification_status:string;capacity:number;tickets_issued:number;reserved_seats:number;pending_orders:number;checked_in:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number};
+type RefundCase={id:string;event_id:string;event_title:string;buyer_email:string;organiser_name:string;amount_ngn:number;status:string;refund_status:string;refund_note:string;reservation_expires_at:string};
+type AuditRecord={id:string;action:string;performed_by:string;target_email?:string;created_at:string;details:Record<string,unknown>};
 type ModerationEvent={id:string;title:string;venue:string;starts_at:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;pending_media:number};
 const roles={user:'User',organiser:'Event Organiser',gate:'Gate Operator','platform-admin':'Platform Administrator'} as const;
 type Role=keyof typeof roles;
@@ -39,6 +42,9 @@ export default function RoleWorkspace(){
  const [eventMedia,setEventMedia]=useState<EventMedia[]>([]),[moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<EventMedia[]>([]);
  const [organisers,setOrganisers]=useState<Organiser[]>([]),[stats,setStats]=useState<Record<string,number>>({});
  const [selectedOrganiser,setSelectedOrganiser]=useState(''),[editName,setEditName]=useState(''),[editBank,setEditBank]=useState(''),[editAccount,setEditAccount]=useState(''),[editNumber,setEditNumber]=useState('');
+ const [canCreate,setCanCreate]=useState(true),[canGates,setCanGates]=useState(true),[canPayments,setCanPayments]=useState(true);
+ const [eventReports,setEventReports]=useState<EventReport[]>([]),[reportSearch,setReportSearch]=useState(''),[selectedReport,setSelectedReport]=useState(''),[auditHistory,setAuditHistory]=useState<AuditRecord[]>([]);
+ const [refundCases,setRefundCases]=useState<RefundCase[]>([]),[refundNote,setRefundNote]=useState('');
  const [allUsers,setAllUsers]=useState<AdminAccount[]>([]),[userSearch,setUserSearch]=useState(''),[userFilter,setUserFilter]=useState(''),[userPage,setUserPage]=useState(1),[usersCount,setUsersCount]=useState(0),[selectedUser,setSelectedUser]=useState(''),[userEditName,setUserEditName]=useState(''),[accountReason,setAccountReason]=useState('');
  const [cases,setCases]=useState<SupportCase[]>([]),[caseSubject,setCaseSubject]=useState(''),[caseDescription,setCaseDescription]=useState(''),[casePriority,setCasePriority]=useState('normal'),[caseResolution,setCaseResolution]=useState('');
  const [platformSettings,setPlatformSettings]=useState<Record<string,string>>({}),[settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
@@ -61,7 +67,8 @@ export default function RoleWorkspace(){
   if(role==='user'){
    const [t,o]=await Promise.all([api('tickets'),api('orders')]);setTickets(t.tickets||[]);setOrders(o.orders||[]);
   }else if(role==='organiser'){
-   const [b,g,support]=await Promise.all([api('organiser/payment-account'),api('gates'),api('support/cases')]);
+   const [b,g,support,report,refunds]=await Promise.all([api('organiser/payment-account'),api('gates'),api('support/cases'),api('platform/event-directory'),api('refunds')]);
+   setEventReports(report.events||[]);setRefundCases(refunds.orders||[]);
    setCases(support.cases||[]);
    setBankName(b.account?.bank_name||'');setAccountName(b.account?.account_name||'');setAccountNumber(b.account?.account_number||'');
    setGates(g.gates||[]);setInvites(g.invitations||[]);
@@ -69,7 +76,8 @@ export default function RoleWorkspace(){
   else if(role==='platform-admin'){
    const [a,overview]=await Promise.all([api('platform/organisers'),api('platform/overview')]);
    setOrganisers(a.organisers||[]);setStats(overview.stats||{});
-   const [reviews,people,support,configuration]=await Promise.all([api('platform/events'),api('platform/users'),api('support/cases'),api('platform/settings')]);
+   const [reviews,people,support,configuration,report,refunds,audit]=await Promise.all([api('platform/events'),api('platform/users'),api('support/cases'),api('platform/settings'),api('platform/event-directory'),api('refunds'),api('platform/audit')]);
+   setEventReports(report.events||[]);setRefundCases(refunds.orders||[]);setAuditHistory(audit.history||[]);
    setModerationEvents(reviews.events||[]);setModerationMedia(reviews.media||[]);
    setAllUsers(people.accounts||[]);setUsersCount(people.count||0);setCases(support.cases||[]);setPlatformSettings(configuration.settings||{});
   }
@@ -162,6 +170,7 @@ export default function RoleWorkspace(){
  function chooseOrganiser(id:string){
   setSelectedOrganiser(id);const org=organisers.find(x=>x.id===id);
   setEditName(org?.full_name||'');setEditBank(org?.bank_name||'');
+  setCanCreate(org?.can_create_events!==false);setCanGates(org?.can_invite_gates!==false);setCanPayments(org?.can_verify_payments!==false);
   setEditAccount(org?.account_name||'');setEditNumber(org?.account_number||'');
  }
  async function configureOrganiser(){await run(async()=>{
@@ -179,6 +188,14 @@ export default function RoleWorkspace(){
   setCaseSubject('');setCaseDescription('');setMessage('Support request sent: '+r.case.id);const x=await api('support/cases');setCases(x.cases||[])})}
  async function updateCase(id:string,status:string,priority:string){await run(async()=>{await api('support/cases','PATCH',{id,status,priority,resolution:caseResolution});const x=await api('support/cases');setCases(x.cases||[]);setMessage('Support case updated')})}
  async function saveSetting(){await run(async()=>{await api('platform/settings','PATCH',{key:settingKey,value:settingValue});setPlatformSettings({...platformSettings,[settingKey]:settingValue});setMessage('Platform setting saved')})}
+ async function saveCapabilities(){await run(async()=>{
+  await api('platform/organisers','POST',{action:'capabilities',userId:selectedOrganiser,canCreateEvents:canCreate,canInviteGates:canGates,canVerifyPayments:canPayments});
+  const a=await api('platform/organisers');setOrganisers(a.organisers||[]);setMessage('Organiser permissions saved and audited');
+ })}
+ async function refreshReports(){await run(async()=>{const r=await api('platform/event-directory?q='+encodeURIComponent(reportSearch));setEventReports(r.events||[]);setMessage('Reports updated')})}
+ async function updateRefund(orderId:string,action:'review_required'|'initiated'|'settled'){await run(async()=>{
+  await api('refunds','PATCH',{orderId,action,note:refundNote});const r=await api('refunds');setRefundCases(r.orders||[]);setRefundNote('');setMessage('Refund status updated. Confirm actual bank movement independently.');
+ })}
  async function scan(value=scanCode){await run(async()=>{
   if(!eventId||!value.trim())throw Error('Select your event and scan a QR');
   const r=await api('scan','POST',{eventId,code:value.trim()});setScanOutcome(r.outcome);setMessage(r.message);setScanCode('');
