@@ -22,6 +22,7 @@ export async function POST(req:NextRequest,ctx:Ctx){
  try {
   if(action==='logout'){await revokeCurrentSession();const r=ok({success:true});r.cookies.delete('eventpass_session');return r;}
   if(action==='register')return fail('Sign up using Google only',403);
+  if(action==='login')return fail('Password sign-in retired. Continue with Google.',403);
   if(action!=='login')return fail('Not found',404);
   // Existing password accounts retain a migration-only sign-in, but the interface presents Google exclusively.
   const b=await payload(req),email=str(b.email,254).toLowerCase(),password=typeof b.password==='string'?b.password:'',portal=str(b.portal,40)||'user';
