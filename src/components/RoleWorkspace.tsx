@@ -54,6 +54,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
  const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string}|null>(null);
+ const [adminTab,setAdminTab]=useState('overview');
  const [showEventDesign,setShowEventDesign]=useState(false);
  const [organiserTab,setOrganiserTab]=useState<'dashboard'|'events'|'tickets'|'payments'|'team'|'profile'|'settings'>('dashboard');
  const [gateOperators,setGateOperators]=useState<GateOperator[]>([]);
@@ -230,15 +231,15 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  if(!me)return <main className="rw-shell"><h1>{title}</h1><p>Sign in to continue.</p><a className="rw-primary-link" href={'/login/'+role}>Sign in to {title}</a></main>;
  if(role==='organiser'&&me.role==='user'&&me.requested_role==='organiser')return <main className="rw-shell"><h1>Organiser approval pending</h1><p>Your Google or email account is registered. The Platform Administrator must approve your organiser request before your management interface becomes active.</p><p>{me.email}</p><a className="google-auth-button" href="/api/auth/google?portal=organiser&intent=link"><span className="google-g" aria-hidden="true">G</span> Link Google account</a><button onClick={()=>{void signout()}}>Sign out</button></main>;
  if(!allowed)return <main className="rw-shell"><h1>{title} access inactive</h1><p>Your account does not have permission to access this interface.</p><p>Organisers require administrator approval. Gate operators require an invitation from an organiser and a Google-verified email.</p><a href="/login/user">Open User interface</a></main>;
- return <main className="rw-shell"><div className="rw-top"><div><a href="/" className="rw-brand">◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title} · Nexx Future</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
+ return <main className="rw-shell"><style>{`.rw-workspace-shell{display:grid;grid-template-columns:225px minmax(0,1fr);gap:16px;align-items:start}.rw-workspace-shell>.rw-layout{width:100%}@media(max-width:800px){.rw-workspace-shell{grid-template-columns:1fr}.rw-workspace-shell>aside,.rw-workspace-shell>nav{position:static!important}.rw-workspace-shell>nav{grid-template-columns:repeat(2,minmax(0,1fr));display:grid!important}.rw-workspace-shell>nav .eyebrow{grid-column:1/-1}}`}</style><div className="rw-top"><div><a href="/" className="rw-brand">◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title} · Nexx Future</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
  <nav className="rw-portal-switch" aria-label={`${title} workspace navigation`}><span aria-current="page">{title} workspace</span></nav>
  {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
- {role==='platform-admin'&&<nav className="admin-command-nav" aria-label="Platform administration sections"><div className="admin-command-head"><div><span className="eyebrow">NEXX EVENTPASS / CONTROL CENTER</span><h1>Platform Command Center</h1><p>Live operational data from the EventPass API. Select a workspace to manage it.</p></div><button className="ghost small" disabled={busy} onClick={()=>{void run(async()=>{await fetchAll();setMessage('Platform data refreshed')})}}>↻ Refresh</button></div><details className="rw-admin-menu"><summary style={{cursor:"pointer",padding:12,fontWeight:700}}>☰ Administration menu — choose a section</summary><div className="admin-command-links">{[['Overview','admin-overview'],['Analytics & Events','admin-reports'],['Payments & Refunds','admin-refunds'],['Users & Access','admin-users'],['Support','admin-support'],['Settings','admin-settings'],['Organisers','admin-organisers'],['Ticket Studio','admin-themes'],['Audit Logs','admin-audit'],['Event Moderation','admin-moderation']].map(([name,id])=><a key={id} href={'#'+id}>{name} ↗</a>)}</div></details><div className="admin-command-kpis"><div><small>Organiser accounts</small><strong>{organisers.filter(o=>o.role==='organiser').length}</strong></div><div><small>Pending applications</small><strong>{organisers.filter(o=>o.requested_role==='organiser'&&o.role==='user').length}</strong></div><div><small>Events monitored</small><strong>{eventReports.length}</strong></div><div><small>Refund exceptions</small><strong>{refundCases.length}</strong></div></div></nav>}
- {role==='platform-admin'&&<div className="rw-layout">
-  <section className="rw-panel"><h2 id="admin-overview">Platform overview</h2><div className="rw-stats">{Object.entries(stats).map(([k,v])=><div className="rw-stat" key={k}><b>{Number(v).toLocaleString()}</b><small>{k}</small></div>)}</div>
+ {role==='platform-admin'&&<header className="rw-panel" style={{marginBottom:16}}><div className="eyebrow">NEXX EVENTPASS / CONTROL CENTER</div><h1>Platform administration</h1><p>Manage your platform from one focused workspace at a time.</p></header>}
+ {role==='platform-admin'&&<div className="rw-workspace-shell"><aside className="rw-panel" style={{alignSelf:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:12}}>WORKSPACE MENU</div><nav aria-label="Platform administration" style={{display:'grid',gap:6}}>{([['overview','Overview'],['organisers','Organisers'],['moderation','Event moderation'],['reports','Analytics & events'],['refunds','Payments & refunds'],['users','Users & access'],['support','Support'],['themes','Ticket themes'],['audit','Audit logs'],['settings','Settings']] as const).map(([key,label])=><button type="button" key={key} className={adminTab===key?'primary':'ghost'} aria-current={adminTab===key?'page':undefined} onClick={()=>setAdminTab(key)} style={{textAlign:'left',padding:12}}>{label}</button>)}</nav></aside><div className="rw-layout" style={{minWidth:0}}>
+  <section className="rw-panel" style={{display:adminTab==='overview'?'':'none'}}><h2 id="admin-overview">Platform overview</h2><div className="rw-stats">{Object.entries(stats).map(([k,v])=><div className="rw-stat" key={k}><b>{Number(v).toLocaleString()}</b><small>{k}</small></div>)}</div>
   <h3>Create organiser from verified User</h3><p>Only a Google-verified existing account can be promoted. No default password is created.</p>
   {input('Verified User email',newOrganiser,setNewOrganiser,'email')}{btn('Create organiser',()=>{void adminAction('create')})}</section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">MULTI-TENANT BUSINESS INTELLIGENCE</div><h2 id="admin-reports">All organiser events and revenue</h2>
+  <section className="rw-panel rw-wide" style={{display:adminTab==='reports'?'':'none'}}><div className="eyebrow">MULTI-TENANT BUSINESS INTELLIGENCE</div><h2 id="admin-reports">All organiser events and revenue</h2>
    <p>Inspect any event's available capacity, live reservations, issued tickets, attendance, revenue, refunds and assigned operators.</p>
    <div className="rw-market-filters">{input('Search event or organiser',reportSearch,setReportSearch)}{btn('Search reports',()=>{void refreshReports()})}</div>
    {eventReports.map(e=><div className="rw-list-item" key={e.id}>
@@ -257,7 +258,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    </div>)}
    {!eventReports.length&&<p>No events match this search.</p>}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">PAYMENT EXCEPTIONS</div><h2>Refund and reconciliation desk</h2>
+  <section className="rw-panel rw-wide" style={{display:adminTab==='refunds'?'':'none'}}><div className="eyebrow">PAYMENT EXCEPTIONS</div><h2>Refund and reconciliation desk</h2>
    <p>Expired reservations with payment evidence and rejected paid orders require manual settlement checks. Mark refunded only after verifying the transfer back to the buyer.</p>
    {input('Refund note or bank settlement reference',refundNote,setRefundNote)}
    {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title} — {money(r.amount_ngn)}</b>
@@ -267,7 +268,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
      {btn('Mark settled',()=>{void updateRefund(r.id,'settled')})}</div></div>)}
    {!refundCases.length&&<p>No payment exceptions are currently recorded.</p>}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">MULTI-TENANT CRM</div><h2>User and operator directory</h2>
+  <section className="rw-panel rw-wide" style={{display:adminTab==='users'?'':'none'}}><div className="eyebrow">MULTI-TENANT CRM</div><h2>User and operator directory</h2>
    <p>Search accounts and open a profile to view tickets, event activity and gate assignments. Deactivation preserves financial and admission audit records.</p>
    <div className="rw-market-filters">{input('Search name or email',userSearch,setUserSearch)}
     <select value={userFilter} aria-label="Filter by role" onChange={e=>setUserFilter(e.target.value)}><option value="">All roles</option><option value="user">Users / Gate identities</option><option value="organiser">Organisers</option><option value="platform_admin">Administrators</option></select>
@@ -283,21 +284,21 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     {input('Reason for deactivation',accountReason,setAccountReason)}{btn('Deactivate account',()=>{void changeUser('deactivate')},true)}
     </>}</div>)}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER SUCCESS</div><h2>Support cases and assistance</h2>
+  <section className="rw-panel rw-wide" style={{display:adminTab==='support'?'':'none'}}><div className="eyebrow">ORGANISER SUCCESS</div><h2>Support cases and assistance</h2>
    <p>Support cases are tenant-scoped. Review organiser problems, assign case status and record the resolution.</p>
    {cases.map(c=><div className="rw-list-item" key={c.id}><div><b>{c.subject}</b><p>{c.organiser_name} · {c.status} · {c.priority}</p><small>{c.description}</small>{c.resolution&&<p>Resolution: {c.resolution}</p>}</div>
      <div className="rw-actions">{btn('Investigate',()=>{void updateCase(c.id,'in_progress',c.priority)},true)}{btn('Resolve',()=>{void updateCase(c.id,'resolved',c.priority)})}</div></div>)}
    {!cases.length&&<p>No open support requests.</p>}
    <label className="rw-field">Support resolution / guidance<textarea rows={3} value={caseResolution} onChange={e=>setCaseResolution(e.target.value)}/></label>
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">PLATFORM CONFIGURATION</div><h2>Operational settings</h2>
+  <section className="rw-panel rw-wide" style={{display:adminTab==='settings'?'':'none'}}><div className="eyebrow">PLATFORM CONFIGURATION</div><h2>Operational settings</h2>
    <p>Set organiser onboarding policy, event authenticity checks, support email, and help instructions. API credentials are managed in hosting environment variables.</p>
    <label className="rw-field">Setting<select value={settingKey} onChange={e=>{setSettingKey(e.target.value);setSettingValue(platformSettings[e.target.value]||'')}}>
     <option value="support_email">Support contact email</option><option value="organiser_approval_policy">Organiser approval checklist</option>
     <option value="event_verification_policy">Event authenticity checklist</option><option value="help_text">Help text</option></select></label>
    <label className="rw-field">Value<textarea rows={3} value={settingValue} onChange={e=>setSettingValue(e.target.value)}/></label>{btn('Save settings',()=>{void saveSetting()})}
   </section>
-  <section className="rw-panel"><h2>Organiser directory and access control</h2>
+  <section className="rw-panel" style={{display:adminTab==='organisers'?'':'none'}}><h2>Organiser directory and access control</h2>
    <p>Review all organiser applications and existing profiles. Revoke access without deleting tickets or historical events.</p>
    {organisers.map(o=><div className="rw-list-item" key={o.id}>
     <div><b>{o.full_name}</b><p>{o.email}</p><small>{o.role==='user'&&o.requested_role==='organiser'?'PENDING APPROVAL':o.account_status.toUpperCase()} · {o.event_count} events · {o.tickets_issued} tickets · {o.gate_operators} operators</small></div>
@@ -333,7 +334,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
       {btn('Save organiser configuration',()=>{void configureOrganiser()})}
     </>:<p>This applicant is not approved. Approve before configuring the organiser profile.</p>}
    </div>)}
-  </section>  <section className="rw-panel rw-wide"><div className="eyebrow">TICKET DESIGN SERVICE</div><h2>Publish new ticket themes</h2>
+  </section>  <section className="rw-panel rw-wide" style={{display:adminTab==='themes'?'':'none'}}><div className="eyebrow">TICKET DESIGN SERVICE</div><h2>Publish new ticket themes</h2>
    <p>Approved designs appear in every organiser's theme selector without requiring an application update. Custom artwork remains available.</p>
    {input('Theme name',newThemeName,setNewThemeName)}{input('Theme label',newThemeLabel,setNewThemeLabel)}
    <div className="rw-media-inputs"><label className="rw-field">First colour<input type="color" value={themeColorA} onChange={e=>setThemeColorA(e.target.value)}/></label>
@@ -342,12 +343,12 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    <div className="rw-theme-grid">{themeCatalog.map(t=><div key={t.id} className="rw-theme-option" style={{background:t.gradient}}><strong>{t.name}</strong><small>{t.label}</small></div>)}</div>
    {btn('Add theme to catalogue',()=>{void addNewTicketTheme()})}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">AUDIT TRAIL</div><h2>Recent administrator actions</h2>
+  <section className="rw-panel rw-wide" style={{display:adminTab==='audit'?'':'none'}}><div className="eyebrow">AUDIT TRAIL</div><h2>Recent administrator actions</h2>
     {auditHistory.map(h=><div key={h.id} className="rw-list-item"><div><b>{h.action.replaceAll('_',' ')}</b>
       <p>{h.performed_by} · {nice(h.created_at)}</p><small>{h.target_email||'Platform event or setting'} · {JSON.stringify(h.details||{})}</small></div></div>)}
     {!auditHistory.length&&<p>No administrator actions logged.</p>}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">EVENT AUTHENTICITY</div><h2>Review organiser listings and media</h2>
+  <section className="rw-panel rw-wide" style={{display:adminTab==='moderation'?'':'none'}}><div className="eyebrow">EVENT AUTHENTICITY</div><h2>Review organiser listings and media</h2>
    <p>Verify the identity, location, date, marketing materials and ticket promises before publishing an event to the public marketplace.</p>
    {moderationEvents.map(ev=><div className="rw-review-card" key={ev.id}>
      <div><strong>{ev.title}</strong><p>{ev.venue} · {nice(ev.starts_at)}</p><small>Submitted by {ev.organiser_name} ({ev.organiser_email})</small><p>Listing: {ev.verification_status} · {ev.pending_media} unreviewed assets</p></div>
@@ -358,12 +359,12 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
      </div>)}</div>
    </div>)}
    {!moderationEvents.length&&<p>No pending event or media submissions.</p>}
-  </section></div>}
- {role==='organiser'&&<div className="rw-layout">
+  </section></div></div>}
+ {role==='organiser'&&<div className="rw-workspace-shell"><nav className="rw-panel" aria-label="Organiser navigation" style={{display:'grid',gap:8,alignContent:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:8}}>ORGANISER WORKSPACE</div>
+   {(['dashboard','events','tickets','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>setOrganiserTab(tab)} style={{textTransform:'capitalize',textAlign:'left',padding:12}}>{tab==='tickets'?'Ticket Studio':tab==='team'?'Gate Management':tab==='payments'?'Payments & Bank Details':tab==='dashboard'?'Overview':tab}</button>)}
+  </nav><div className="rw-layout" style={{minWidth:0}}>
   {organiserTab==='profile'&&<section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER PROFILE</div><h2>My account</h2><p><strong>Name:</strong> {me?.full_name||'Not set'}</p><p><strong>Email:</strong> {me?.email}</p><p><strong>Account status:</strong> {me?.account_status}</p><p>For changes to verified identity or organiser permissions, contact Platform Support under Settings.</p></section>}
-  <nav className="rw-panel rw-wide" aria-label="Organiser navigation" style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
-   {(['dashboard','events','tickets','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>setOrganiserTab(tab)} style={{textTransform:'capitalize'}}>{tab==='tickets'?'Ticket Studio':tab==='team'?'Gate Management':tab==='payments'?'Payments & Bank Details':tab==='dashboard'?'Overview':tab}</button>)}
-  </nav>
+  
   {organiserTab==='dashboard'&&<section className="rw-panel rw-wide" style={{display:organiserTab==='dashboard'?'':'none'}}><div className="eyebrow">ORGANISER DASHBOARD</div><h2>Welcome, {me?.full_name||'Organiser'}</h2><p>Manage your events, tickets, payments and admissions from one place.</p><div className="rw-stats">
    <div className="rw-stat"><b>{events.filter(e=>e.organiser_id===me?.id).length}</b><small>My events</small></div>
    <div className="rw-stat"><b>{eventReports.reduce((n,e)=>n+Number(e.tickets_issued||0),0)}</b><small>Tickets issued</small></div>
@@ -447,7 +448,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   {eventId&&<section className="rw-panel rw-wide" style={{display:organiserTab==='team'?'':'none'}}><h2>Gate operators</h2><p>Invite anyone by email, including people without EventPass accounts. Copy and share the private link; they register or sign in and accept it. Links expire in 72 hours and grant access only to this event.</p>
     {input('Operator email',staffEmail,setStaffEmail,'email')}{input('Gate label',gateLabel,setGateLabel)}{btn('Create private invitation link',()=>{void inviteGate()})}{btn('Add existing verified operator',()=>{void addExistingOperator()},true)}{latestInvite&&<div className="rw-invite"><p>Private invitation link (visible only now; share it with the invited person):</p><input readOnly aria-label="New gate invitation URL" value={latestInvite} onFocus={e=>e.currentTarget.select()}/>{btn('Copy invitation link',()=>{void navigator.clipboard.writeText(latestInvite).then(()=>setMessage('Invitation link copied')).catch(()=>setMessage('Select and copy the link manually'))},true)}<p>Do not publish this link publicly. Creating a new invitation invalidates the old one.</p></div>}
     <h3>Assigned operators ({gateOperators.filter(o=>o.event_id===eventId).length})</h3>{gateOperators.filter(o=>o.event_id===eventId).map(o=><div className="rw-list-item" key={o.user_id}><div><b>{o.full_name||o.email}</b><p>{o.email} · {o.gate_label} · {o.account_status}</p><p>Scans: {o.scan_count} · Admitted: {o.admitted_count} · Last scan: {o.last_scan_at?nice(o.last_scan_at):'Never'}</p></div>{btn('Revoke',()=>{void revokeGate({id:o.user_id,event_id:o.event_id,invitee_email:o.email,gate_label:o.gate_label,status:'accepted'})},true)}</div>)}<h3>Invitation history</h3>{invites.filter(i=>i.event_id===eventId).map(i=><div className="rw-list-item" key={i.id}><div><b>{i.invitee_email}</b><p>{i.gate_label} · {i.status}</p></div>{i.status!=='revoked'&&btn('Revoke',()=>{void revokeGate(i)},true)}</div>)}<h3>Recent gate activity</h3>{scans.length?scans.slice(0,20).map(s=><div className="rw-list-item" key={s.id}><div><b>{s.operator||'Operator'}</b><p>{s.outcome} · {s.gate_label} · {nice(s.scanned_at)}</p></div></div>):<p>No scans recorded for this event yet.</p>}{btn('Refresh gate activity',()=>{void run(async()=>{const [a,g]=await Promise.all([api('gates/activity?eventId='+encodeURIComponent(eventId)),api('gates')]);setScans(a.scans||[]);setGateOperators(g.operators||[]);setInvites(g.invitations||[]);})},true)}</section>}
- </div>}
+ </div></div>}
  {role==='user'&&<div className="rw-layout">
   <section className="rw-panel rw-wide rw-market">
     <div className="rw-market-hero"><div className="eyebrow">NEXX EVENTPASS • DISCOVER</div><h1>Find your next experience.</h1><p>Concerts, celebrations, festivals, meetups and memorable nights—all in one place.</p>
