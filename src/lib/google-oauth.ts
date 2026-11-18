@@ -45,5 +45,5 @@ export async function verifyGoogleIdToken(idToken:string, clientId:string,nonce:
  return {subject:payload.sub,email:payload.email.toLowerCase(),name:typeof payload.name==='string'?payload.name:payload.email};
 }
 export function portalDestination(p:OAuthPortal){
- return p==='organiser'?'manage':p==='gate'?'scan':p==='platform_admin'?'platform':'explore';
+ return p==='organiser'?'dashboard/organiser':p==='gate'?'dashboard/gate':p==='platform_admin'?'dashboard/platform-admin':'dashboard/user';
 }
