@@ -18,7 +18,7 @@ export default function GateInvitation(){
   <h1>Join your assigned gate</h1>
   <p>No separate gate account or password registration is required. Sign in with the Google email your organiser invited, then confirm the event assignment.</p>
   {notice&&<p role="status" className="rw-message">{notice}</p>}
-  {accepted?<Link className="rw-primary-link" href="/dashboard/gate">Open Gate Scanner</Link>:email?<>
+  {accepted?<Link className="rw-primary-link" href="/gate">Open Gate Scanner</Link>:email?<>
    <p>Signed in: <strong>{email}</strong></p>
    {token&&<button className="primary wide" disabled={busy} onClick={()=>{void accept()}}>Accept invitation and continue</button>}
    <button className="ghost" onClick={()=>{void fetch('/api/auth/logout',{method:'POST'}).then(()=>setEmail(''))}}>Switch Google account</button>
