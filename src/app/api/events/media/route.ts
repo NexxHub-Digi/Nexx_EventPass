@@ -64,6 +64,8 @@ export async function DELETE(req:Request){
   const u=await currentUser();if(!u||u.role!=='organiser'||u.account_status!=='active')return fail('Active organiser required',403);
   const body=await req.json(),mediaId=String(body.id||'');
   if(!uuid(mediaId))return fail('Invalid media',400);
+  const referenced=await db()`select exists(select 1 from ticket_deliveries d where d.ticket_art_id=${mediaId}) as in_use`;
+  if(referenced[0]?.in_use)return fail('Artwork is attached to issued tickets and must remain available for those customers',409);
   const deleted=await db()`delete from event_media m using events e where m.id=${mediaId} and e.id=m.event_id and e.organiser_id=${u.id} returning m.id`;
   return deleted[0]?ok({success:true}):fail('Media not found',404);
  }catch(e){return handleError(e)}
