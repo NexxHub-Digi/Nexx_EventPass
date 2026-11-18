@@ -215,3 +215,25 @@
 .ep-poster-thumb{height:100%;width:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#17091f}
 .ep-poster-thumb .masque-poster{height:260%;width:100%;min-width:250px;transform:scale(.62);transform-origin:center}
 @media(max-width:600px){.masque-poster-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}.masque-poster-choice{padding:6px}.poster-title{font-size:clamp(15px,5vw,30px)}.poster-description{font-size:clamp(7px,2vw,11px)}.poster-information{font-size:clamp(7px,2vw,11px)}.poster-price{font-size:clamp(14px,4vw,24px)}}
+
+/* Nexx Future shared navigation for the four existing, access-controlled workspaces. */
+.rw-portal-switch{display:flex;gap:10px;flex-wrap:wrap;padding:12px 0 20px;align-items:center}
+.rw-portal-switch a{color:#e4eaff;background:#192342;border:1px solid #45537c;padding:10px 15px;border-radius:999px;font-size:13px;font-weight:700;text-decoration:none;transition:background .15s,border-color .15s}
+.rw-portal-switch a:hover,.rw-portal-switch a:focus-visible{background:#39256c;border-color:#a56cff;outline-offset:3px}
+@media(max-width:600px){.rw-portal-switch{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;padding-bottom:15px}.rw-portal-switch a{flex:none;padding:9px 12px;font-size:12px}}
+
+/* Ported from approved EventPass Platform Command Center redesign */
+.admin-command-nav{margin:18px 0 26px;padding:clamp(18px,3vw,30px);border:1px solid #39466b;border-radius:22px;background:radial-gradient(ellipse at top right,#39256d 0%,#171f33 57%);box-shadow:0 18px 55px #0003}
+.admin-command-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.admin-command-head h1{font-size:clamp(27px,3vw,40px);letter-spacing:-.035em;margin:9px 0}
+.admin-command-head p{font-size:14px;color:#b9c5db;line-height:1.6}
+.admin-command-links{display:flex;gap:9px;overflow-x:auto;padding:14px 0 18px;scrollbar-width:thin;scrollbar-color:#7657c5 transparent}
+.admin-command-links a{white-space:nowrap;flex-shrink:0;background:#273253;border:1px solid #45537a;border-radius:12px;padding:11px 14px;font-size:12px;font-weight:700;transition:background .2s,transform .2s}
+.admin-command-links a:hover,.admin-command-links a:focus-visible{background:#7041d9;transform:translateY(-2px);outline:2px solid #9d86ff;outline-offset:2px}
+.admin-command-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.admin-command-kpis>div{display:flex;flex-direction:column;gap:9px;padding:17px;border:1px solid #435075;background:#111a32b8;border-radius:14px}
+.admin-command-kpis small{color:#b4c0d7;font-size:12px}
+.admin-command-kpis strong{font-size:clamp(22px,3vw,33px);font-variant-numeric:tabular-nums}
+.rw-panel h2[id^="admin-"]{scroll-margin-top:20px}
+@media(max-width:750px){.admin-command-head{flex-direction:column}.admin-command-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-command-nav{padding:17px}.admin-command-links a{padding:10px 12px}}
+@media(prefers-reduced-motion:reduce){.admin-command-links a{transition:none}}

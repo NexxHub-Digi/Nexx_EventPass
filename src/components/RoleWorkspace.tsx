@@ -12,6 +12,7 @@ type Order={id:string;event_id:string;event_title:string;reservation_expires_at?
 type Ticket={id:string;event_id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;redeemed_at?:string|null;ticket_theme?:string;admission_label?:string;ticket_art_id?:string|null};
 type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string};
 type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null;can_create_events?:boolean;can_invite_gates?:boolean;can_verify_payments?:boolean};
+type GateOperator={event_id:string;user_id:string;gate_label:string;email:string;full_name:string;account_status:string;scan_count:number;admitted_count:number;last_scan_at:string|null};
 type Invite={id:string;event_id:string;invitee_email:string;gate_label:string;status:string};
 type Scan={id:string;outcome:string;operator?:string;gate_label:string;scanned_at:string};
 type EventMedia={id:string;event_id?:string;media_type:string;file_name:string;approved?:boolean;url:string};
@@ -31,8 +32,8 @@ async function api(route:string,method='GET',body?:unknown){
  let result;try{result=await res.json()}catch{throw Error('Service unavailable')}
  if(!res.ok)throw Error(result.error||'Request failed');return result;
 }
-export default function RoleWorkspace(){
- const p=useParams<{role:string}>(),role=p.role as Role,title=roles[role],scanControls=useRef<{stop:()=>void}|null>(null);
+export default function RoleWorkspace({portal}:{portal?:Role}={}){
+ const p=useParams<{role:string}>(),role=(portal||p.role) as Role,title=roles[role],scanControls=useRef<{stop:()=>void}|null>(null);
  const [me,setMe]=useState<Member|null>(null),[portals,setPortals]=useState<string[]>([]),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[orders,setOrders]=useState<Order[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[gates,setGates]=useState<Gate[]>([]),[invites,setInvites]=useState<Invite[]>([]);
  const [search,setSearch]=useState(''),[filterCategory,setFilterCategory]=useState('All'),[sortBy,setSortBy]=useState('soonest');
@@ -49,14 +50,18 @@ export default function RoleWorkspace(){
  const [cases,setCases]=useState<SupportCase[]>([]),[caseSubject,setCaseSubject]=useState(''),[caseDescription,setCaseDescription]=useState(''),[casePriority,setCasePriority]=useState('normal'),[caseResolution,setCaseResolution]=useState('');
  const [platformSettings,setPlatformSettings]=useState<Record<string,string>>({}),[settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
  const [bankName,setBankName]=useState(''),[accountName,setAccountName]=useState(''),[accountNumber,setAccountNumber]=useState('');
+ const [paymentSaved,setPaymentSaved]=useState<{bank_name:string;account_name:string;account_number:string}|null>(null),[paymentLoaded,setPaymentLoaded]=useState(false);
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
  const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string}|null>(null);
+ const [organiserTab,setOrganiserTab]=useState<'dashboard'|'events'|'tickets'|'payments'|'team'|'profile'|'settings'>('dashboard');
+ const [gateOperators,setGateOperators]=useState<GateOperator[]>([]);
  const [staffEmail,setStaffEmail]=useState(''),[gateLabel,setGateLabel]=useState('Main gate'),[newOrganiser,setNewOrganiser]=useState(''),[latestInvite,setLatestInvite]=useState('');
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
  const valid=role==='user'||role==='organiser'||role==='gate'||role==='platform-admin';
  const allowed=me&&portals.includes(role==='platform-admin'?'platform_admin':role);
  useEffect(()=>{if(role==='gate'&&gates.length===1&&!eventId)setEventId(gates[0].event_id)},[role,gates,eventId]);
+ useEffect(()=>{if(role!=='user'||!events.length||selectedEvent)return;const id=new URLSearchParams(window.location.search).get('eventId');if(id&&events.some(e=>e.id===id&&e.status==='published'&&e.verification_status==='verified')){void loadUserMedia(id)}},[role,events,selectedEvent]);
  async function fetchAll(){
   const m=await api('auth/me');setMe(m.user);setPortals(m.portals||[]);
   if(!m.user)return;
@@ -70,8 +75,8 @@ export default function RoleWorkspace(){
    const [b,g,support,report,refunds]=await Promise.all([api('organiser/payment-account'),api('gates'),api('support/cases'),api('platform/event-directory'),api('refunds')]);
    setEventReports(report.events||[]);setRefundCases(refunds.orders||[]);
    setCases(support.cases||[]);
-   setBankName(b.account?.bank_name||'');setAccountName(b.account?.account_name||'');setAccountNumber(b.account?.account_number||'');
-   setGates(g.gates||[]);setInvites(g.invitations||[]);
+   setBankName(b.account?.bank_name||'');setAccountName(b.account?.account_name||'');setAccountNumber(b.account?.account_number||'');setPaymentSaved(b.account?{bank_name:b.account.bank_name,account_name:b.account.account_name,account_number:b.account.account_number}:null);setPaymentLoaded(true);
+   setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
   }else if(role==='gate'){const g=await api('gates');setGates(g.gates||[]);}
   else if(role==='platform-admin'){
    const [a,overview]=await Promise.all([api('platform/organisers'),api('platform/overview')]);
@@ -89,7 +94,7 @@ export default function RoleWorkspace(){
  },[role,me?.id,me?.account_status]);
  useEffect(()=>{if(!eventId){setOrders([]);setScans([]);return}
  if(role==='organiser')api('orders?eventId='+encodeURIComponent(eventId)).then(v=>setOrders(v.orders||[])).catch(e=>setMessage((e as Error).message));
- if(role==='gate')api('gates/activity?eventId='+encodeURIComponent(eventId)).then(v=>setScans(v.scans||[])).catch(e=>setMessage((e as Error).message));
+ if(role==='organiser'||role==='gate')api('gates/activity?eventId='+encodeURIComponent(eventId)).then(v=>setScans(v.scans||[])).catch(e=>setMessage((e as Error).message));
  if(role==='organiser')api('events/media?eventId='+encodeURIComponent(eventId)).then(v=>setEventMedia(v.media||[])).catch(e=>setMessage((e as Error).message));
  },[eventId,role]);
  async function run(fn:()=>Promise<void>){setBusy(true);setMessage('');try{await fn()}catch(e){setMessage((e as Error).message)}finally{setBusy(false)}}
@@ -151,17 +156,17 @@ export default function RoleWorkspace(){
  async function inviteGate(){await run(async()=>{
   if(!eventId)throw Error('Select an event first');
   const r=await api('gates','POST',{eventId,email:staffEmail,gateLabel});setMessage(r.message);setLatestInvite(r.invitationLink||'');setStaffEmail('');
-  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);
+  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
  })}
  async function addExistingOperator(){await run(async()=>{
   if(!eventId)throw Error('Select an event');
   const r=await api('gates','POST',{eventId,email:staffEmail,gateLabel,mode:'add'});
   setLatestInvite('');setStaffEmail('');setMessage(r.message);
-  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);
+  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
  })}
  async function revokeGate(i:Invite){await run(async()=>{
   await api('gates','DELETE',{eventId:i.event_id,email:i.invitee_email});setMessage('Gate invitation and access revoked');
-  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);
+  const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
  })}
  async function adminAction(action:string,id?:string){await run(async()=>{
   await api('platform/organisers','POST',{action,userId:id,email:newOrganiser});setMessage('Organiser action completed');setNewOrganiser('');
@@ -224,13 +229,15 @@ export default function RoleWorkspace(){
  if(!me)return <main className="rw-shell"><h1>{title}</h1><p>Sign in to continue.</p><a className="rw-primary-link" href={'/login/'+role}>Sign in to {title}</a></main>;
  if(role==='organiser'&&me.role==='user'&&me.requested_role==='organiser')return <main className="rw-shell"><h1>Organiser approval pending</h1><p>Your Google or email account is registered. The Platform Administrator must approve your organiser request before your management interface becomes active.</p><p>{me.email}</p><a className="google-auth-button" href="/api/auth/google?portal=organiser&intent=link"><span className="google-g" aria-hidden="true">G</span> Link Google account</a><button onClick={()=>{void signout()}}>Sign out</button></main>;
  if(!allowed)return <main className="rw-shell"><h1>{title} access inactive</h1><p>Your account does not have permission to access this interface.</p><p>Organisers require administrator approval. Gate operators require an invitation from an organiser and a Google-verified email.</p><a href="/login/user">Open User interface</a></main>;
- return <main className="rw-shell"><div className="rw-top"><div><a href="/" className="rw-brand">◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title}</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
+ return <main className="rw-shell"><div className="rw-top"><div><a href="/" className="rw-brand">◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title} · Nexx Future</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
+ <nav className="rw-portal-switch" aria-label="EventPass workspaces"><a href="/">Discover</a><a href="/dashboard/user">My tickets</a><a href="/organiser">Organiser</a><a href="/gate">Gate</a><a href="/platform-admin">Platform</a></nav>
  {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
+ {role==='platform-admin'&&<nav className="admin-command-nav" aria-label="Platform administration sections"><div className="admin-command-head"><div><span className="eyebrow">NEXX EVENTPASS / CONTROL CENTER</span><h1>Platform Command Center</h1><p>Live operational data from the EventPass API. Select a workspace to manage it.</p></div><button className="ghost small" disabled={busy} onClick={()=>{void run(async()=>{await fetchAll();setMessage('Platform data refreshed')})}}>↻ Refresh</button></div><div className="admin-command-links">{[['Overview','admin-overview'],['Analytics & Events','admin-reports'],['Payments & Refunds','admin-refunds'],['Users & Access','admin-users'],['Support','admin-support'],['Settings','admin-settings'],['Organisers','admin-organisers'],['Ticket Studio','admin-themes'],['Audit Logs','admin-audit'],['Event Moderation','admin-moderation']].map(([name,id])=><a key={id} href={'#'+id}>{name} ↗</a>)}</div><div className="admin-command-kpis"><div><small>Organiser accounts</small><strong>{organisers.filter(o=>o.role==='organiser').length}</strong></div><div><small>Pending applications</small><strong>{organisers.filter(o=>o.requested_role==='organiser'&&o.role==='user').length}</strong></div><div><small>Events monitored</small><strong>{eventReports.length}</strong></div><div><small>Refund exceptions</small><strong>{refundCases.length}</strong></div></div></nav>}
  {role==='platform-admin'&&<div className="rw-layout">
-  <section className="rw-panel"><h2>Platform overview</h2><div className="rw-stats">{Object.entries(stats).map(([k,v])=><div className="rw-stat" key={k}><b>{Number(v).toLocaleString()}</b><small>{k}</small></div>)}</div>
+  <section className="rw-panel"><h2 id="admin-overview">Platform overview</h2><div className="rw-stats">{Object.entries(stats).map(([k,v])=><div className="rw-stat" key={k}><b>{Number(v).toLocaleString()}</b><small>{k}</small></div>)}</div>
   <h3>Create organiser from verified User</h3><p>Only a Google-verified existing account can be promoted. No default password is created.</p>
   {input('Verified User email',newOrganiser,setNewOrganiser,'email')}{btn('Create organiser',()=>{void adminAction('create')})}</section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">MULTI-TENANT BUSINESS INTELLIGENCE</div><h2>All organiser events and revenue</h2>
+  <section className="rw-panel rw-wide"><div className="eyebrow">MULTI-TENANT BUSINESS INTELLIGENCE</div><h2 id="admin-reports">All organiser events and revenue</h2>
    <p>Inspect any event's available capacity, live reservations, issued tickets, attendance, revenue, refunds and assigned operators.</p>
    <div className="rw-market-filters">{input('Search event or organiser',reportSearch,setReportSearch)}{btn('Search reports',()=>{void refreshReports()})}</div>
    {eventReports.map(e=><div className="rw-list-item" key={e.id}>
@@ -352,27 +359,44 @@ export default function RoleWorkspace(){
    {!moderationEvents.length&&<p>No pending event or media submissions.</p>}
   </section></div>}
  {role==='organiser'&&<div className="rw-layout">
-  <section className="rw-panel"><div className="eyebrow">ORGANISER HELPDESK</div><h2>Get Platform Support</h2><p>Report issues with event verification, bank payments, QR tickets, or gate staff. Only you and Platform Admin can see your cases.</p>
+  {organiserTab==='profile'&&<section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER PROFILE</div><h2>My account</h2><p><strong>Name:</strong> {me?.full_name||'Not set'}</p><p><strong>Email:</strong> {me?.email}</p><p><strong>Account status:</strong> {me?.account_status}</p><p>For changes to verified identity or organiser permissions, contact Platform Support under Settings.</p></section>}
+  <nav className="rw-panel rw-wide" aria-label="Organiser navigation" style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+   {(['dashboard','events','tickets','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>setOrganiserTab(tab)} style={{textTransform:'capitalize'}}>{tab==='tickets'?'Ticket Studio':tab==='team'?'Gate Management':tab==='payments'?'Payments & Bank Details':tab==='dashboard'?'Overview':tab}</button>)}
+  </nav>
+  {organiserTab==='dashboard'&&<section className="rw-panel rw-wide" style={{display:organiserTab==='dashboard'?'':'none'}}><div className="eyebrow">ORGANISER DASHBOARD</div><h2>Welcome, {me?.full_name||'Organiser'}</h2><p>Manage your events, tickets, payments and admissions from one place.</p><div className="rw-stats">
+   <div className="rw-stat"><b>{events.filter(e=>e.organiser_id===me?.id).length}</b><small>My events</small></div>
+   <div className="rw-stat"><b>{eventReports.reduce((n,e)=>n+Number(e.tickets_issued||0),0)}</b><small>Tickets issued</small></div>
+   <div className="rw-stat"><b>{eventReports.reduce((n,e)=>n+Number(e.pending_orders||0),0)}</b><small>Pending payments</small></div>
+   <div className="rw-stat"><b>{eventReports.reduce((n,e)=>n+Number(e.checked_in||0),0)}</b><small>Admissions</small></div>
+   <div className="rw-stat"><b>{money(eventReports.reduce((n,e)=>n+Number(e.confirmed_revenue_ngn||0),0))}</b><small>Confirmed revenue</small></div>
+   <div className="rw-stat"><b>{gateOperators.length}</b><small>Assigned gate operators</small></div></div>
+   <div className="rw-actions">{btn('Manage events',()=>setOrganiserTab('events'))}{btn('Review payments',()=>setOrganiserTab('payments'),true)}{btn('Manage gate team',()=>setOrganiserTab('team'),true)}</div>
+   <h3>Recent events</h3>{eventReports.slice(0,5).map(e=><div className="rw-list-item" key={e.id}><div><b>{e.title}</b><p>{e.tickets_issued} tickets issued · {e.checked_in} admitted · {money(e.confirmed_revenue_ngn)}</p></div></div>)}
+   {!eventReports.length&&<p>No events yet. Open Events to create your first event.</p>}
+  </section>}
+  <section className="rw-panel" style={{display:organiserTab==='settings'?'':'none'}}><div className="eyebrow">ORGANISER HELPDESK</div><h2>Get Platform Support</h2><p>Report issues with event verification, bank payments, QR tickets, or gate staff. Only you and Platform Admin can see your cases.</p>
    {input('Subject',caseSubject,setCaseSubject)}
    <label className="rw-field">Description<textarea rows={3} value={caseDescription} onChange={e=>setCaseDescription(e.target.value)}/></label>
    <label className="rw-field">Priority<select value={casePriority} onChange={e=>setCasePriority(e.target.value)}>{['low','normal','high','urgent'].map(x=><option key={x}>{x}</option>)}</select></label>{btn('Create support request',()=>{void openSupportCase()})}
    {cases.map(c=><div className="rw-list-item" key={c.id}><div><b>{c.subject}</b><p>{c.status} · {c.priority}</p>{c.resolution&&<p>Response: {c.resolution}</p>}</div></div>)}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER REPORTS</div><h2>My event operations</h2>
+  <section className="rw-panel rw-wide" style={{display:organiserTab==='dashboard'?'':'none'}}><div className="eyebrow">ORGANISER REPORTS</div><h2>My event operations</h2>
    {eventReports.map(e=><div key={e.id} className="rw-list-item"><div><b>{e.title}</b><p>{e.tickets_issued} issued · {e.reserved_seats} reserved · {e.checked_in} admitted · {e.refund_cases} refund cases</p>
     <small>{money(e.confirmed_revenue_ngn)} confirmed revenue · Available {Math.max(0,e.capacity-e.tickets_issued-e.reserved_seats)} of {e.capacity}</small></div></div>)}
    {!eventReports.length&&<p>Event reporting will appear after you create an event.</p>}
   </section>
-  <section className="rw-panel rw-wide"><h2>Payment exceptions and refunds</h2>
+  <section className="rw-panel rw-wide" style={{display:organiserTab==='payments'?'':'none'}}><h2 id="admin-refunds">Payment exceptions and refunds</h2>
    {input('Settlement reference / notes',refundNote,setRefundNote)}
    {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title}</b><p>{money(r.amount_ngn)} · {r.refund_status}</p><small>{r.buyer_email} · {r.refund_note||'Check bank settlement before taking action'}</small></div>
     <div className="rw-actions">{btn('Review',()=>{void updateRefund(r.id,'review_required')},true)}{btn('Refund initiated',()=>{void updateRefund(r.id,'initiated')},true)}{btn('Settled',()=>{void updateRefund(r.id,'settled')})}</div></div>)}
   </section>
-  <section className="rw-panel"><h2>Bank transfer instructions</h2><p>Users see these account details on your published events. Only approve a ticket after confirming funds in your own bank records.</p>
-    {input('Bank name',bankName,setBankName)}{input('Account name',accountName,setAccountName)}{input('Account number',accountNumber,setAccountNumber)}
-    {btn('Save bank details',()=>{void saveBank()})}
+  <section className="rw-panel" id="organiser-payments" style={{display:organiserTab==='payments'?'':'none'}}><div className="eyebrow">PAYMENTS / CONFIGURATION</div><h2>Payment details & configuration</h2><p>Configure or update the bank account shown to customers on published events. Confirm the account holder and bank details before saving.</p>
+    {input('Bank name',bankName,setBankName)}{input('Account holder name',accountName,setAccountName)}{input('Account number',accountNumber,setAccountNumber)}
+    <p role="status">{!paymentLoaded?'Loading saved payment details…':!paymentSaved?'No payment account configured':paymentSaved.bank_name===bankName&&paymentSaved.account_name===accountName&&paymentSaved.account_number===accountNumber?'Saved account details are up to date':'Unsaved changes — customers will continue to see the previously saved details.'}</p>
+    {btn(paymentSaved?'Update payment details':'Save payment details',()=>{void saveBank()})}
+    <p>Payments are verified manually. Saving bank details does not approve any order or issue a QR ticket.</p>
   </section>
-  <section className="rw-panel"><div className="eyebrow">EVENT STUDIO</div><h2>Create and design an event</h2><p>Create as many events as you need. Your listing is reviewed before it appears publicly.</p>
+  <section className="rw-panel" style={{display:organiserTab==='events'?'':'none'}}><div className="eyebrow">EVENT STUDIO</div><h2>Create and design an event</h2><p>Create as many events as you need. Your listing is reviewed before it appears publicly.</p>
   {input('Event name',eventTitle,setEventTitle)}{input('Venue',venue,setVenue)}
   <label className="rw-field">Event description<textarea rows={4} maxLength={2500} value={eventDescription} onChange={e=>setEventDescription(e.target.value)} placeholder="Describe the experience, performers, attractions and ticket benefits"/></label>
   <label className="rw-field">Event category<select value={eventCategory} onChange={e=>setEventCategory(e.target.value)}>{['Music','Nightlife','Festival','Business','Food','Sports','Arts','Education','Community','Other'].map(c=><option key={c}>{c}</option>)}</select></label>
@@ -390,12 +414,12 @@ export default function RoleWorkspace(){
    <span>{t.name}{posterTemplate===t.id?' ✓':''}</span></button>)}</div>
   {btn('Create event for verification',()=>{void createEvent()})}
   </section>
-  <section className="rw-panel rw-wide"><h2>Events and payment approvals</h2><label className="rw-field">Choose an event<select value={eventId} onChange={e=>{const id=e.target.value;setEventId(id);const selected=events.find(ev=>ev.id===id);if(selected){setEventDescription(selected.description||'');setEventCategory(selected.category||'Other');setTicketTheme(selected.ticket_theme||'aurora');setAdmissionLabel(selected.admission_label||'ADMIT ONE');setPosterTemplate(selected.poster_template||'none')}setLatestInvite('')}}><option value="">Select event</option>
+  <section className="rw-panel rw-wide" style={{display:organiserTab==='payments'?'':'none'}}><h2>Events and payment approvals</h2><label className="rw-field">Choose an event<select value={eventId} onChange={e=>{const id=e.target.value;setEventId(id);const selected=events.find(ev=>ev.id===id);if(selected){setEventDescription(selected.description||'');setEventCategory(selected.category||'Other');setTicketTheme(selected.ticket_theme||'aurora');setAdmissionLabel(selected.admission_label||'ADMIT ONE');setPosterTemplate(selected.poster_template||'none')}setLatestInvite('')}}><option value="">Select event</option>
   {events.filter(e=>e.organiser_id===me.id).map(e=><option value={e.id} key={e.id}>{e.title}</option>)}</select></label>
   {orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.buyer_name||o.buyer_email||'User'}</b><p>{o.quantity} tickets · {money(o.amount_ngn)} · {o.status}</p><small>Bank reference: {o.payment_reference}</small><p>{o.status==='pending'&&o.reservation_expires_at?('Reservation ends '+nice(o.reservation_expires_at)):''}{o.refund_status&&o.refund_status!=='not_required'?' · Refund: '+o.refund_status:''}</p><p>{o.receipt_uploaded_at?<a href={'/api/orders/receipt?orderId='+o.id} target="_blank" rel="noreferrer">View submitted receipt</a>:'Receipt not submitted'}</p></div><div className="rw-actions">
   {o.status==='pending'&&<>{btn('Approve',()=>{void review(o.id,'approved')})}{btn('Reject',()=>{void review(o.id,'rejected')},true)}</>}</div></div>)}
   {!eventId&&<p>Select an event to review payments and assign gate staff.</p>}</section>
-  {eventId&&<section className="rw-panel rw-wide"><div className="eyebrow">CREATIVE MANAGER</div><h2>Event media & ticket designs</h2>
+  {eventId&&<section className="rw-panel rw-wide" style={{display:organiserTab==='tickets'?'':'none'}}><div className="eyebrow">CREATIVE MANAGER</div><h2>Event media & ticket designs</h2>
     <p>Upload real event posters, image galleries, short videos, or your own ticket artwork. Media appears to Users only after platform review. Image limit 2 MB; video teasers up to 3.5 MB.</p>
     <div className="rw-media-inputs">
       <label className="rw-file-label">Upload posters & photos<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{void uploadMedia(e.target.files?.[0]||null);e.currentTarget.value=''}}/></label>
@@ -419,9 +443,9 @@ export default function RoleWorkspace(){
     <label className="rw-field">Public event description<textarea rows={3} maxLength={2500} value={eventDescription} onChange={e=>setEventDescription(e.target.value)}/></label>
     {btn('Save design for review',()=>{void saveEventDesign()})}
   </section>}
-  {eventId&&<section className="rw-panel rw-wide"><h2>Gate operators</h2><p>Invite anyone by email, including people without EventPass accounts. Copy and share the private link; they register or sign in and accept it. Links expire in 72 hours and grant access only to this event.</p>
+  {eventId&&<section className="rw-panel rw-wide" style={{display:organiserTab==='team'?'':'none'}}><h2>Gate operators</h2><p>Invite anyone by email, including people without EventPass accounts. Copy and share the private link; they register or sign in and accept it. Links expire in 72 hours and grant access only to this event.</p>
     {input('Operator email',staffEmail,setStaffEmail,'email')}{input('Gate label',gateLabel,setGateLabel)}{btn('Create private invitation link',()=>{void inviteGate()})}{btn('Add existing verified operator',()=>{void addExistingOperator()},true)}{latestInvite&&<div className="rw-invite"><p>Private invitation link (visible only now; share it with the invited person):</p><input readOnly aria-label="New gate invitation URL" value={latestInvite} onFocus={e=>e.currentTarget.select()}/>{btn('Copy invitation link',()=>{void navigator.clipboard.writeText(latestInvite).then(()=>setMessage('Invitation link copied')).catch(()=>setMessage('Select and copy the link manually'))},true)}<p>Do not publish this link publicly. Creating a new invitation invalidates the old one.</p></div>}
-    {invites.filter(i=>i.event_id===eventId).map(i=><div className="rw-list-item" key={i.id}><div><b>{i.invitee_email}</b><p>{i.gate_label} · {i.status}</p></div>{i.status!=='revoked'&&btn('Revoke',()=>{void revokeGate(i)},true)}</div>)}</section>}
+    <h3>Assigned operators ({gateOperators.filter(o=>o.event_id===eventId).length})</h3>{gateOperators.filter(o=>o.event_id===eventId).map(o=><div className="rw-list-item" key={o.user_id}><div><b>{o.full_name||o.email}</b><p>{o.email} · {o.gate_label} · {o.account_status}</p><p>Scans: {o.scan_count} · Admitted: {o.admitted_count} · Last scan: {o.last_scan_at?nice(o.last_scan_at):'Never'}</p></div>{btn('Revoke',()=>{void revokeGate({id:o.user_id,event_id:o.event_id,invitee_email:o.email,gate_label:o.gate_label,status:'accepted'})},true)}</div>)}<h3>Invitation history</h3>{invites.filter(i=>i.event_id===eventId).map(i=><div className="rw-list-item" key={i.id}><div><b>{i.invitee_email}</b><p>{i.gate_label} · {i.status}</p></div>{i.status!=='revoked'&&btn('Revoke',()=>{void revokeGate(i)},true)}</div>)}<h3>Recent gate activity</h3>{scans.length?scans.slice(0,20).map(s=><div className="rw-list-item" key={s.id}><div><b>{s.operator||'Operator'}</b><p>{s.outcome} · {s.gate_label} · {nice(s.scanned_at)}</p></div></div>):<p>No scans recorded for this event yet.</p>}{btn('Refresh gate activity',()=>{void run(async()=>{const [a,g]=await Promise.all([api('gates/activity?eventId='+encodeURIComponent(eventId)),api('gates')]);setScans(a.scans||[]);setGateOperators(g.operators||[]);setInvites(g.invitations||[]);})},true)}</section>}
  </div>}
  {role==='user'&&<div className="rw-layout">
   <section className="rw-panel rw-wide rw-market">

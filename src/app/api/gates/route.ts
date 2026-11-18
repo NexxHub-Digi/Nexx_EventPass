@@ -12,13 +12,19 @@ export async function GET(){
  const gates=await db()`select g.event_id,g.gate_label,e.title,e.starts_at,e.organiser_id,o.full_name as organiser_name
  from gate_assignments g join events e on e.id=g.event_id join app_users o on o.id=e.organiser_id
  where g.user_id=${u.id} and e.status='published' and e.verification_status='verified' and o.role='organiser' and o.account_status='active'
- union select e.id,'Organiser'::text,e.title,e.starts_at,e.organiser_id,u.full_name
+ union select e.id,'Organiser'::text,e.title,e.starts_at,e.organiser_id,${u.full_name}::text
  from events e where e.organiser_id=${u.id} and e.status='published' and e.verification_status='verified' and u.role='organiser' and u.account_status='active'
  order by starts_at desc`;
  const invitations=u.role==='organiser'?await db()`select i.id,i.event_id,i.invitee_email,i.gate_label,i.status,
  i.created_at,i.token_expires_at,i.accepted_at from gate_invitations i where i.organiser_id=${u.id}
  order by i.created_at desc limit 100`:[];
- return ok({gates,invitations});
+ const operators=u.role==='organiser'?await db()`select g.event_id,g.user_id,g.gate_label,a.email,a.full_name,a.account_status,
+ (select count(*)::int from entry_scans s where s.event_id=g.event_id and s.scanner_id=g.user_id) as scan_count,
+ (select count(*)::int from entry_scans s where s.event_id=g.event_id and s.scanner_id=g.user_id and s.outcome='approved') as admitted_count,
+ (select max(s.scanned_at) from entry_scans s where s.event_id=g.event_id and s.scanner_id=g.user_id) as last_scan_at
+ from gate_assignments g join events e on e.id=g.event_id join app_users a on a.id=g.user_id
+ where e.organiser_id=${u.id} order by e.starts_at desc,a.full_name limit 500`:[];
+ return ok({gates,invitations,operators});
  }catch(e){return handleError(e)}
 }
 export async function POST(req:Request){

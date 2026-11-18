@@ -33,8 +33,17 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   for(const [portal,label] of [['user','User'],['organiser','Event Organiser'],['gate','Gate Operator'],['platform-admin','Platform Administrator']]){
     const page=await fetch(base+'/login/'+portal);
     assert.equal(page.status,200,'dedicated '+label+' sign-in route');
-    assert.ok((await page.text()).includes(label),'role title on '+portal+' sign-in page');
+    const html=await page.text();
+    assert.ok(html.includes('Continue with Google'),'Google-only sign-in on '+portal+' page');
+    assert.ok(html.includes('Switch'),'corner portal switch on '+portal+' page');
+    assert.ok(html.includes('/api/auth/google?portal='+(portal==='platform-admin'?'platform_admin':portal)),'correct Google OAuth portal on '+portal+' page');
   }
+  const failedCallback=await fetch(base+'/api/auth/google/callback?error=access_denied',{redirect:'manual'});
+  assert.equal(failedCallback.status,307,'failed OAuth callback redirects');
+  const failedLocation=new URL(failedCallback.headers.get('location'));
+  assert.equal(failedLocation.origin,base,'failed OAuth remains on current deployment');
+  assert.equal(failedLocation.pathname,'/login/user','failed OAuth returns to redesigned login');
+  assert.equal(failedLocation.searchParams.get('oauth_error'),'state_missing','failed OAuth displays error');
   assert.equal(expect(await req('/api/auth/me',{cookie:org.cookie}),200,'organiser pending').user.requested_role,'organiser');
   expect(await post('/api/events',org.cookie,{title:'Denied',venue:'E2E',startsAt:new Date(Date.now()+3600000),capacity:1,priceNgn:5000,qrKeyword:'secrettest123'}),403,'unapproved organiser');
   await sql.unsafe('update app_users set role=$1 where id=$2',['platform_admin',admin.id]);

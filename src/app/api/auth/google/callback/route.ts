@@ -12,7 +12,8 @@ function back(origin:string,portal:OAuthPortal,code:string){
 }
 export async function GET(req:NextRequest){
  let portal:OAuthPortal='user';
- const origin=req.nextUrl.origin.includes('.netlify.app') ? req.nextUrl.origin : (process.env.AUTH_PUBLIC_ORIGIN || process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin);
+ // Redirect on the callback host itself. Environment site URLs may point to an older deployment.
+ const origin=req.nextUrl.origin;
  const stateCookie=req.cookies.get('eventpass_google_state')?.value;
  let response:NextResponse;
  try {
@@ -121,7 +122,7 @@ export async function GET(req:NextRequest){
    return response;
   }
   const safeInvite=portal==='user'&&typeof st.returnTo==='string'&&/^\/invite\/gate\?token=[A-Za-z0-9_-]{43}$/.test(st.returnTo);
-  const destination=new URL(safeInvite?st.returnTo!:'/dashboard/'+(portal==='platform_admin'?'platform-admin':portal),origin);
+  const destination=new URL(safeInvite?st.returnTo!:'/'+portalDestination(portal),origin);
   destination.searchParams.set('oauth','success');
   destination.searchParams.set('portal',portal);
   destination.searchParams.set('view',(portal==='organiser'&&user.requested_role==='organiser')?'pending':portalDestination(portal));
