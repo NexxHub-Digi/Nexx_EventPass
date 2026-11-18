@@ -20,7 +20,7 @@ test('AES-GCM uses fresh random nonces',()=>{
 test('invalid tags, event mismatch and tampering are rejected',()=>{
   const qr=createEncryptedQr(ticketId,eventId,cipher);
   assert.equal(decodeEncryptedQr(qr,randomUUID(),cipher),null);
-  assert.equal(decodeEncryptedQr(qr.slice(0,-2)+'AA',eventId,cipher),null);
+  assert.equal(decodeEncryptedQr(qr.replace(/\.([A-Za-z0-9_-])/,(_,first)=>'.'+(first==='A'?'B':'A')),eventId,cipher),null);
   assert.equal(decodeEncryptedQr('EVP2.'+eventId+'.bogus',eventId,cipher),null);
   assert.equal(decodeEncryptedQr('EVP1.'+eventId+'.bogus',eventId,cipher),null);
 });
