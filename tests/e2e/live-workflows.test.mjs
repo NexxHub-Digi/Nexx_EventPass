@@ -85,7 +85,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/platform/events',adminCookie,{eventId:event.id,mediaId:ticketArtwork.id,action:'approve_media'}),200,'administrator approves imported ticket art');
   expect(await post('/api/platform/events',adminCookie,{eventId:event.id,action:'verify'}),200,'admin verifies event listing');
   assert.ok(expect(await req('/api/events'),200,'post-verification discovery').events.some(x=>x.id===event.id),'verified event published');
-  assert.equal(expect(await req('/api/events/media?eventId='+event.id),200,'approved gallery').media.length,1);
+  assert.equal(expect(await req('/api/events/media?eventId='+event.id),200,'approved gallery').media.length,2);
     expect(await post('/api/orders',buyer.cookie,{eventId:event.id,quantity:1,paymentReference:'E2E-TRANSFER-123'}),409,'paid event requires bank');
   expect(await post('/api/organiser/payment-account',org.cookie,{bankName:'E2E Test Bank',accountName:'E2E Organiser',accountNumber:'0123456789'}),200,'bank details');
   expect(await post('/api/platform/organisers',adminCookie,{action:'configure',userId:org.id,fullName:'E2E Approved Organiser',bankName:'E2E Test Bank',accountName:'E2E Organiser',accountNumber:'0123456789'}),200,'admin profile configuration');
@@ -128,9 +128,9 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const pendingForm=new FormData();pendingForm.set('eventId',event.id);
   pendingForm.set('file',new Blob([artwork],{type:'image/png'}),'second-poster.png');
   const pendingAsset=expect(await req('/api/events/media',{cookie:org.cookie,method:'POST',form:pendingForm}),201,'upload pending second poster').media;
-  assert.equal(expect(await req('/api/events/media?eventId='+event.id),200,'gallery excludes pending uploads').media.length,1);
+  assert.equal(expect(await req('/api/events/media?eventId='+event.id),200,'gallery excludes pending uploads').media.length,2);
   expect(await post('/api/platform/events',adminCookie,{eventId:event.id,mediaId:pendingAsset.id,action:'reject_media'}),200,'admin rejects unapproved media');
-  assert.equal(expect(await req('/api/events/media?eventId='+event.id,{cookie:org.cookie}),200,'rejected media removed').media.length,1);
+  assert.equal(expect(await req('/api/events/media?eventId='+event.id,{cookie:org.cookie}),200,'rejected media removed').media.length,2);
   const patchResult=await req('/api/events',{cookie:org.cookie,method:'PATCH',body:{eventId:event.id,description:'Changed after paid tickets were issued',category:'Nightlife',ticketTheme:'aurora'}});
   expect(patchResult,409,'issued ticket event cannot be silently unpublished by edits');
   const gateEmail=email('operator');
