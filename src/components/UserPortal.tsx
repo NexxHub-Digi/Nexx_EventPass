@@ -23,8 +23,9 @@ export default function UserPortal(){
  if(selected.price>0&&!reference.trim())throw Error('Enter your payment reference');
  const res=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({eventId:selected.id,quantity,paymentReference:selected.price>0?reference.trim():'FREE-TICKET'})});
  const data=await res.json();if(!res.ok)throw Error(data.error||'Reservation failed');
- if(receipt)await sendReceipt(data.order.id,receipt);
- setSelected(null);setReceipt(null);setReference('');setTab('Tickets');setNotice(receipt?'Reservation and payment evidence submitted for organiser review.':'Reservation created. Upload your payment evidence before expiry.');await refreshAccount();
+ let evidenceUploaded=false;
+ if(receipt){try{await sendReceipt(data.order.id,receipt);evidenceUploaded=true}catch(e){setNotice('Reservation created, but receipt upload failed: '+(e instanceof Error?e.message:'Upload error')+'. Upload evidence from My Tickets before expiry.')}}
+ setSelected(null);setReceipt(null);setReference('');setTab('Tickets');if(!receipt||evidenceUploaded)setNotice(evidenceUploaded?'Reservation and payment evidence submitted for organiser review.':'Reservation created. Upload payment evidence before expiry.');await refreshAccount();
  }catch(e){setNotice(e instanceof Error?e.message:'Unable to reserve tickets')}finally{setBusy(false)}};
  const uploadReceipt=async(orderId:string,file:File)=>{setBusy(true);setNotice('');try{await sendReceipt(orderId,file);await refreshAccount();setNotice('Payment evidence submitted for organiser review.')}catch(e){setNotice(e instanceof Error?e.message:'Upload failed')}finally{setBusy(false)}};
  const open=(e:EventItem)=>{setNotice('');setQuantity(1);setReference('');setReceipt(null);setSelected(e)};
