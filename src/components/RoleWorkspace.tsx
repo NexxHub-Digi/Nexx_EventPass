@@ -390,9 +390,11 @@ export default function RoleWorkspace(){
    {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title}</b><p>{money(r.amount_ngn)} · {r.refund_status}</p><small>{r.buyer_email} · {r.refund_note||'Check bank settlement before taking action'}</small></div>
     <div className="rw-actions">{btn('Review',()=>{void updateRefund(r.id,'review_required')},true)}{btn('Refund initiated',()=>{void updateRefund(r.id,'initiated')},true)}{btn('Settled',()=>{void updateRefund(r.id,'settled')})}</div></div>)}
   </section>
-  <section className="rw-panel" style={{display:organiserTab==='settings'?'':'none'}}><h2>Bank transfer instructions</h2><p>Users see these account details on your published events. Only approve a ticket after confirming funds in your own bank records.</p>
-    {input('Bank name',bankName,setBankName)}{input('Account name',accountName,setAccountName)}{input('Account number',accountNumber,setAccountNumber)}
-    {btn('Save bank details',()=>{void saveBank()})}
+  <section className="rw-panel" id="organiser-payments" style={{display:organiserTab==='payments'?'':'none'}}><div className="eyebrow">PAYMENTS / CONFIGURATION</div><h2>Payment details & configuration</h2><p>Configure or update the bank account shown to customers on published events. Confirm the account holder and bank details before saving.</p>
+    {input('Bank name',bankName,setBankName)}{input('Account holder name',accountName,setAccountName)}{input('Account number',accountNumber,setAccountNumber)}
+    <p role="status">{!paymentLoaded?'Loading saved payment details…':!paymentSaved?'No payment account configured':paymentSaved.bank_name===bankName&&paymentSaved.account_name===accountName&&paymentSaved.account_number===accountNumber?'Saved account details are up to date':'Unsaved changes — customers will continue to see the previously saved details.'}</p>
+    {btn(paymentSaved?'Update payment details':'Save payment details',()=>{void saveBank()})}
+    <p>Payments are verified manually. Saving bank details does not approve any order or issue a QR ticket.</p>
   </section>
   <section className="rw-panel" style={{display:organiserTab==='events'?'':'none'}}><div className="eyebrow">EVENT STUDIO</div><h2>Create and design an event</h2><p>Create as many events as you need. Your listing is reviewed before it appears publicly.</p>
   {input('Event name',eventTitle,setEventTitle)}{input('Venue',venue,setVenue)}
