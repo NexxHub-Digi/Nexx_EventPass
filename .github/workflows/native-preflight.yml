@@ -24,7 +24,11 @@ jobs:
         with:
           node-version: '22'
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: |
+          npm --version
+          node --version
+          npm install --no-audit --no-fund --loglevel=verbose 2>&1 | tee /tmp/eventpass-${{ matrix.app }}-install.log
+          exit ${PIPESTATUS[0]}
       - name: TypeScript
         run: npm run typecheck
       - name: Validate Expo configuration
@@ -35,3 +39,11 @@ jobs:
         run: npx expo export --platform android --output-dir /tmp/eventpass-${{ matrix.app }}-android
       - name: Export iOS JavaScript bundle
         run: npx expo export --platform ios --output-dir /tmp/eventpass-${{ matrix.app }}-ios
+      - name: Upload install diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.app }}-install-diagnostics
+          path: /tmp/eventpass-${{ matrix.app }}-install.log
+          if-no-files-found: ignore
+          retention-days: 7
