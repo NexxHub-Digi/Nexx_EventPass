@@ -8,7 +8,7 @@ import {EventPosterDesign} from '@/components/EventPosterDesign';
 import {TicketDesign} from '@/components/TicketDesign';
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null};
 type Event={id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;verification_status?:string;organiser?:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;cover_media_id?:string|null;video_media_id?:string|null;ticket_art_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
-type Order={id:string;event_id:string;event_title:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
+type Order={id:string;event_id:string;event_title:string;reservation_expires_at?:string;refund_status?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
 type Ticket={id:string;event_id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;redeemed_at?:string|null;ticket_theme?:string;admission_label?:string;ticket_art_id?:string|null};
 type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string};
 type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null;can_create_events?:boolean;can_invite_gates?:boolean;can_verify_payments?:boolean};
@@ -230,6 +230,35 @@ export default function RoleWorkspace(){
   <section className="rw-panel"><h2>Platform overview</h2><div className="rw-stats">{Object.entries(stats).map(([k,v])=><div className="rw-stat" key={k}><b>{Number(v).toLocaleString()}</b><small>{k}</small></div>)}</div>
   <h3>Create organiser from verified User</h3><p>Only a Google-verified existing account can be promoted. No default password is created.</p>
   {input('Verified User email',newOrganiser,setNewOrganiser,'email')}{btn('Create organiser',()=>{void adminAction('create')})}</section>
+  <section className="rw-panel rw-wide"><div className="eyebrow">MULTI-TENANT BUSINESS INTELLIGENCE</div><h2>All organiser events and revenue</h2>
+   <p>Inspect any event's available capacity, live reservations, issued tickets, attendance, revenue, refunds and assigned operators.</p>
+   <div className="rw-market-filters">{input('Search event or organiser',reportSearch,setReportSearch)}{btn('Search reports',()=>{void refreshReports()})}</div>
+   {eventReports.map(e=><div className="rw-list-item" key={e.id}>
+    <div><b>{e.title}</b><p>{e.organiser_name} · {e.status} / {e.verification_status}</p><small>{e.checked_in} admitted · {e.tickets_issued} issued · {e.reserved_seats} temporarily reserved · {money(e.confirmed_revenue_ngn)} confirmed</small></div>
+    {btn(selectedReport===e.id?'Close':'Event details',()=>setSelectedReport(selectedReport===e.id?'':e.id),true)}
+    {selectedReport===e.id&&<div className="rw-profile" style={{width:'100%'}}>
+     <h3>Event operations</h3><p>Venue: {e.venue}</p>
+     <div className="rw-stats"><div className="rw-stat"><b>{e.capacity}</b><small>Capacity</small></div>
+      <div className="rw-stat"><b>{e.tickets_issued}</b><small>Issued</small></div>
+      <div className="rw-stat"><b>{e.reserved_seats}</b><small>Reservations</small></div>
+      <div className="rw-stat"><b>{e.checked_in}</b><small>Check-ins</small></div>
+      <div className="rw-stat"><b>{e.refund_cases}</b><small>Refund cases</small></div>
+      <div className="rw-stat"><b>{e.active_gate_operators}</b><small>Gate operators</small></div></div>
+     <p>Available: <strong>{Math.max(0,e.capacity-e.tickets_issued-e.reserved_seats)}</strong> · Confirmed revenue: <strong>{money(e.confirmed_revenue_ngn)}</strong></p>
+    </div>}
+   </div>)}
+   {!eventReports.length&&<p>No events match this search.</p>}
+  </section>
+  <section className="rw-panel rw-wide"><div className="eyebrow">PAYMENT EXCEPTIONS</div><h2>Refund and reconciliation desk</h2>
+   <p>Expired reservations with payment evidence and rejected paid orders require manual settlement checks. Mark refunded only after verifying the transfer back to the buyer.</p>
+   {input('Refund note or bank settlement reference',refundNote,setRefundNote)}
+   {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title} — {money(r.amount_ngn)}</b>
+    <p>{r.buyer_email} · {r.refund_status} · {r.status}</p><small>{r.organiser_name||''} · {r.refund_note||'Not yet reconciled'}</small></div>
+    <div className="rw-actions">{btn('Review',()=>{void updateRefund(r.id,'review_required')},true)}
+     {btn('Refund initiated',()=>{void updateRefund(r.id,'initiated')},true)}
+     {btn('Mark settled',()=>{void updateRefund(r.id,'settled')})}</div></div>)}
+   {!refundCases.length&&<p>No payment exceptions are currently recorded.</p>}
+  </section>
   <section className="rw-panel rw-wide"><div className="eyebrow">MULTI-TENANT CRM</div><h2>User and operator directory</h2>
    <p>Search accounts and open a profile to view tickets, event activity and gate assignments. Deactivation preserves financial and admission audit records.</p>
    <div className="rw-market-filters">{input('Search name or email',userSearch,setUserSearch)}
@@ -282,6 +311,11 @@ export default function RoleWorkspace(){
      <div className="rw-stat"><b>{o.gate_operators}</b><small>Gate operators</small></div>
     </div>
     {o.role==='organiser'?<>
+      <h3>Tenant permissions</h3><p>Disable a sensitive capability without suspending the entire organiser account. Every change is audited.</p>
+      <label className="rw-field"><input type="checkbox" checked={canCreate} onChange={e=>setCanCreate(e.target.checked)}/> Create or edit events</label>
+      <label className="rw-field"><input type="checkbox" checked={canGates} onChange={e=>setCanGates(e.target.checked)}/> Invite or add gate operators</label>
+      <label className="rw-field"><input type="checkbox" checked={canPayments} onChange={e=>setCanPayments(e.target.checked)}/> Approve or reject payments</label>
+      {btn('Save tenant permissions',()=>{void saveCapabilities()})}
       <h3>Configure organiser profile</h3>
       {input('Display name',editName,setEditName)}
       {input('Bank name',editBank,setEditBank)}
@@ -299,6 +333,11 @@ export default function RoleWorkspace(){
     <label className="rw-field">Accent colour<input type="color" value={themeAccent} onChange={e=>setThemeAccent(e.target.value)}/></label></div>
    <div className="rw-theme-grid">{themeCatalog.map(t=><div key={t.id} className="rw-theme-option" style={{background:t.gradient}}><strong>{t.name}</strong><small>{t.label}</small></div>)}</div>
    {btn('Add theme to catalogue',()=>{void addNewTicketTheme()})}
+  </section>
+  <section className="rw-panel rw-wide"><div className="eyebrow">AUDIT TRAIL</div><h2>Recent administrator actions</h2>
+    {auditHistory.map(h=><div key={h.id} className="rw-list-item"><div><b>{h.action.replaceAll('_',' ')}</b>
+      <p>{h.performed_by} · {nice(h.created_at)}</p><small>{h.target_email||'Platform event or setting'} · {JSON.stringify(h.details||{})}</small></div></div>)}
+    {!auditHistory.length&&<p>No administrator actions logged.</p>}
   </section>
   <section className="rw-panel rw-wide"><div className="eyebrow">EVENT AUTHENTICITY</div><h2>Review organiser listings and media</h2>
    <p>Verify the identity, location, date, marketing materials and ticket promises before publishing an event to the public marketplace.</p>
@@ -318,6 +357,16 @@ export default function RoleWorkspace(){
    <label className="rw-field">Description<textarea rows={3} value={caseDescription} onChange={e=>setCaseDescription(e.target.value)}/></label>
    <label className="rw-field">Priority<select value={casePriority} onChange={e=>setCasePriority(e.target.value)}>{['low','normal','high','urgent'].map(x=><option key={x}>{x}</option>)}</select></label>{btn('Create support request',()=>{void openSupportCase()})}
    {cases.map(c=><div className="rw-list-item" key={c.id}><div><b>{c.subject}</b><p>{c.status} · {c.priority}</p>{c.resolution&&<p>Response: {c.resolution}</p>}</div></div>)}
+  </section>
+  <section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER REPORTS</div><h2>My event operations</h2>
+   {eventReports.map(e=><div key={e.id} className="rw-list-item"><div><b>{e.title}</b><p>{e.tickets_issued} issued · {e.reserved_seats} reserved · {e.checked_in} admitted · {e.refund_cases} refund cases</p>
+    <small>{money(e.confirmed_revenue_ngn)} confirmed revenue · Available {Math.max(0,e.capacity-e.tickets_issued-e.reserved_seats)} of {e.capacity}</small></div></div>)}
+   {!eventReports.length&&<p>Event reporting will appear after you create an event.</p>}
+  </section>
+  <section className="rw-panel rw-wide"><h2>Payment exceptions and refunds</h2>
+   {input('Settlement reference / notes',refundNote,setRefundNote)}
+   {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title}</b><p>{money(r.amount_ngn)} · {r.refund_status}</p><small>{r.buyer_email} · {r.refund_note||'Check bank settlement before taking action'}</small></div>
+    <div className="rw-actions">{btn('Review',()=>{void updateRefund(r.id,'review_required')},true)}{btn('Refund initiated',()=>{void updateRefund(r.id,'initiated')},true)}{btn('Settled',()=>{void updateRefund(r.id,'settled')})}</div></div>)}
   </section>
   <section className="rw-panel"><h2>Bank transfer instructions</h2><p>Users see these account details on your published events. Only approve a ticket after confirming funds in your own bank records.</p>
     {input('Bank name',bankName,setBankName)}{input('Account name',accountName,setAccountName)}{input('Account number',accountNumber,setAccountNumber)}
@@ -343,7 +392,7 @@ export default function RoleWorkspace(){
   </section>
   <section className="rw-panel rw-wide"><h2>Events and payment approvals</h2><label className="rw-field">Choose an event<select value={eventId} onChange={e=>{const id=e.target.value;setEventId(id);const selected=events.find(ev=>ev.id===id);if(selected){setEventDescription(selected.description||'');setEventCategory(selected.category||'Other');setTicketTheme(selected.ticket_theme||'aurora');setAdmissionLabel(selected.admission_label||'ADMIT ONE');setPosterTemplate(selected.poster_template||'none')}setLatestInvite('')}}><option value="">Select event</option>
   {events.filter(e=>e.organiser_id===me.id).map(e=><option value={e.id} key={e.id}>{e.title}</option>)}</select></label>
-  {orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.buyer_name||o.buyer_email||'User'}</b><p>{o.quantity} tickets · {money(o.amount_ngn)} · {o.status}</p><small>Bank reference: {o.payment_reference}</small><p>{o.receipt_uploaded_at?<a href={'/api/orders/receipt?orderId='+o.id} target="_blank" rel="noreferrer">View submitted receipt</a>:'Receipt not submitted'}</p></div><div className="rw-actions">
+  {orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.buyer_name||o.buyer_email||'User'}</b><p>{o.quantity} tickets · {money(o.amount_ngn)} · {o.status}</p><small>Bank reference: {o.payment_reference}</small><p>{o.status==='pending'&&o.reservation_expires_at?('Reservation ends '+nice(o.reservation_expires_at)):''}{o.refund_status&&o.refund_status!=='not_required'?' · Refund: '+o.refund_status:''}</p><p>{o.receipt_uploaded_at?<a href={'/api/orders/receipt?orderId='+o.id} target="_blank" rel="noreferrer">View submitted receipt</a>:'Receipt not submitted'}</p></div><div className="rw-actions">
   {o.status==='pending'&&<>{btn('Approve',()=>{void review(o.id,'approved')})}{btn('Reject',()=>{void review(o.id,'rejected')},true)}</>}</div></div>)}
   {!eventId&&<p>Select an event to review payments and assign gate staff.</p>}</section>
   {eventId&&<section className="rw-panel rw-wide"><div className="eyebrow">CREATIVE MANAGER</div><h2>Event media & ticket designs</h2>
