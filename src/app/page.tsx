@@ -13,11 +13,11 @@ export default function Home(){
  const categories=['All',...new Set(verified.map(e=>e.category||'Other'))];
  const visible=verified.filter(e=>(category==='All'||e.category===category)&&[e.title,e.venue,e.description||'',e.organiser||''].join(' ').toLowerCase().includes(search.toLowerCase()));
  return <main className="eventpass-home">
- <nav className="ep-nav"><Link href="/" className="ep-brand">◈ NEXX <span>EVENTPASS</span></Link><div className="ep-nav-links"><Link href="/login/organiser">Host an event</Link><Link href="/login/gate">Gate access</Link><Link className="ep-sign-in" href="/login/user">Continue with Google</Link></div></nav>
+ <nav className="ep-nav"><Link href="/" className="ep-brand">◈ NEXX <span>EVENTPASS</span></Link><div className="ep-nav-links"><Link className="ep-sign-in" href="/login">Sign in</Link></div></nav>
  <section className="ep-hero"><div className="ep-glow"/>
   <div className="ep-hero-content"><div className="ep-kicker">NEXX EVENTPASS • DISCOVER</div>
   <h1>Find the next<br/><em>unforgettable</em> experience.</h1><p>Explore genuine events, discover organisers, watch previews and get your verified QR ticket—all in one place.</p>
-  <div className="ep-hero-actions"><Link className="ep-action" href="/login/user">Explore as User</Link><Link className="ep-outline" href="/login/organiser">Create an event</Link></div>
+  <div className="ep-hero-actions"><Link className="ep-action" href="/login">Get started</Link></div>
   </div>
   <div className="ep-hero-ticket"><div className="ep-ticket-top">◈ NEXX EVENTPASS <span>YOUR ENTRY STARTS HERE</span></div><div className="ep-ticket-art"><div className="ep-sun"/><span>DISCOVER<br/>THE MOMENT.</span></div><div className="ep-ticket-bottom"><strong>One pass. Countless experiences.</strong><small>GOOGLE SIGN-IN · VERIFIED EVENTS · SECURE QR</small></div></div>
  </section>
@@ -30,6 +30,6 @@ export default function Home(){
  </article>)}</div>:!error&&<div className="ep-empty"><strong>No events match your search</strong><p>Change the category or search term, or check back when organisers publish more events.</p></div>}
  </section>
  <section className="ep-steps"><div><span>01</span><h3>Discover</h3><p>Search verified events, watch previews and find what moves you.</p></div><div><span>02</span><h3>Get tickets</h3><p>Request tickets and receive your secured QR after organiser confirmation.</p></div><div><span>03</span><h3>Enter seamlessly</h3><p>Present the QR at the assigned gate for instant verification.</p></div></section>
- <footer className="ep-footer"><span>◈ Nexx EventPass</span><div><Link href="/login/user">User</Link><Link href="/login/organiser">Organiser</Link><Link href="/login/gate">Gate</Link><Link href="/login/platform-admin">Platform Admin</Link></div></footer>
+ <footer className="ep-footer"><span>◈ Nexx EventPass</span><div><Link href="/login">Sign in</Link></div></footer>
  </main>;
 }
