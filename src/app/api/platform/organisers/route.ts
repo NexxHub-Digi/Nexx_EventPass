@@ -30,9 +30,10 @@ export async function POST(req:Request){
   if(!target[0])return fail('Organiser not found',404);
   const a=b.canCreateEvents,c=b.canInviteGates,v=b.canVerifyPayments;
   if([a,c,v].some(x=>typeof x!=='boolean'))return fail('All three permissions must be boolean',400);
+  const canCreateEvents=a===true,canInviteGates=c===true,canVerifyPayments=v===true;
   await db().begin(async tx=>{
    await tx`insert into organiser_capabilities(organiser_id,can_create_events,can_invite_gates,can_verify_payments,updated_by)
-    values(${id},${a},${c},${v},${admin.id})
+    values(${id},${canCreateEvents},${canInviteGates},${canVerifyPayments},${admin.id})
     on conflict(organiser_id) do update set can_create_events=excluded.can_create_events,
     can_invite_gates=excluded.can_invite_gates,can_verify_payments=excluded.can_verify_payments,
     updated_by=excluded.updated_by,updated_at=now()`;
