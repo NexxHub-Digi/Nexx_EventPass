@@ -99,7 +99,17 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   ]);
   assert.deepEqual(attempts.map(x=>x.status).sort(),[201,409],'only one competing checkout gets the remaining seat');
   const held=attempts.find(x=>x.status===201).data.order;
+  const rejectedReceipt=new FormData();rejectedReceipt.set('orderId',held.id);
+  const proofBytes=new Uint8Array(90);proofBytes.set([137,80,78,71,13,10,26,10]);
+  rejectedReceipt.set('receipt',new Blob([proofBytes],{type:'image/png'}),'rejected-payment.png');
+  expect(await req('/api/orders/receipt',{cookie:wrong.cookie,method:'POST',form:rejectedReceipt}),200,'attach proof before refund review');
   expect(await post('/api/review',org.cookie,{orderId:held.id,decision:'rejected'}),200,'rejection releases held seat');
+  const pendingRefunds=expect(await req('/api/refunds',{cookie:org.cookie}),200,'organiser sees refund cases').orders;
+  assert.ok(pendingRefunds.some(x=>x.id===held.id&&x.refund_status==='review_required'));
+  expect(await req('/api/refunds',{cookie:buyer.cookie}),403,'buyer cannot access organiser refund desk');
+  expect(await req('/api/refunds',{cookie:org.cookie,method:'PATCH',body:{orderId:held.id,action:'initiated',note:'E2E refund initiated'}}),200,'record refund initiation');
+  expect(await req('/api/refunds',{cookie:org.cookie,method:'PATCH',body:{orderId:held.id,action:'settled',note:'E2E bank transfer reference test-123'}}),200,'record manual settlement evidence');
+
   expect(await post('/api/orders',wrong.cookie,{eventId:event.id,quantity:1,paymentReference:'E2E-SEAT-003'}),201,'released seat is available again');
 
   expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),409,'no receipt cannot approve');
@@ -109,6 +119,13 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/orders/receipt',{cookie:buyer.cookie,method:'POST',form}),200,'receipt submission');
   expect(await req('/api/orders/receipt?orderId='+order.id,{cookie:wrong.cookie}),404,'receipt privacy');
   const approved=expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),200,'organiser payment verification');
+  expect(await post('/api/platform/events',adminCookie,{eventId:event.id,action:'reject'}),409,'event with sold tickets must not be unpublished');
+  const report=expect(await req('/api/platform/event-directory',{cookie:adminCookie}),200,'admin event details').events;
+  assert.ok(report.some(x=>x.id===event.id&&Number(x.tickets_issued)===1),'admin reports issued inventory');
+  assert.ok(expect(await req('/api/platform/event-directory',{cookie:org.cookie}),200,'organiser scoped report').events.every(x=>x.organiser_id===org.id));
+  expect(await req('/api/platform/audit',{cookie:wrong.cookie}),403,'platform audit cannot be read by ordinary users');
+  assert.ok(expect(await req('/api/platform/audit',{cookie:adminCookie}),200,'audit log available to admin').history.length>0);
+
   assert.equal(approved.issued,1,'approval immediately issues one ticket');
   assert.equal(approved.delivery,'in_app','user can retrieve ticket immediately');
   expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),409,'prevent double approval');
@@ -133,7 +150,12 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(expect(await req('/api/events/media?eventId='+event.id,{cookie:org.cookie}),200,'rejected media removed').media.length,2);
   const patchResult=await req('/api/events',{cookie:org.cookie,method:'PATCH',body:{eventId:event.id,description:'Changed after paid tickets were issued',category:'Nightlife',ticketTheme:'aurora'}});
   expect(patchResult,409,'issued ticket event cannot be silently unpublished by edits');
-  const gateEmail=email('operator');
+  expect(await post('/api/platform/organisers',adminCookie,{action:'capabilities',userId:org.id,
+    canCreateEvents:false,canInviteGates:true,canVerifyPayments:true}),200,'admin disables event publishing');
+  expect(await post('/api/events',org.cookie,{title:'No permission',venue:'Venue',startsAt:date,capacity:1,priceNgn:0,qrKeyword:'private-keyword-123'}),403,'organiser cannot bypass capability restriction');
+  expect(await post('/api/platform/organisers',adminCookie,{action:'capabilities',userId:org.id,
+    canCreateEvents:true,canInviteGates:true,canVerifyPayments:true}),200,'restore organiser permissions');
+    const gateEmail=email('operator');
   const invite=expect(await post('/api/gates',org.cookie,{eventId:event.id,email:gateEmail,gateLabel:'Main Gate'}),200,'invite any email');
   const token=new URL(invite.invitationLink).searchParams.get('token');assert.equal(token?.length,43);
   expect(await post('/api/gates/accept',wrong.cookie,{token}),403,'wrong invitee');
