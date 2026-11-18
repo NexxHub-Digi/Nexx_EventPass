@@ -1,3 +1,2 @@
-import UserPortal from './preview/user/page';
-
+import UserPortal from '@/components/UserPortal';
 export default function Home(){return <UserPortal/>;}
