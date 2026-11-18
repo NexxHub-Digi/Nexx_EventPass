@@ -24,6 +24,8 @@ export async function GET(){
 export async function POST(req:Request){
  try{
  const u=await currentUser();if(!u||u.role!=='organiser'||u.account_status!=='active')return fail('Active organiser required',403);
+ const capability=await db()`select can_invite_gates from organiser_capabilities where organiser_id=${u.id}`;
+ if(capability[0]?.can_invite_gates===false)return fail('Gate staffing permission disabled by Platform Admin',403);
  const b=await payload(req),eventId=str(b.eventId,40),email=str(b.email,254).toLowerCase(),gateLabel=str(b.gateLabel,60)||'Main gate';
  if(!validUuid(eventId)||!validEmail(email))return fail('Valid event and email required',400);
  const owned=await db()`select id from events where id=${eventId} and organiser_id=${u.id} and status='published' and verification_status='verified'`;

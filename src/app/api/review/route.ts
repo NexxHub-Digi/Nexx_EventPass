@@ -11,6 +11,8 @@ export async function POST(req: Request) {
       const order=orders[0];if(!order)return {error:'Order not found',status:404};
       if(order.organiser_id!==u.id || u.role!=='organiser')return {error:'Only the owning organiser may review payments',status:403};
       if(order.organiser_status!=='active')return {error:'Organiser account inactive',status:403};
+      const capability=await tx`select can_verify_payments from organiser_capabilities where organiser_id=${u.id}`;
+      if(capability[0]?.can_verify_payments===false)return {error:'Payment review permission disabled by Platform Admin',status:403};
       if(order.status!=='pending')return {error:'Order already reviewed',status:409};
       if(!order.reservation_expires_at||new Date(order.reservation_expires_at).getTime()<=Date.now()){
         if(decision==='approved')return {error:'Reservation expired. Never approve it; check whether funds arrived and initiate refund review.',status:409};

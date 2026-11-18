@@ -16,6 +16,8 @@ export async function POST(req: Request) {
   try {
     const user = await currentUser();
     if (!user || user.account_status!=='active' || user.role!=='organiser') return fail('Organiser access required', 403);
+    const capability=await db()`select can_create_events from organiser_capabilities where organiser_id=${user.id}`;
+    if(capability[0]?.can_create_events===false)return fail('Platform Admin has disabled new event creation for this organiser',403);
     const b = await payload(req); const title = str(b.title, 160); const venue = str(b.venue, 250);
     const startsAt = str(b.startsAt, 60); const start = new Date(startsAt);
     const price = Number(b.priceNgn); const capacity = positiveInt(b.capacity, 1000000);
@@ -37,6 +39,8 @@ export async function POST(req: Request) {
 export async function PATCH(req:Request){
  try{
   const u=await currentUser();if(!u||u.account_status!=='active'||u.role!=='organiser')return fail('Active organiser required',403);
+  const capability=await db()`select can_create_events from organiser_capabilities where organiser_id=${u.id}`;
+  if(capability[0]?.can_create_events===false)return fail('Organiser event editing is restricted',403);
   const b=await payload(req),eventId=str(b.eventId,40),description=str(b.description,2500),category=str(b.category,60)||'Other',
   ticketTheme=str(b.ticketTheme,32)||'aurora',admissionLabel=str(b.admissionLabel,80)||'ADMIT ONE',posterTemplate=str(b.posterTemplate,40)||'none';
   if(!/^[0-9a-f-]{36}$/i.test(eventId))return fail('Invalid event');

@@ -6,11 +6,15 @@ export async function GET(){
  try{const u=await currentUser();if(!u||u.role!=='platform_admin'||u.account_status!=='active')return fail('Platform admin only',403);
   const accounts=await db()`select u.id,u.email,u.full_name,u.role,u.account_status,u.requested_role,u.created_at,u.approved_at,u.approved_by,
   pay.bank_name,pay.account_name,pay.account_number,pay.updated_at as payment_updated_at,
+  coalesce(cap.can_create_events,true) as can_create_events,
+  coalesce(cap.can_invite_gates,true) as can_invite_gates,
+  coalesce(cap.can_verify_payments,true) as can_verify_payments,
   (select count(*)::int from events e where e.organiser_id=u.id) as event_count,
   (select count(*)::int from ticket_orders o join events e on e.id=o.event_id where e.organiser_id=u.id and o.status='pending') as pending_orders,
   (select count(*)::int from tickets t join events e on e.id=t.event_id where e.organiser_id=u.id) as tickets_issued,
   (select count(distinct g.user_id)::int from gate_assignments g join events e on e.id=g.event_id where e.organiser_id=u.id) as gate_operators
   from app_users u left join organiser_payment_accounts pay on pay.organiser_id=u.id
+  left join organiser_capabilities cap on cap.organiser_id=u.id
   where u.requested_role='organiser' or u.role='organiser'
   order by case when u.requested_role='organiser' then 0 else 1 end,u.created_at desc limit 300`;
   return ok({organisers:accounts});
@@ -19,7 +23,24 @@ export async function GET(){
 export async function POST(req:Request){
  try{const admin=await currentUser();if(!admin||admin.role!=='platform_admin'||admin.account_status!=='active')return fail('Platform admin only',403);
  const b=await payload(req),action=str(b.action,30),id=str(b.userId,40),email=str(b.email,254).toLowerCase();
- if(!['approve','reject','suspend','revoke','restore','create','configure'].includes(action))return fail('Unknown approval action',400);
+ if(!['approve','reject','suspend','revoke','restore','create','configure','capabilities'].includes(action))return fail('Unknown approval action',400);
+ if(action==='capabilities'){
+  if(!/^[0-9a-f-]{36}$/i.test(id)||id===admin.id)return fail('Invalid organiser ID',400);
+  const target=await db()`select id from app_users where id=${id} and role='organiser'`;
+  if(!target[0])return fail('Organiser not found',404);
+  const a=b.canCreateEvents,c=b.canInviteGates,v=b.canVerifyPayments;
+  if([a,c,v].some(x=>typeof x!=='boolean'))return fail('All three permissions must be boolean',400);
+  await db().begin(async tx=>{
+   await tx`insert into organiser_capabilities(organiser_id,can_create_events,can_invite_gates,can_verify_payments,updated_by)
+    values(${id},${a},${c},${v},${admin.id})
+    on conflict(organiser_id) do update set can_create_events=excluded.can_create_events,
+    can_invite_gates=excluded.can_invite_gates,can_verify_payments=excluded.can_verify_payments,
+    updated_by=excluded.updated_by,updated_at=now()`;
+   await tx`insert into platform_admin_actions(admin_id,target_user_id,action,details) values
+    (${admin.id},${id},'update_organiser_capabilities',${JSON.stringify({canCreateEvents:a,canInviteGates:c,canVerifyPayments:v})}::jsonb)`;
+  });
+  return ok({success:true,action});
+ }
  if(action==='configure'){
   if(!/^[0-9a-f-]{36}$/i.test(id)||id===admin.id)return fail('Invalid organiser account',400);
   const target=await db()`select id from app_users where id=${id} and role='organiser' limit 1`;
