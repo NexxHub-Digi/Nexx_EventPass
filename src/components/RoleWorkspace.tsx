@@ -355,6 +355,7 @@ export default function RoleWorkspace(){
    {!moderationEvents.length&&<p>No pending event or media submissions.</p>}
   </section></div>}
  {role==='organiser'&&<div className="rw-layout">
+  {organiserTab==='profile'&&<section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER PROFILE</div><h2>My account</h2><p><strong>Name:</strong> {me?.full_name||'Not set'}</p><p><strong>Email:</strong> {me?.email}</p><p><strong>Account status:</strong> {me?.account_status}</p><p>For changes to verified identity or organiser permissions, contact Platform Support under Settings.</p></section>}
   <nav className="rw-panel rw-wide" aria-label="Organiser navigation" style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
    {(['dashboard','events','tickets','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>setOrganiserTab(tab)} style={{textTransform:'capitalize'}}>{tab==='tickets'?'Ticket designs':tab==='team'?'Gate team':tab}</button>)}
   </nav>
