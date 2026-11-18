@@ -171,12 +171,12 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   await api('gates','DELETE',{eventId:i.event_id,email:i.invitee_email});setMessage('Gate invitation and access revoked');
   const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
  })}
- async function adminAction(action:string,id?:string){await run(async()=>{
+ async function adminAction(action:string,id?:string){if(['revoke','reject'].includes(action)&&!window.confirm(action==='revoke'?'Suspend this organiser? Existing ticket and financial history will be retained.':'Reject this organiser application?'))return;await run(async()=>{
   await api('platform/organisers','POST',{action,userId:id,email:newOrganiser});setMessage('Organiser action completed');setNewOrganiser('');
-  const a=await api('platform/organisers');setOrganisers(a.organisers||[]);
+  const a=await api('platform/organisers');setOrganisers(a.organisers||[]);if(id)setSelectedOrganiser(id);
  })}
  function chooseOrganiser(id:string){
-  setSelectedOrganiser(id);const org=organisers.find(x=>x.id===id);
+  setAdminTab('organisers');setSelectedOrganiser(id);const org=organisers.find(x=>x.id===id);
   setEditName(org?.full_name||'');setEditBank(org?.bank_name||'');
   setCanCreate(org?.can_create_events!==false);setCanGates(org?.can_invite_gates!==false);setCanPayments(org?.can_verify_payments!==false);
   setEditAccount(org?.account_name||'');setEditNumber(org?.account_number||'');
@@ -187,9 +187,9 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   const res=await api('platform/organisers');setOrganisers(res.organisers||[]);setMessage('Organiser profile updated');
  })}
  async function searchAdminUsers(page=1){await run(async()=>{const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(userFilter)+'&page='+page);setAllUsers(r.accounts||[]);setUsersCount(r.count||0);setUserPage(page)})}
- function chooseUser(id:string){setSelectedUser(id);const a=allUsers.find(x=>x.id===id);setUserEditName(a?.full_name||'');setAccountReason('')}
+ function chooseUser(id:string){setAdminTab('users');setSelectedUser(id);const a=allUsers.find(x=>x.id===id);setUserEditName(a?.full_name||'');setAccountReason('')}
  async function changeUser(action:'configure'|'suspend'|'restore'|'deactivate'){await run(async()=>{if(!selectedUser)throw Error('Select a user first');
-  if(action==='deactivate'&&!window.confirm('Deactivate this account and retain financial records?'))return;
+  if(['deactivate','suspend'].includes(action)&&!window.confirm('Suspend this account? Ticket, order and audit records will be retained.'))return;
   await api('platform/users','PATCH',{action,userId:selectedUser,fullName:userEditName,reason:accountReason});
   const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(userFilter)+'&page='+userPage);setAllUsers(r.accounts||[]);setUsersCount(r.count||0);setMessage('Account updated and audited')})}
  async function openSupportCase(){await run(async()=>{const r=await api('support/cases','POST',{subject:caseSubject,description:caseDescription,priority:casePriority});
@@ -236,7 +236,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  <nav className="rw-portal-switch" aria-label={`${title} workspace navigation`}><span aria-current="page">{title} workspace</span></nav>
  {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
  {role==='platform-admin'&&<header className="rw-panel" style={{marginBottom:16}}><div className="eyebrow">NEXX EVENTPASS / CONTROL CENTER</div><h1>Platform administration</h1><p>Manage your platform from one focused workspace at a time.</p></header>}
- {role==='platform-admin'&&<div className="rw-workspace-shell"><aside className="rw-panel" style={{alignSelf:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:12}}>WORKSPACE MENU</div><nav aria-label="Platform administration" style={{display:'grid',gap:6}}>{([['overview','Overview'],['organisers','Organisers'],['moderation','Event moderation'],['reports','Analytics & events'],['refunds','Payments & refunds'],['users','Users & access'],['support','Support'],['themes','Ticket themes'],['audit','Audit logs'],['settings','Settings']] as const).map(([key,label])=><button type="button" key={key} className={adminTab===key?'primary':'ghost'} aria-current={adminTab===key?'page':undefined} onClick={()=>setAdminTab(key)} style={{textAlign:'left',padding:12}}>{label}</button>)}</nav></aside><div className="rw-layout" style={{minWidth:0}}>
+ {role==='platform-admin'&&<div className="rw-workspace-shell"><aside className="rw-panel" style={{alignSelf:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:12}}>WORKSPACE MENU</div><nav aria-label="Platform administration" style={{display:'grid',gap:6}}>{([['overview','Overview'],['organisers','Organisers'],['moderation','Event moderation'],['reports','Analytics & events'],['refunds','Payments & refunds'],['users','Users & access'],['support','Support'],['themes','Ticket themes'],['audit','Audit logs'],['settings','Settings']] as const).map(([key,label])=><button type="button" key={key} className={adminTab===key?'primary':'ghost'} aria-current={adminTab===key?'page':undefined} onClick={()=>{setAdminTab(key);setMessage('')}} style={{textAlign:'left',padding:12}}>{label}</button>)}</nav></aside><div className="rw-layout" style={{minWidth:0}}>
   <section className="rw-panel" style={{display:adminTab==='overview'?'':'none'}}><h2 id="admin-overview">Platform overview</h2><div className="rw-stats">{Object.entries(stats).map(([k,v])=><div className="rw-stat" key={k}><b>{Number(v).toLocaleString()}</b><small>{k}</small></div>)}</div>
   <h3>Create organiser from verified User</h3><p>Only a Google-verified existing account can be promoted. No default password is created.</p>
   {input('Verified User email',newOrganiser,setNewOrganiser,'email')}{btn('Create organiser',()=>{void adminAction('create')})}</section>
@@ -277,7 +277,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    <p>{usersCount} accounts · page {userPage}</p>
    {allUsers.map(a=><div key={a.id} className="rw-list-item"><div><strong>{a.full_name}</strong><p>{a.email}</p><small>{a.role} · {a.account_status} · {a.google_verified?'Google verified':'Unlinked'} · {a.ticket_count} tickets · {a.gate_event_count} gates</small></div>{btn('Open profile',()=>chooseUser(a.id),true)}</div>)}
    <div className="rw-actions">{userPage>1&&btn('Previous',()=>{void searchAdminUsers(userPage-1)},true)}{userPage*40<usersCount&&btn('Next',()=>{void searchAdminUsers(userPage+1)},true)}</div>
-   {selectedUser&&allUsers.filter(a=>a.id===selectedUser).map(a=><div key={a.id} className="rw-profile"><h3>Account: {a.full_name}</h3><p>{a.email} · {a.role} · {a.account_status} · joined {nice(a.created_at)}</p>
+   {selectedUser&&allUsers.filter(a=>a.id===selectedUser).map(a=><div key={a.id} className="rw-profile" style={{border:'2px solid #7355d5',borderRadius:16,padding:20,marginTop:20}}><button type="button" onClick={()=>setSelectedUser('')}>Close profile ×</button><h3>Account: {a.full_name}</h3><p>{a.email} · {a.role} · {a.account_status} · joined {nice(a.created_at)}</p>
     <div className="rw-stats"><div className="rw-stat"><b>{a.order_count}</b><small>Orders</small></div><div className="rw-stat"><b>{a.ticket_count}</b><small>Tickets</small></div><div className="rw-stat"><b>{a.event_count}</b><small>Events</small></div><div className="rw-stat"><b>{a.gate_event_count}</b><small>Gates</small></div></div>
     {a.role==='platform_admin'?<p>Other administrators cannot be modified from this directory.</p>:<>
     {input('Full name',userEditName,setUserEditName)}{btn('Save profile',()=>{void changeUser('configure')})}
@@ -300,17 +300,17 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    <label className="rw-field">Value<textarea rows={3} value={settingValue} onChange={e=>setSettingValue(e.target.value)}/></label>{btn('Save settings',()=>{void saveSetting()})}
   </section>
   <section className="rw-panel" style={{display:adminTab==='organisers'?'':'none'}}><h2>Organiser directory and access control</h2>
-   <p>Review all organiser applications and existing profiles. Revoke access without deleting tickets or historical events.</p>
+   <p>Select <strong>View / edit profile</strong> to inspect an organiser, update their details, change permissions, or revoke access. Changes are saved through the administrator API and audited.</p><div className="rw-actions">{btn('Refresh organisers',()=>{void run(async()=>{const r=await api('platform/organisers');setOrganisers(r.organisers||[]);setMessage('Organiser directory refreshed')})},true)}{btn('Find users',()=>{setAdminTab('users');void searchAdminUsers(1)},true)}</div>
    {organisers.map(o=><div className="rw-list-item" key={o.id}>
     <div><b>{o.full_name}</b><p>{o.email}</p><small>{o.role==='user'&&o.requested_role==='organiser'?'PENDING APPROVAL':o.account_status.toUpperCase()} · {o.event_count} events · {o.tickets_issued} tickets · {o.gate_operators} operators</small></div>
     <div className="rw-actions">
-    {btn('Profile',()=>chooseOrganiser(o.id),true)}
+    {btn(selectedOrganiser===o.id?'Close profile':'View / edit profile',()=>selectedOrganiser===o.id?setSelectedOrganiser(''):chooseOrganiser(o.id),true)}
     {o.role==='user'&&o.requested_role==='organiser'&&<>{btn('Approve',()=>{void adminAction('approve',o.id)})}{btn('Reject',()=>{void adminAction('reject',o.id)},true)}</>}
     {o.role==='organiser'&&o.account_status==='active'&&btn('Revoke access',()=>{void adminAction('revoke',o.id)},true)}
     {o.role==='organiser'&&o.account_status==='suspended'&&btn('Restore access',()=>{void adminAction('restore',o.id)})}
     </div></div>)}
    {!organisers.length&&<p>No organiser applicants or approved accounts yet.</p>}
-   {selectedOrganiser&&organisers.filter(o=>o.id===selectedOrganiser).map(o=><div className="rw-profile" key={o.id}>
+   {selectedOrganiser&&organisers.filter(o=>o.id===selectedOrganiser).map(o=><div className="rw-profile" key={o.id} style={{border:'2px solid #7355d5',borderRadius:16,padding:20,marginTop:20}}><div className="rw-actions"><button type="button" onClick={()=>setSelectedOrganiser('')}>Close profile ×</button><button type="button" onClick={()=>{setUserSearch(o.email);setUserFilter('');setAdminTab('users');void api('platform/users?q='+encodeURIComponent(o.email)+'&page=1').then(r=>{setAllUsers(r.accounts||[]);setUsersCount(r.count||0);setUserPage(1);setSelectedUser(o.id);setUserEditName(o.full_name)}).catch(e=>setMessage((e as Error).message))}}>Open full account record</button></div>
     <h3>Organiser profile: {o.full_name}</h3>
     <p>{o.email} · {o.role} · {o.account_status}</p>
     <p>Joined: {nice(o.created_at)} {o.approved_at?' · Approved: '+nice(o.approved_at):''}</p>
