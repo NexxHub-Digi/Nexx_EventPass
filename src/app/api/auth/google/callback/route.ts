@@ -33,12 +33,9 @@ export async function GET(req:NextRequest){
   if(typeof token.id_token!=='string') throw new Error('google_id_token_missing');
   const profile=await verifyGoogleIdToken(token.id_token,creds.clientId,st.nonce);
   if(portal==='gate'){
+   // Gate login requires an explicit accepted invitation or direct authorised
+   // assignment. Merely knowing the invitee email does not confer gate rights.
    const eligible=await db()`select exists(
-    select 1 from gate_invitations i join events e on e.id=i.event_id join app_users owner on owner.id=i.organiser_id
-    where lower(i.invitee_email)=${profile.email} and i.status='pending'
-    and (i.token_expires_at is null or i.token_expires_at>now()) and e.status='published'
-    and owner.role='organiser' and owner.account_status='active'
-   ) or exists(
     select 1 from gate_assignments g join app_users operator on operator.id=g.user_id
     join events e on e.id=g.event_id join app_users owner on owner.id=e.organiser_id
     where lower(operator.email)=${profile.email} and owner.role='organiser' and owner.account_status='active'
@@ -81,24 +78,6 @@ export async function GET(req:NextRequest){
    user=created;
   }
   if(!user) throw new Error('account_not_found');
-  // Legacy pending invites can still be accepted by Google-verified identities; new token invitations require explicit acceptance.
-  if(user.account_status==='active'){
-    await db().begin(async tx=>{
-      const invites=await tx`select i.id,i.event_id,i.gate_label from gate_invitations i
-        join app_users organiser on organiser.id=i.organiser_id
-        join events e on e.id=i.event_id
-        where lower(i.invitee_email)=${profile.email} and i.status='pending'
-        and (i.token_expires_at is null or i.token_expires_at>now())
-        and organiser.role='organiser' and organiser.account_status='active' and e.status='published'
-        and ${portal==='gate'}`;
-      for(const invite of invites){
-        await tx`insert into gate_assignments(event_id,user_id,gate_label)
-          values(${invite.event_id},${user.id},${invite.gate_label})
-          on conflict(event_id,user_id) do update set gate_label=excluded.gate_label`;
-        await tx`update gate_invitations set status='accepted',accepted_by=${user.id},accepted_at=now(),token_hash=null,token_expires_at=null where id=${invite.id}`;
-      }
-    });
-  }
   if(portal==='organiser'&&user.role==='user'&&user.account_status==='active'&&user.requested_role!=='organiser'){
     await db()`update app_users set requested_role='organiser' where id=${user.id} and role='user' and account_status='active'`;
     user.requested_role='organiser';
