@@ -101,6 +101,14 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/platform/organisers',adminCookie,{action:'configure',userId:org.id,fullName:'E2E Approved Organiser',bankName:'E2E Test Bank',accountName:'E2E Organiser',accountNumber:'0123456789'}),200,'admin profile configuration');
   assert.ok(expect(await req('/api/platform/organisers',{cookie:adminCookie}),200,'admin profile after configuration').organisers.some(x=>x.id===org.id&&x.full_name==='E2E Approved Organiser'&&x.account_number==='0123456789'));
   assert.ok(expect(await req('/api/events'),200,'discover event').events.some(e=>e.id===event.id&&e.bank_account_number==='0123456789'));
+  // Create an expired fixture ONLY inside the isolated CI PostgreSQL database.
+  const expiredRows=await sql.unsafe('insert into ticket_orders(event_id,buyer_id,quantity,amount_ngn,payment_reference,status,reservation_expires_at) values($1,$2,1,5000,$3,$4,now()-interval \'1 minute\') returning id',
+   [event.id,wrong.id,'E2E-EXPIRED-ORDER','pending']);
+  expect(await post('/api/review',org.cookie,{orderId:expiredRows[0].id,decision:'approved'}),409,'an expired hold cannot issue tickets');
+  const expiredProof=new FormData();expiredProof.set('orderId',expiredRows[0].id);
+  const expiredImage=new Uint8Array(90);expiredImage.set([137,80,78,71,13,10,26,10]);
+  expiredProof.set('receipt',new Blob([expiredImage],{type:'image/png'}),'expired.png');
+  expect(await req('/api/orders/receipt',{cookie:wrong.cookie,method:'POST',form:expiredProof}),409,'expired hold cannot accept payment proof');
   const order=expect(await post('/api/orders',buyer.cookie,{eventId:event.id,quantity:1,paymentReference:'E2E-TRANSFER-123'}),201,'create order').order;
   assert.ok(new Date(order.reservation_expires_at).getTime()>Date.now(),'ticket reservation must have an expiry');
   const attempts=await Promise.all([
