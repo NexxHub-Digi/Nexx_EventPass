@@ -10,7 +10,9 @@ test('only event organiser may review payments',()=>{
 });
 test('paid orders require configured bank instructions',()=>{
  const x=read('src/app/api/orders/route.ts');
- assert.match(x,/price_ngn\)>0 && \(!e\[0\]\.bank_name/);
+ assert.match(x,/price_ngn\)>0&&\(!e\.bank_name/);
+ assert.match(x,/for update of e/);
+ assert.match(x,/reservation_expires_at>now\(\)/);
  assert.doesNotMatch(x,/returning \*/);
 });
 test('gate validation requires active event organiser',()=>{
@@ -21,7 +23,7 @@ test('gate validation requires active event organiser',()=>{
 test('receipt upload requires real content signature and pending order',()=>{
  const x=read('src/app/api/orders/receipt/route.ts');
  assert.match(x,/isPng/); assert.match(x,/isJpeg/); assert.match(x,/isPdf/);assert.match(x,/verifiedMime/);
- assert.match(x,/status='pending' returning id/);
+ assert.match(x,/status='pending' and reservation_expires_at>now\(\) returning id/);
 });
 test('platform overview requires active administrator',()=>{
  const x=read('src/app/api/platform/overview/route.ts');
