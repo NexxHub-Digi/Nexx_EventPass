@@ -78,6 +78,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/orders',buyer.cookie,{eventId:event.id,quantity:1,paymentReference:'UNVERIFIED-123'}),400,'unverified listing cannot sell tickets');
   expect(await post('/api/platform/events',adminCookie,{eventId:event.id,action:'verify'}),409,'event cannot auto-approve unreviewed media');
   expect(await post('/api/platform/events',adminCookie,{eventId:event.id,mediaId:artworkId,action:'approve_media'}),200,'admin separately approves artwork');
+  const artForm=new FormData();artForm.set('eventId',event.id);artForm.set('purpose','ticket_art');
+  artForm.set('file',new Blob([artwork],{type:'image/png'}),'custom-ticket.png');
+  const ticketArtwork=expect(await req('/api/events/media',{cookie:org.cookie,method:'POST',form:artForm}),201,'organiser uploads personalised ticket artwork').media;
+  expect(await post('/api/platform/events',adminCookie,{eventId:event.id,action:'verify'}),409,'artwork approval required before publication');
+  expect(await post('/api/platform/events',adminCookie,{eventId:event.id,mediaId:ticketArtwork.id,action:'approve_media'}),200,'administrator approves imported ticket art');
   expect(await post('/api/platform/events',adminCookie,{eventId:event.id,action:'verify'}),200,'admin verifies event listing');
   assert.ok(expect(await req('/api/events'),200,'post-verification discovery').events.some(x=>x.id===event.id),'verified event published');
   assert.equal(expect(await req('/api/events/media?eventId='+event.id),200,'approved gallery').media.length,1);
@@ -111,6 +116,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const ticket=tickets.find(t=>t.event_id===event.id);assert.ok(ticket?.qr?.startsWith('EVP2.'));
   assert.ok(ticket?.delivered_at,'ticket is immediately delivered into User wallet');
   assert.equal(ticket?.ticket_theme,'stj-royal-gold','issued ticket retains the selected luxurious STJ design');
+  assert.equal(ticket?.ticket_art_id,ticketArtwork.id,'approved custom artwork is attached to each issued QR pass');
   assert.equal(ticket?.admission_label,'ADMIT ONE — MASK COMPULSORY','issued ticket preserves approved admission wording');
   expect(await req('/api/events/media?id='+artworkId),200,'verified poster publicly accessible');
   expect(await req('/api/events/media?eventId='+event.id,{cookie:buyer.cookie}),200,'buyer can browse gallery');
