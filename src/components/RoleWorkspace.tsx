@@ -122,7 +122,7 @@ export default function RoleWorkspace(){
   await api('events/media','DELETE',{id});const v=await api('events/media?eventId='+encodeURIComponent(eventId));setEventMedia(v.media||[]);
   setMessage('Media removed');
  })}
- async function moderateEvent(eventId:string,action:string,mediaId?:string){await run(async()=>{
+ async function moderateEvent(eventId:string,action:string,mediaId?:string){if(!window.confirm('Confirm moderation action: '+action+'? This may affect public event visibility.'))return;await run(async()=>{
   await api('platform/events','POST',{eventId,action,mediaId});
   const result=await api('platform/events');setModerationEvents(result.events||[]);setModerationMedia(result.media||[]);
   setMessage('Event review completed');
@@ -163,7 +163,7 @@ export default function RoleWorkspace(){
   await api('gates','DELETE',{eventId:i.event_id,email:i.invitee_email});setMessage('Gate invitation and access revoked');
   const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);
  })}
- async function adminAction(action:string,id?:string){await run(async()=>{
+ async function adminAction(action:string,id?:string){if(['approve','reject','revoke','restore'].includes(action)&&!window.confirm('Confirm organiser action: '+action+'? This will change access and be recorded in the audit trail.'))return;await run(async()=>{
   await api('platform/organisers','POST',{action,userId:id,email:newOrganiser});setMessage('Organiser action completed');setNewOrganiser('');
   const a=await api('platform/organisers');setOrganisers(a.organisers||[]);
  })}
@@ -193,7 +193,7 @@ export default function RoleWorkspace(){
   const a=await api('platform/organisers');setOrganisers(a.organisers||[]);setMessage('Organiser permissions saved and audited');
  })}
  async function refreshReports(){await run(async()=>{const r=await api('platform/event-directory?q='+encodeURIComponent(reportSearch));setEventReports(r.events||[]);setMessage('Reports updated')})}
- async function updateRefund(orderId:string,action:'review_required'|'initiated'|'settled'){await run(async()=>{
+ async function updateRefund(orderId:string,action:'review_required'|'initiated'|'settled'){if(action==='settled'&&!window.confirm('Have you independently verified the actual refund transfer? This action records settlement; it does not transfer funds.'))return;await run(async()=>{
   await api('refunds','PATCH',{orderId,action,note:refundNote});const r=await api('refunds');setRefundCases(r.orders||[]);setRefundNote('');setMessage('Refund status updated. Confirm actual bank movement independently.');
  })}
  async function scan(value=scanCode){await run(async()=>{
@@ -226,11 +226,12 @@ export default function RoleWorkspace(){
  if(!allowed)return <main className="rw-shell"><h1>{title} access inactive</h1><p>Your account does not have permission to access this interface.</p><p>Organisers require administrator approval. Gate operators require an invitation from an organiser and a Google-verified email.</p><a href="/login/user">Open User interface</a></main>;
  return <main className="rw-shell"><div className="rw-top"><div><a href="/" className="rw-brand">◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title}</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
  {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
+ {role==='platform-admin'&&<nav className="admin-command-nav" aria-label="Platform administration sections"><div className="admin-command-head"><div><span className="eyebrow">NEXX EVENTPASS / CONTROL CENTER</span><h1>Platform Command Center</h1><p>Live operational data from the EventPass API. Select a workspace to manage it.</p></div><button className="ghost small" disabled={busy} onClick={()=>{void run(async()=>{await fetchAll();setMessage('Platform data refreshed')})}}>↻ Refresh</button></div><div className="admin-command-links">{[['Overview','admin-overview'],['Analytics & Events','admin-reports'],['Payments & Refunds','admin-refunds'],['Users & Access','admin-users'],['Support','admin-support'],['Settings','admin-settings'],['Organisers','admin-organisers'],['Ticket Studio','admin-themes'],['Audit Logs','admin-audit'],['Event Moderation','admin-moderation']].map(([name,id])=><a key={id} href={'#'+id}>{name} ↗</a>)}</div><div className="admin-command-kpis"><div><small>Organiser accounts</small><strong>{organisers.filter(o=>o.role==='organiser').length}</strong></div><div><small>Pending applications</small><strong>{organisers.filter(o=>o.requested_role==='organiser'&&o.role==='user').length}</strong></div><div><small>Events monitored</small><strong>{eventReports.length}</strong></div><div><small>Refund exceptions</small><strong>{refundCases.length}</strong></div></div></nav>}
  {role==='platform-admin'&&<div className="rw-layout">
-  <section className="rw-panel"><h2>Platform overview</h2><div className="rw-stats">{Object.entries(stats).map(([k,v])=><div className="rw-stat" key={k}><b>{Number(v).toLocaleString()}</b><small>{k}</small></div>)}</div>
+  <section className="rw-panel"><h2 id="admin-overview">Platform overview</h2><div className="rw-stats">{Object.entries(stats).map(([k,v])=><div className="rw-stat" key={k}><b>{Number(v).toLocaleString()}</b><small>{k}</small></div>)}</div>
   <h3>Create organiser from verified User</h3><p>Only a Google-verified existing account can be promoted. No default password is created.</p>
   {input('Verified User email',newOrganiser,setNewOrganiser,'email')}{btn('Create organiser',()=>{void adminAction('create')})}</section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">MULTI-TENANT BUSINESS INTELLIGENCE</div><h2>All organiser events and revenue</h2>
+  <section className="rw-panel rw-wide"><div className="eyebrow">MULTI-TENANT BUSINESS INTELLIGENCE</div><h2 id="admin-reports">All organiser events and revenue</h2>
    <p>Inspect any event's available capacity, live reservations, issued tickets, attendance, revenue, refunds and assigned operators.</p>
    <div className="rw-market-filters">{input('Search event or organiser',reportSearch,setReportSearch)}{btn('Search reports',()=>{void refreshReports()})}</div>
    {eventReports.map(e=><div className="rw-list-item" key={e.id}>
@@ -249,7 +250,7 @@ export default function RoleWorkspace(){
    </div>)}
    {!eventReports.length&&<p>No events match this search.</p>}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">PAYMENT EXCEPTIONS</div><h2>Refund and reconciliation desk</h2>
+  <section className="rw-panel rw-wide"><div className="eyebrow">PAYMENT EXCEPTIONS</div><h2 id="admin-refunds">Refund and reconciliation desk</h2>
    <p>Expired reservations with payment evidence and rejected paid orders require manual settlement checks. Mark refunded only after verifying the transfer back to the buyer.</p>
    {input('Refund note or bank settlement reference',refundNote,setRefundNote)}
    {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title} — {money(r.amount_ngn)}</b>
@@ -259,7 +260,7 @@ export default function RoleWorkspace(){
      {btn('Mark settled',()=>{void updateRefund(r.id,'settled')})}</div></div>)}
    {!refundCases.length&&<p>No payment exceptions are currently recorded.</p>}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">MULTI-TENANT CRM</div><h2>User and operator directory</h2>
+  <section className="rw-panel rw-wide"><div className="eyebrow">MULTI-TENANT CRM</div><h2 id="admin-users">User and operator directory</h2>
    <p>Search accounts and open a profile to view tickets, event activity and gate assignments. Deactivation preserves financial and admission audit records.</p>
    <div className="rw-market-filters">{input('Search name or email',userSearch,setUserSearch)}
     <select value={userFilter} aria-label="Filter by role" onChange={e=>setUserFilter(e.target.value)}><option value="">All roles</option><option value="user">Users / Gate identities</option><option value="organiser">Organisers</option><option value="platform_admin">Administrators</option></select>
@@ -275,21 +276,21 @@ export default function RoleWorkspace(){
     {input('Reason for deactivation',accountReason,setAccountReason)}{btn('Deactivate account',()=>{void changeUser('deactivate')},true)}
     </>}</div>)}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER SUCCESS</div><h2>Support cases and assistance</h2>
+  <section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER SUCCESS</div><h2 id="admin-support">Support cases and assistance</h2>
    <p>Support cases are tenant-scoped. Review organiser problems, assign case status and record the resolution.</p>
    {cases.map(c=><div className="rw-list-item" key={c.id}><div><b>{c.subject}</b><p>{c.organiser_name} · {c.status} · {c.priority}</p><small>{c.description}</small>{c.resolution&&<p>Resolution: {c.resolution}</p>}</div>
      <div className="rw-actions">{btn('Investigate',()=>{void updateCase(c.id,'in_progress',c.priority)},true)}{btn('Resolve',()=>{void updateCase(c.id,'resolved',c.priority)})}</div></div>)}
    {!cases.length&&<p>No open support requests.</p>}
    <label className="rw-field">Support resolution / guidance<textarea rows={3} value={caseResolution} onChange={e=>setCaseResolution(e.target.value)}/></label>
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">PLATFORM CONFIGURATION</div><h2>Operational settings</h2>
+  <section className="rw-panel rw-wide"><div className="eyebrow">PLATFORM CONFIGURATION</div><h2 id="admin-settings">Operational settings</h2>
    <p>Set organiser onboarding policy, event authenticity checks, support email, and help instructions. API credentials are managed in hosting environment variables.</p>
    <label className="rw-field">Setting<select value={settingKey} onChange={e=>{setSettingKey(e.target.value);setSettingValue(platformSettings[e.target.value]||'')}}>
     <option value="support_email">Support contact email</option><option value="organiser_approval_policy">Organiser approval checklist</option>
     <option value="event_verification_policy">Event authenticity checklist</option><option value="help_text">Help text</option></select></label>
    <label className="rw-field">Value<textarea rows={3} value={settingValue} onChange={e=>setSettingValue(e.target.value)}/></label>{btn('Save settings',()=>{void saveSetting()})}
   </section>
-  <section className="rw-panel"><h2>Organiser directory and access control</h2>
+  <section className="rw-panel"><h2 id="admin-organisers">Organiser directory and access control</h2>
    <p>Review all organiser applications and existing profiles. Revoke access without deleting tickets or historical events.</p>
    {organisers.map(o=><div className="rw-list-item" key={o.id}>
     <div><b>{o.full_name}</b><p>{o.email}</p><small>{o.role==='user'&&o.requested_role==='organiser'?'PENDING APPROVAL':o.account_status.toUpperCase()} · {o.event_count} events · {o.tickets_issued} tickets · {o.gate_operators} operators</small></div>
@@ -325,7 +326,7 @@ export default function RoleWorkspace(){
       {btn('Save organiser configuration',()=>{void configureOrganiser()})}
     </>:<p>This applicant is not approved. Approve before configuring the organiser profile.</p>}
    </div>)}
-  </section>  <section className="rw-panel rw-wide"><div className="eyebrow">TICKET DESIGN SERVICE</div><h2>Publish new ticket themes</h2>
+  </section>  <section className="rw-panel rw-wide"><div className="eyebrow">TICKET DESIGN SERVICE</div><h2 id="admin-themes">Publish new ticket themes</h2>
    <p>Approved designs appear in every organiser's theme selector without requiring an application update. Custom artwork remains available.</p>
    {input('Theme name',newThemeName,setNewThemeName)}{input('Theme label',newThemeLabel,setNewThemeLabel)}
    <div className="rw-media-inputs"><label className="rw-field">First colour<input type="color" value={themeColorA} onChange={e=>setThemeColorA(e.target.value)}/></label>
@@ -334,12 +335,12 @@ export default function RoleWorkspace(){
    <div className="rw-theme-grid">{themeCatalog.map(t=><div key={t.id} className="rw-theme-option" style={{background:t.gradient}}><strong>{t.name}</strong><small>{t.label}</small></div>)}</div>
    {btn('Add theme to catalogue',()=>{void addNewTicketTheme()})}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">AUDIT TRAIL</div><h2>Recent administrator actions</h2>
+  <section className="rw-panel rw-wide"><div className="eyebrow">AUDIT TRAIL</div><h2 id="admin-audit">Recent administrator actions</h2>
     {auditHistory.map(h=><div key={h.id} className="rw-list-item"><div><b>{h.action.replaceAll('_',' ')}</b>
       <p>{h.performed_by} · {nice(h.created_at)}</p><small>{h.target_email||'Platform event or setting'} · {JSON.stringify(h.details||{})}</small></div></div>)}
     {!auditHistory.length&&<p>No administrator actions logged.</p>}
   </section>
-  <section className="rw-panel rw-wide"><div className="eyebrow">EVENT AUTHENTICITY</div><h2>Review organiser listings and media</h2>
+  <section className="rw-panel rw-wide"><div className="eyebrow">EVENT AUTHENTICITY</div><h2 id="admin-moderation">Review organiser listings and media</h2>
    <p>Verify the identity, location, date, marketing materials and ticket promises before publishing an event to the public marketplace.</p>
    {moderationEvents.map(ev=><div className="rw-review-card" key={ev.id}>
      <div><strong>{ev.title}</strong><p>{ev.venue} · {nice(ev.starts_at)}</p><small>Submitted by {ev.organiser_name} ({ev.organiser_email})</small><p>Listing: {ev.verification_status} · {ev.pending_media} unreviewed assets</p></div>
