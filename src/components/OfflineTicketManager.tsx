@@ -4,14 +4,14 @@ import {QRCodeSVG} from 'qrcode.react';
 import {packZip} from '@/lib/zip-export';
 type Event={id:string;title:string;organiser_id:string;visibility?:string;permissions?:string[];expires_at?:string|null};
 type Batch={id:string;label:string;category:string;quantity:number;valid_count:number;active_count:number;admitted_count:number;created_at:string};
-type Ticket={id:string;serial_number:number;batch_id:string;status:string;active:boolean;distribution:string;redeemed_at:string|null;replaced_by:string|null;qr:string|null;sale_amount_ngn:number|null};
+type Ticket={id:string;serial_number:number;batch_id:string;status:string;active:boolean;distribution:string;redeemed_at:string|null;replaced_by:string|null;qr:string|null;entry_code?:string|null;sale_amount_ngn:number|null};
 type Activity={id:string;action:string;created_at:string;actor_name:string;ticket_id:string|null;batch_id:string|null;details:unknown};
 type Team={id:string;user_id:string;full_name:string;email:string;permissions:string[];revoked_at:string|null};
 async function api(route:string,method='GET',data?:unknown){
  const r=await fetch('/api/offline/'+route,{method,credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});
  const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v;
 }
-async function renderTicket(id:string,title:string,serial:number,format:'png'|'jpeg'):Promise<Blob>{
+async function renderTicket(id:string,title:string,serial:number,format:'png'|'jpeg',entryCode?:string):Promise<Blob>{
  // Generate a clean QR PNG from the SVG already displayed in the ticket row.
  const el=document.getElementById('offline-qr-'+id)?.querySelector('svg');
  if(!el)throw Error('QR preview is not rendered');
@@ -28,7 +28,8 @@ async function renderTicket(id:string,title:string,serial:number,format:'png'|'j
   ctx.drawImage(image,90,145,460,460);
   ctx.font='bold 20px sans-serif';ctx.fillText('Ticket #'+serial,40,640);
   ctx.font='18px monospace';ctx.fillText(id,40,670);
-  ctx.font='14px sans-serif';ctx.fillText('Validate using the official EventPass gate scanner',40,720);
+  if(entryCode){ctx.font='bold 23px monospace';ctx.fillText('BACKUP CODE: '+entryCode,40,707,560)}
+  ctx.font='14px sans-serif';ctx.fillText('Validate using the official EventPass gate scanner',40,746);
   return await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('Ticket export failed')),'image/'+format,0.95));
  }finally{URL.revokeObjectURL(url)}
 }
@@ -130,7 +131,7 @@ export default function OfflineTicketManager({events,organiserId}:{events:Event[
    const images: {name:string;blob:Blob}[]=[];
    const encoding=format==='jpeg'?'jpeg':'png';
    for(const t of chosen){
-    const blob=await renderTicket(t.id,assigned?.title||'EventPass',t.serial_number,encoding);
+    const blob=await renderTicket(t.id,assigned?.title||'EventPass',t.serial_number,encoding,t.entry_code||undefined);
     images.push({name:'eventpass-'+t.id+'.'+encoding,blob});
    }
    if(printWindow){
@@ -229,7 +230,8 @@ export default function OfflineTicketManager({events,organiserId}:{events:Event[
     {visibleTickets.map(t=><article className="rw-list-item" key={t.id} style={{alignItems:'start'}}><div>
      <label><input type="checkbox" checked={selected.includes(t.id)} onChange={e=>setSelected(prev=>e.target.checked?[...prev,t.id]:prev.filter(id=>id!==t.id))}/> Ticket #{t.serial_number} · {t.id.slice(0,8)}</label>
      <p>{t.status} · {t.active?'Active':'Inactive'} · {t.distribution} · {t.redeemed_at?'Admitted':'Not admitted'}</p>
-     {t.qr&&<div id={'offline-qr-'+t.id}><QRCodeSVG value={t.qr} size={152} includeMargin/></div>}
+     {t.entry_code&&<p><strong>Backup gate code: </strong><code style={{fontSize:15,fontWeight:800,letterSpacing:1}}>{t.entry_code}</code></p>}
+      {t.qr&&<div id={'offline-qr-'+t.id}><QRCodeSVG value={t.qr} size={224} level="M" includeMargin/></div>}
      </div><div className="rw-actions" style={{flexDirection:'column'}}>{t.qr&&button('Download PNG',()=>{void exportTickets([t.id])})}{can('reissue')&&!t.redeemed_at&&!t.replaced_by&&button(t.status==='revoked'?'Issue replacement':'Revoke & Reissue',()=>{void replace(t.id)})}</div></article>)}
    </>}
    {tab==='history'&&can('reports')&&<><h3>Issuance and activity audit</h3>{history.map(h=><div className="rw-list-item" key={h.id}><div><b>{h.action.replaceAll('_',' ')}</b><p>{h.actor_name} · {new Date(h.created_at).toLocaleString()}</p><small>{h.ticket_id||h.batch_id||''} · {JSON.stringify(h.details)}</small></div></div>)}</>}

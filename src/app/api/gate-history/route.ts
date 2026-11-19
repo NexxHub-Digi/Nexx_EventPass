@@ -12,7 +12,7 @@ export async function GET(req:Request){
     where g.event_id=${eventId} and g.user_id=${u.id} and e.status='published' and e.verification_status='verified' and owner.account_status='active' and owner.role='organiser'
     union select 1 from events e where e.id=${eventId} and e.organiser_id=${u.id} and ${u.role==='organiser'} and e.status='published' and e.verification_status='verified'`;
   if(!allowed[0])return fail('Not assigned to this event',403);
-  const scans=await db()`select id,outcome,gate_label,ticket_id,offline_ticket_id,scanned_at as created_at from entry_scans where event_id=${eventId} and scanner_id=${u.id} order by scanned_at desc,id desc limit 100`;
+  const scans=await db()`select id,outcome,gate_label,entry_method,ticket_id,offline_ticket_id,scanned_at as created_at from entry_scans where event_id=${eventId} and scanner_id=${u.id} order by scanned_at desc,id desc limit 100`;
   const counts=await db()`select count(*)::int as total,count(*) filter(where outcome='approved')::int as approved,count(*) filter(where outcome!='approved')::int as denied from entry_scans where event_id=${eventId} and scanner_id=${u.id}`;
   return ok({scans,counts:counts[0]});
  }catch(e){return handleError(e)}

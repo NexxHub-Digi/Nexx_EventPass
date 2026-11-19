@@ -1,6 +1,7 @@
 import {db} from '@/lib/db';
 import {paystackApi,paystackTestEnabled,validPaystackCharge,type VerifiedPaystackCharge} from '@/lib/paystack';
 import {issueTicketCredential} from '@/lib/ticket-credentials';
+import {registerEntryCode} from '@/lib/ticket-entry-code';
 export type Reconciliation={status:'pending'|'issued'|'already_issued'|'reconciliation_required';ticketsIssued?:number};
 export async function reconcilePaystackReference(reference:string):Promise<Reconciliation>{
  if(!paystackTestEnabled()||!/^EP-[a-f0-9-]{36}$/i.test(reference))throw Error('Paystack test mode or reference invalid');
@@ -78,6 +79,7 @@ export async function reconcilePaystackReference(reference:string):Promise<Recon
    const id=crypto.randomUUID(),credential=issueTicketCredential(id,event.id,design.qr_keyword_ciphertext);
    await tx`insert into tickets(id,event_id,order_id,owner_id,qr_credential)
     values(${id},${event.id},${order.id},${order.buyer_id},${credential})`;
+   await registerEntryCode(tx,event.id,id,'online');
    await tx`insert into ticket_deliveries
     (ticket_id,order_id,recipient_id,event_id,ticket_theme,ticket_art_id,admission_label)
     values(${id},${order.id},${order.buyer_id},${event.id},

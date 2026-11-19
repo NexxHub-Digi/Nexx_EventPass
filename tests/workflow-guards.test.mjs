@@ -31,3 +31,16 @@ test('platform overview requires active administrator',()=>{
  const x=read('src/app/api/platform/overview/route.ts');
  assert.match(x,/user\.role!=='platform_admin'\|\|user\.account_status!=='active'/);
 });
+
+test('manual gate codes are one-way indexed and cannot bypass normal single-use admission',()=>{
+ const gate=read('src/app/api/scan/route.ts');
+ const entry=read('src/lib/ticket-entry-code.ts');
+ const migration=read('db/migrations/20261119_rapid_gate_entry_codes.sql');
+ assert.match(gate,/entryCodeHash/);
+ assert.match(gate,/redeemed_at is null/);
+ assert.match(gate,/entry_method/);
+ assert.match(entry,/createHmac/);
+ assert.match(entry,/createHash/);
+ assert.match(migration,/primary key\(event_id,code_hash\)/);
+ assert.doesNotMatch(migration,/code_plaintext/);
+});
