@@ -1,6 +1,7 @@
 'use client';
 import React,{useEffect,useState} from 'react';
 import {QRCodeSVG} from 'qrcode.react';
+import {packZip} from '@/lib/zip-export';
 type Event={id:string;title:string;organiser_id:string;visibility?:string};
 type Batch={id:string;label:string;category:string;quantity:number;valid_count:number;active_count:number;admitted_count:number;created_at:string};
 type Ticket={id:string;serial_number:number;batch_id:string;status:string;active:boolean;distribution:string;redeemed_at:string|null;qr:string|null;sale_amount_ngn:number|null};
@@ -10,8 +11,7 @@ async function api(route:string,method='GET',data?:unknown){
  const r=await fetch('/api/offline/'+route,{method,credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});
  const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v;
 }
-async function downloadQr(id:string,qr:string){
- const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+async function makePng(id:string):Promise<Uint8Array>{
  // Generate a clean QR PNG from the SVG already displayed in the ticket row.
  const el=document.getElementById('offline-qr-'+id)?.querySelector('svg');
  if(!el)throw Error('QR preview is not rendered');
@@ -28,8 +28,12 @@ async function downloadQr(id:string,qr:string){
   ctx.drawImage(image,90,145,460,460);
   ctx.font='18px monospace';ctx.fillText(id,40,670);
   ctx.font='14px sans-serif';ctx.fillText('Validate using the official EventPass gate scanner',40,720);
-  const a=document.createElement('a');a.download='eventpass-'+id+'.png';a.href=canvas.toDataURL('image/png');a.click();
+  const png=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('PNG export failed')),'image/png'));
+  return new Uint8Array(await png.arrayBuffer());
  }finally{URL.revokeObjectURL(url)}
+}
+function saveBlob(blob:Blob,name:string){
+ const url=URL.createObjectURL(blob);const a=document.createElement('a');a.download=name;a.href=url;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 export default function OfflineTicketManager({events,organiserId}:{events:Event[];organiserId:string}){
  const mine=events.filter(e=>e.organiser_id===organiserId);
@@ -59,6 +63,19 @@ export default function OfflineTicketManager({events,organiserId}:{events:Event[
   await api('tickets','PATCH',{eventId,ticketIds:selected,action,distribution,amountNgn:distribution==='sold'&&amount!==''?Number(amount):null,recipientName:recipient,note});
   setSelected([]);setMessage('Tickets updated and audited');
  })}
+ async function exportTickets(ids:string[]){
+  await run(async()=>{
+   const chosen=tickets.filter(t=>ids.includes(t.id)&&t.qr&&t.status==='issued');
+   if(!chosen.length||chosen.length!==ids.length)throw Error('Select available tickets with encrypted QR credentials');
+   // Re-check server-side ownership and log the export request before creating files.
+   await api('exports','POST',{eventId,ticketIds:ids,format:chosen.length===1?'png':'zip'});
+   const files=[] as {name:string;data:Uint8Array}[];
+   for(const t of chosen)files.push({name:'eventpass-'+t.id+'.png',data:await makePng(t.id)});
+   if(files.length===1)saveBlob(new Blob([Uint8Array.from(files[0].data)],{type:'image/png'}),files[0].name);
+   else saveBlob(packZip(files),'eventpass-offline-batch-'+eventId.slice(0,8)+'.zip');
+   setMessage(files.length+' ticket image(s) exported');
+  });
+ }
  async function replace(id:string){const reason=window.prompt('Enter replacement reason (minimum five characters)');if(!reason)return;
   await run(async()=>{await api('reissue','POST',{eventId,ticketId:id,reason});setMessage('Old QR revoked and replacement issued')});
  }
@@ -91,11 +108,12 @@ export default function OfflineTicketManager({events,organiserId}:{events:Event[
     <label className="rw-field">Recipient (optional)<input value={recipient} onChange={e=>setRecipient(e.target.value)}/></label>
     <label className="rw-field">Notes (optional)<input value={note} onChange={e=>setNote(e.target.value)}/></label>
     {button('Update selected distribution',()=>{void bulk('distribution')},!selected.length)}
+    {button('Export selected PNGs as ZIP',()=>{void exportTickets(selected)},!selected.length)}
     {tickets.map(t=><article className="rw-list-item" key={t.id} style={{alignItems:'start'}}><div>
      <label><input type="checkbox" checked={selected.includes(t.id)} onChange={e=>setSelected(prev=>e.target.checked?[...prev,t.id]:prev.filter(id=>id!==t.id))}/> Ticket #{t.serial_number} · {t.id.slice(0,8)}</label>
      <p>{t.status} · {t.active?'Active':'Inactive'} · {t.distribution} · {t.redeemed_at?'Admitted':'Not admitted'}</p>
      {t.qr&&<div id={'offline-qr-'+t.id}><QRCodeSVG value={t.qr} size={152} includeMargin/></div>}
-     </div><div className="rw-actions" style={{flexDirection:'column'}}>{t.qr&&button('Download PNG',()=>{void downloadQr(t.id,t.qr!).catch(e=>setMessage(String(e)))})}{t.status==='issued'&&!t.redeemed_at&&button('Revoke & Reissue',()=>{void replace(t.id)})}</div></article>)}
+     </div><div className="rw-actions" style={{flexDirection:'column'}}>{t.qr&&button('Download PNG',()=>{void exportTickets([t.id])})}{t.status==='issued'&&!t.redeemed_at&&button('Revoke & Reissue',()=>{void replace(t.id)})}</div></article>)}
    </>}
    {tab==='history'&&<><h3>Issuance and activity audit</h3>{history.map(h=><div className="rw-list-item" key={h.id}><div><b>{h.action.replaceAll('_',' ')}</b><p>{h.actor_name} · {new Date(h.created_at).toLocaleString()}</p><small>{h.ticket_id||h.batch_id||''} · {JSON.stringify(h.details)}</small></div></div>)}</>}
    {tab==='staff'&&<><h3>Authorised Ticket Staff</h3><p>Staff must first register using their matching, Google-verified EventPass email.</p>
