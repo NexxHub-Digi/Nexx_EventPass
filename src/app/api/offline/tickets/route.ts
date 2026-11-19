@@ -10,7 +10,7 @@ export async function GET(req:Request){
   const search=str(url.searchParams.get('search'),80).toLowerCase();
   const access=await offlineAccess(eventId,'view');if(!access)return fail('Inventory access denied',403);
   if(batchId&&!uuid.test(batchId))return fail('Invalid batch',400);
-  const rows=await db()`select t.id,t.batch_id,t.serial_number,t.event_id,t.status,t.qr_credential,t.active,t.distribution,
+  const rows=await db()`select t.id,t.batch_id,t.serial_number,t.event_id,t.status,t.qr_credential,t.admission_code,t.active,t.distribution,
    t.recipient_name,t.recipient_contact,t.sale_amount_ngn,t.sale_note,t.redeemed_at,t.replaced_by,t.created_at,
    b.category,b.ticket_theme,b.admission_label
    from offline_tickets t join offline_ticket_batches b on b.id=t.batch_id
@@ -19,10 +19,11 @@ export async function GET(req:Request){
    order by t.created_at desc,t.serial_number asc,t.id limit 500`;
   const canExport=Boolean(await offlineAccess(eventId,'export'));
   const backfilled=await fillMissingTicketCredentials('offline_tickets', canExport ? rows
-   .filter(t=>t.status==='issued' && !t.qr_credential)
+   .filter(t=>t.status==='issued' && (!t.qr_credential||!t.admission_code))
    .map(t=>({id:t.id,eventId:t.event_id,keyword:access.event.qr_keyword_ciphertext})) : []);
-  return ok({tickets:rows.map(({qr_credential,...t})=>({...t,
-   qr:canExport&&t.status==='issued'?(qr_credential ?? backfilled.get(t.id) ?? null):null}))});
+  return ok({tickets:rows.map(({qr_credential,admission_code,...t})=>({...t,
+   qr:canExport&&t.status==='issued'?(qr_credential ?? backfilled.get(t.id)?.qr ?? null):null,
+   admission_code:canExport&&t.status==='issued'?(admission_code ?? backfilled.get(t.id)?.admissionCode ?? null):null}))});
  }catch(e){return handleError(e)}
 }
 
