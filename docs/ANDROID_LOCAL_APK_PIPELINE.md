@@ -20,3 +20,5 @@ Test Google authentication for the correct portal, persistent sessions, each rol
 If native Gradle compilation fails, inspect the **Standalone APK / role** job logs and fix the Expo CNG or Android build root cause in the same app; do not label web JavaScript exports as installable binaries.
 
 iOS internal distribution remains dependent on Apple-managed provisioning and cannot be replaced by this Android-only test workflow. Expo EAS remains the preferred pipeline for signed release binaries.
+
+GitHub-hosted Ubuntu runners already provide an Android SDK and `ANDROID_HOME`. The workflow checks that installation instead of invoking `android-actions/setup-android@v3`, which can attempt to download the deprecated SDK package named `tools` and fail before Gradle starts.

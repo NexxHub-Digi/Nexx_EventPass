@@ -11,5 +11,6 @@ test('local Android workflow provides four installable APK build targets',()=>{
  assert.match(source,/actions\/upload-artifact@v4/);
  assert.match(source,/EXPO_PUBLIC_RELEASE_CHANNEL: preview/);
  assert.match(source,/nexx-eventpass-git-staging-/);
+ assert.doesNotMatch(source,/android-actions\/setup-android@v3/);
  assert.doesNotMatch(source,/sk_live_|PAYSTACK_SECRET_KEY|GOOGLE_CLIENT_SECRET/);
 });
