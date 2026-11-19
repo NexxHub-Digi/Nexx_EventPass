@@ -31,6 +31,7 @@ export async function PATCH(req:Request){
   const access=await offlineAccess(eventId,permission);
   if(!access)return fail('Permission denied',403);
   const label=str(b.distribution,25),amount=b.amountNgn===null||b.amountNgn===undefined||b.amountNgn===''?null:Number(b.amountNgn);
+  if(action==='distribution'&&label==='sold'&&!await offlineAccess(eventId,'sales'))return fail('Offline sales recording permission required',403);
   if(action==='distribution'&&(!['unassigned','sold','distributed','complimentary'].includes(label)||amount!==null&&(!Number.isSafeInteger(amount)||amount<0)||label!=='sold'&&amount!==null))return fail('Invalid distribution label or amount',400);
   const recipientName=str(b.recipientName,120)||null,contact=str(b.recipientContact,120)||null,note=str(b.note,500)||null;
   const operationId=crypto.randomUUID();
