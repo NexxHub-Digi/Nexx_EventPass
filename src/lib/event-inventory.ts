@@ -4,7 +4,7 @@ export const categoryIdPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
 
 // Call after locking the event row. Every reservation and issuance shares that lock.
 export async function availableEventTickets(tx: TransactionSql, eventId: string, capacity: number, categoryId: string | null) {
-  const categories = await tx`select id,name,capacity from event_ticket_categories where event_id=${eventId}`;
+  const categories = await tx`select id,name,capacity,price_ngn from event_ticket_categories where event_id=${eventId}`;
   const category = categories.find(row => row.id === categoryId);
   if (categoryId && !category) return null;
   const poolCapacity = category ? Number(category.capacity) :
@@ -20,5 +20,6 @@ export async function availableEventTickets(tx: TransactionSql, eventId: string,
      and status='pending' and reservation_expires_at>now()
      and ticket_category_id is not distinct from ${categoryId}::uuid) as reserved`;
   return { available: Math.max(0, poolCapacity - Number(usage.issued) - Number(usage.reserved)),
-    categoryName: category?.name as string | undefined };
+    categoryName: category?.name as string | undefined,
+    categoryPrice: category?.price_ngn as number | null | undefined };
 }

@@ -10,7 +10,7 @@ test('only event organiser may review payments',()=>{
 });
 test('paid orders require configured bank instructions',()=>{
  const x=read('src/app/api/orders/route.ts');
- assert.match(x,/price_ngn\)>0&&!e\.payment_account_id/);
+ assert.match(x,/unitPrice>0&&!e\.payment_account_id/);
  assert.match(x,/for update of e/);
  assert.match(x,/availableEventTickets\(tx,/);
  assert.match(read('src/lib/event-inventory.ts'),/reservation_expires_at>now\(\)/);

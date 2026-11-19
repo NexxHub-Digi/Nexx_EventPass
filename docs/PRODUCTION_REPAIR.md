@@ -18,3 +18,13 @@ This repair starts from GitHub `main` at `ef2c744`, the revision identified in t
 Apply `20261119_link_offline_entry_scans.sql` and `20261119_reservation_idempotency.sql` after the migrations in [the release runbook](NATIVE_RELEASE.md) and before deploying the matching API. Both schema changes are additive. They retain previously issued QR credentials and orders. Follow the existing verified-bank review process for affected paid events.
 
 For Expo previews, set `EXPO_PUBLIC_API_URL` in the EAS `preview` environment to the staging website origin. If production has a custom hostname, set `EXPO_PUBLIC_PRODUCTION_API_URL` in the preview environment so config validation can reject it too. Link each preview environment to staging data. Verify Google OAuth against staging and install signed preview builds before accepting camera or device behavior.
+
+## Category prices
+
+Apply `20261119_ticket_category_pricing.sql` after the earlier repair migrations. Organisers can create and edit prices in the web ticket manager. Existing categories inherit their event price. A category may be complimentary within a paid event. To configure a positive category price, use a paid event with a verified account.
+
+Web and native checkout show and send the selected unit price. The server rejects a stale quote and saves the unit price on the order. Issued tickets retain the link to that order and its original price. Historical orders keep their recorded totals. Complimentary reservations continue through the existing organiser approval flow.
+
+## Unpaid reservation cancellation
+
+Apply `20261119_unpaid_order_cancellation.sql` before the updated API. A buyer can cancel their own active reservation from web or native Orders before uploading a receipt. The API locks the order, records the cancellation in the payment audit and releases its reserved capacity. Existing receipts and approved orders stay in the organiser and refund workflows.

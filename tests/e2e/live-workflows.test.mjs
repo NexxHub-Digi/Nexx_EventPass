@@ -455,5 +455,32 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/events/ticket-categories?eventId='+wrongOwnerEvent.id),404,'inventory hides invalid owner');
   expect(await post('/api/platform/events',adminCookie,{eventId:wrongOwnerEvent.id,action:'verify'}),409,'admin cannot publish events with an ineligible owner');
 
+  const pricedEvent=expect(await post('/api/events',org.cookie,{
+   title:'E2E category pricing',venue:'Test',startsAt:new Date(Date.now()+3600000).toISOString(),
+   priceNgn:1000,capacity:4,paymentAccountId:secondBank.id,qrKeyword:'category-pricing-test'
+  }),201,'create priced category fixture').event;
+  const vip=expect(await post('/api/events/ticket-categories',org.cookie,{eventId:pricedEvent.id,name:'VIP',capacity:2,priceNgn:2000}),201,'configure VIP price').category;
+  const complimentary=expect(await post('/api/events/ticket-categories',org.cookie,{eventId:pricedEvent.id,name:'Complimentary',capacity:1,priceNgn:0}),201,'configure complimentary allocation').category;
+  expect(await post('/api/platform/events',adminCookie,{eventId:pricedEvent.id,action:'verify'}),200,'publish priced fixture');
+  const vipOrder={eventId:pricedEvent.id,ticketCategoryId:vip.id,quantity:1,paymentReference:'PRICING-FIXTURE',paymentAccountId:secondBank.id};
+  expect(await post('/api/orders',wrong.cookie,{...vipOrder,unitPriceNgn:1000}),409,'reject stale price');
+  const firstVip=expect(await post('/api/orders',wrong.cookie,{...vipOrder,unitPriceNgn:2000}),201,'purchase uses category price').order;
+  assert.equal(firstVip.amount_ngn,2000);
+  assert.equal(firstVip.unit_price_ngn,2000);
+  expect(await req('/api/events/ticket-categories',{cookie:org.cookie,method:'PATCH',body:{eventId:pricedEvent.id,categoryId:vip.id,priceNgn:2500}}),200,'edit the price for new orders');
+  const secondVip=expect(await post('/api/orders',wrong.cookie,{...vipOrder,unitPriceNgn:2500}),201,'accept new price').order;
+  assert.equal(secondVip.unit_price_ngn,2500);
+  assert.equal(expect(await req('/api/orders',{cookie:wrong.cookie}),200,'historical price snapshot').orders.find(order=>order.id===firstVip.id).unit_price_ngn,2000);
+  const free=expect(await post('/api/orders',wrong.cookie,{eventId:pricedEvent.id,ticketCategoryId:complimentary.id,quantity:1,paymentReference:'FREE-TICKET',unitPriceNgn:0}),201,'reserve complimentary allocation').order;
+  assert.equal(free.amount_ngn,0);
+  assert.equal(free.payment_method,'free');
+
+  const cancel={action:'cancel',orderId:firstVip.id};
+  expect(await req('/api/orders',{cookie:onsiteBuyer.cookie,method:'PATCH',body:cancel}),404,'only buyer can cancel reservation');
+  expect(await req('/api/orders',{cookie:wrong.cookie,method:'PATCH',body:cancel}),200,'buyer cancels unpaid reservation');
+  expect(await req('/api/orders',{cookie:wrong.cookie,method:'PATCH',body:cancel}),200,'duplicate cancellation is safe');
+  expect(await post('/api/review',org.cookie,{orderId:firstVip.id,decision:'approved'}),409,'cancelled order cannot issue a ticket');
+  expect(await post('/api/orders',wrong.cookie,{...vipOrder,unitPriceNgn:2500}),201,'cancellation releases category capacity');
+
  }finally{await sql.end()}
 },{timeout:180000});

@@ -29,9 +29,13 @@ export default function App(){
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [ref,setRef]=useState(''),[qty,setQty]=useState('1'),[proof,setProof]=useState<DocumentPicker.DocumentPickerAsset|null>(null);
  const [query,setQuery]=useState(''),[category,setCategory]=useState('All'),[gallery,setGallery]=useState<{id:string;media_type:string;url:string}[]>([]);
- const [inventory,setInventory]=useState<{eventId:string;categories:{id:string;name:string}[];generalCapacity:number;payment:{payment_account_id:string|null;bank_name:string;bank_account_name:string;bank_account_number:string;onsite_payments_enabled:boolean}}|null>(null);
+ const [inventory,setInventory]=useState<{eventId:string;categories:{id:string;name:string;price_ngn:number}[];generalCapacity:number;payment:{payment_account_id:string|null;bank_name:string;bank_account_name:string;bank_account_number:string;onsite_payments_enabled:boolean}}|null>(null);
  const [onsite,setOnsite]=useState(false);
  const [ticketCategoryId,setTicketCategoryId]=useState('');
+ function checkoutUnitPrice(event:Event){
+  return (inventory?.eventId===event.id?inventory.categories.find(item=>item.id===ticketCategoryId)?.price_ngn:undefined)??Number(event.price_ngn);
+ }
+
  useEffect(()=>{
   if(!eventId)return;
   let current=true;
@@ -118,16 +122,17 @@ export default function App(){
   reservationInFlight.current=true;
   try{await exec(async()=>{
    if(inventory?.eventId!==event.id)throw Error('Payment options are unavailable. Reopen the event to retry.');
+   const unitPrice=checkoutUnitPrice(event);
    reservationKey.current ||= Crypto.randomUUID();
    const response=await api('orders',token,'POST',{
     reservationKey:reservationKey.current,
-    eventId:event.id,quantity:Number(qty),ticketCategoryId,paymentAccountId:inventory.payment.payment_account_id,
-    paymentMethod:onsite?'onsite':'manual',paymentReference:event.price_ngn>0?ref:'FREE-TICKET'
+    eventId:event.id,quantity:Number(qty),ticketCategoryId,unitPriceNgn:unitPrice,paymentAccountId:inventory.payment.payment_account_id,
+    paymentMethod:onsite?'onsite':'manual',paymentReference:unitPrice>0?ref:'FREE-TICKET'
    });
    const order:Order={...response.order,event_title:event.title};
    setOrders(previous=>[order,...previous.filter(item=>item.id!==order.id)]);
    reservationKey.current='';setEventId('');setRef('');setProof(null);setSection('orders');
-   if(proof&&event.price_ngn>0&&!onsite){
+   if(proof&&unitPrice>0&&!onsite){
     try{await uploadReceipt(order.id,proof)}catch(error){
      setReceiptErrors(previous=>({...previous,[order.id]:'Reservation saved. '+(error instanceof Error?error.message:'Receipt upload failed.')+' Retry here.'}));
      return;
@@ -218,19 +223,20 @@ export default function App(){
   <ScrollView horizontal contentContainerStyle={{gap:10,marginVertical:10}}>{gallery.map(m=><Pressable key={m.id} onPress={()=>{if(m.media_type==='video')void Linking.openURL(BASE+m.url)}}>
    {m.media_type==='video'?<View style={{width:150,height:115,backgroundColor:'#493b7f',justifyContent:'center',alignItems:'center'}}><Text style={{color:'#fff'}}>▶ Play video</Text></View>:
    <Image source={{uri:BASE+m.url}} style={{width:150,height:115,borderRadius:10}}/>}</Pressable>)}</ScrollView>
-  {e.price_ngn>0&&inventory?.eventId===e.id&&inventory.payment.onsite_payments_enabled&&button(onsite?'Switch to bank transfer':'Pay onsite instead',()=>setOnsite(!onsite),true)}
-  {e.price_ngn>0&&<Text style={s.hint}>Paystack setup pending</Text>}
-  {e.price_ngn>0?(onsite?<Text style={s.hint}>Pay onsite before expiry. Show the organiser your order from My orders.</Text>:<Text selectable style={s.hint}>{inventory?.eventId===e.id?'Bank transfer: '+inventory.payment.bank_name+' · '+inventory.payment.bank_account_name+' · '+inventory.payment.bank_account_number:'Verified bank details are unavailable until checkout loads.'}</Text>):<Text style={s.hint}>Free ticket (organiser approval required)</Text>}
+  {checkoutUnitPrice(e)>0&&inventory?.eventId===e.id&&inventory.payment.onsite_payments_enabled&&button(onsite?'Switch to bank transfer':'Pay onsite instead',()=>setOnsite(!onsite),true)}
+  {checkoutUnitPrice(e)>0&&<Text style={s.hint}>Paystack setup pending</Text>}
+  {checkoutUnitPrice(e)>0?(onsite?<Text style={s.hint}>Pay onsite before expiry. Show the organiser your order from My orders.</Text>:<Text selectable style={s.hint}>{inventory?.eventId===e.id?'Bank transfer: '+inventory.payment.bank_name+' · '+inventory.payment.bank_account_name+' · '+inventory.payment.bank_account_number:'Verified bank details are unavailable until checkout loads.'}</Text>):<Text style={s.hint}>Free ticket (organiser approval required)</Text>}
   {inventory?.eventId===e.id&&inventory.categories.length>0&&<View>
    <Text style={s.hint}>Ticket category</Text>
-   {(inventory.generalCapacity>0?[{id:'',name:'General'},...inventory.categories]:inventory.categories).map(item=>
+   {(inventory.generalCapacity>0?[{id:'',name:'General',price_ngn:Number(e.price_ngn)},...inventory.categories]:inventory.categories).map(item=>
     <Pressable key={item.id} accessibilityRole="radio" accessibilityState={{selected:ticketCategoryId===item.id}}
-     onPress={()=>setTicketCategoryId(item.id)} style={[s.card,{backgroundColor:ticketCategoryId===item.id?'#50368d':'#1d2440'}]}>
-     <Text style={{color:'#fff'}}>{item.name}</Text>
+     onPress={()=>{setTicketCategoryId(item.id);setProof(null);setRef('');setOnsite(false)}} style={[s.card,{backgroundColor:ticketCategoryId===item.id?'#50368d':'#1d2440'}]}>
+     <Text style={{color:'#fff'}}>{item.name} · ₦{Number(item.price_ngn).toLocaleString()}</Text>
     </Pressable>)}
   </View>}
   {input('Number of tickets',qty,setQty)}
-  {e.price_ngn>0&&!onsite&&<>{input('Bank transfer reference',ref,setRef)}
+  <Text style={s.hint}>Total · ₦{(checkoutUnitPrice(e)*(Number(qty)||0)).toLocaleString()}</Text>
+  {checkoutUnitPrice(e)>0&&!onsite&&<>{input('Bank transfer reference',ref,setRef)}
   {button(proof?'Receipt: '+proof.name:'Select payment receipt',()=>{void exec(async()=>{const file=await pickReceipt();if(file)setProof(file)})},true)}</>}
   {button('Request tickets',()=>void reserveEvent(e))}
  </>}</View></View>)}
@@ -249,6 +255,14 @@ export default function App(){
   {!!receiptErrors[o.id]&&<Text accessibilityRole="alert" style={s.error}>{receiptErrors[o.id]}</Text>}
   {button(o.receipt_uploaded_at?'Replace receipt':receiptErrors[o.id]?'Retry receipt upload':'Upload receipt',()=>void recoverReceipt(o.id),true)}
  </>}
+ {o.status==='pending'&&!o.receipt_uploaded_at&&o.reservation_expires_at&&new Date(o.reservation_expires_at).getTime()>Date.now()&&
+  button('Cancel unpaid reservation',()=>Alert.alert('Cancel unpaid reservation','If you have already paid, contact the organiser instead.',[
+   {text:'Keep reservation',style:'cancel'},
+   {text:'Cancel reservation',style:'destructive',onPress:()=>void exec(async()=>{
+    await api('orders',token,'PATCH',{action:'cancel',orderId:o.id});
+    setOrders((await api('orders',token)).orders||[]);
+   })}
+  ]),true)}
  {o.status==='rejected'&&o.receipt_uploaded_at&&(()=>{
   const request=paymentCases.find(item=>item.payment_order_id===o.id);
   if(request)return <Text style={s.hint}>Support: {request.status.replaceAll('_',' ')}{request.resolution?' · '+request.resolution:''}</Text>;

@@ -43,9 +43,19 @@ export default function OfflineTicketManager({events,organiserId}:{events:Event[
  const [batchFilter,setBatchFilter]=useState(''),[search,setSearch]=useState(''),[appliedSearch,setAppliedSearch]=useState('');
  const [selected,setSelected]=useState<string[]>([]),[distribution,setDistribution]=useState('unassigned'),[amount,setAmount]=useState(''),[recipient,setRecipient]=useState(''),[note,setNote]=useState('');
  const [staffEmail,setStaffEmail]=useState(''),[permissions,setPermissions]=useState<string[]>(['view','export','distribute']),[staffScope,setStaffScope]=useState('selected'),[staffExpiry,setStaffExpiry]=useState(''),[includeFuture,setIncludeFuture]=useState(false);
- const [allocations,setAllocations]=useState<{id:string;name:string;capacity:number}[]>([]);
+ const [allocations,setAllocations]=useState<{id:string;name:string;capacity:number;price_ngn:number}[]>([]);
  const [generalCapacity,setGeneralCapacity]=useState<number|null>(null);
- const [allocationId,setAllocationId]=useState(''),[allocationName,setAllocationName]=useState(''),[allocationSize,setAllocationSize]=useState('');
+ const [editingPrice,setEditingPrice]=useState(''),[nextPrice,setNextPrice]=useState('');
+ async function updateCategoryPrice(categoryId:string){
+  await run(async()=>{
+   const response=await fetch('/api/events/ticket-categories',{method:'PATCH',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({eventId,categoryId,priceNgn:nextPrice.trim()?Number(nextPrice):null})});
+   const data=await response.json();
+   if(!response.ok)throw Error(data.error||'Could not update category price');
+   setEditingPrice('');setMessage('Category price updated for future reservations');
+  });
+ }
+ const [allocationId,setAllocationId]=useState(''),[allocationName,setAllocationName]=useState(''),[allocationSize,setAllocationSize]=useState(''),[allocationPrice,setAllocationPrice]=useState('');
  const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [key,setKey]=useState(()=>crypto.randomUUID());
  const assigned=mine.find(e=>e.id===eventId);
@@ -95,10 +105,10 @@ export default function OfflineTicketManager({events,organiserId}:{events:Event[
  })}
  async function addAllocation(){await run(async()=>{
   const response=await fetch('/api/events/ticket-categories',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({eventId,name:allocationName,capacity:Number(allocationSize)})});
+   body:JSON.stringify({eventId,name:allocationName,capacity:Number(allocationSize),priceNgn:allocationPrice.trim()?Number(allocationPrice):null})});
   const body=await response.json();
   if(!response.ok)throw Error(body.error||'Could not allocate category');
-  setAllocationName('');setAllocationSize('');setMessage('Ticket category added');
+  setAllocationName('');setAllocationSize('');setAllocationPrice('');setMessage('Ticket category added');
  })}
  async function bulk(action:string){
   const reason=action==='revoke'?window.prompt(`Revoke ${selected.length} selected ticket(s)? Enter a reason (minimum five characters).`):null;
@@ -170,9 +180,16 @@ export default function OfflineTicketManager({events,organiserId}:{events:Event[
     {organiserId&&<form onSubmit={e=>{e.preventDefault();void addAllocation()}}>
      <h3>Ticket categories</h3>
      <p>General allocation: {generalCapacity??'Loading…'}. Named categories share their limits across online and external tickets.</p>
-     {allocations.length>0&&<ul>{allocations.map(item=><li key={item.id}>{item.name} · {item.capacity} tickets</li>)}</ul>}
+     {allocations.length>0&&<ul>{allocations.map(item=><li key={item.id}>{item.name} · {item.capacity} tickets · ₦{item.price_ngn.toLocaleString()}
+      {editingPrice===item.id?<>
+       <label className="rw-field">New price for {item.name}<input type="number" min={0} max={214748364} step={1} value={nextPrice} onChange={e=>setNextPrice(e.target.value)} placeholder="Use event price"/></label>
+       {button('Save price',()=>void updateCategoryPrice(item.id))}
+       {button('Cancel',()=>setEditingPrice(''))}
+      </>:button('Edit price',()=>{setEditingPrice(item.id);setNextPrice(String(item.price_ngn))})}
+     </li>)}</ul>}
      <label className="rw-field">New category name<input required maxLength={60} value={allocationName} onChange={e=>setAllocationName(e.target.value)}/></label>
      <label className="rw-field">Category capacity<input required type="number" min={1} value={allocationSize} onChange={e=>setAllocationSize(e.target.value)}/></label>
+     <label className="rw-field">Category price (₦)<input type="number" min={0} step={1} max={214748364} value={allocationPrice} onChange={e=>setAllocationPrice(e.target.value)} placeholder="Use event price" /></label>
      <button type="submit" className="ghost" disabled={busy}>Allocate category</button>
     </form>}
     {can('generate')&&<><h3>Generate encrypted ticket batch</h3>
