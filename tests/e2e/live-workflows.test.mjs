@@ -217,6 +217,9 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),409,'prevent double approval');
   const tickets=expect(await req('/api/tickets',{cookie:buyer.cookie}),200,'ticket wallet').tickets;
   const ticket=tickets.find(t=>t.event_id===event.id);assert.ok(ticket?.qr?.startsWith('EVP2.'));
+  assert.ok(ticket.qr.length<140,'compact encrypted QR reduces visual density');
+  assert.match(ticket.entry_code,/^NX-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$/,'backup code shown to owner');
+  assert.equal((await sql`select count(*)::int as total from ticket_entry_codes where ticket_id=${ticket.id}`)[0].total,1,'online backup lookup indexed');
   assert.ok(ticket?.delivered_at,'ticket is immediately delivered into User wallet');
   assert.equal(ticket?.ticket_theme,'stj-royal-gold','issued ticket retains the selected luxurious STJ design');
   assert.equal(ticket?.ticket_art_id,ticketArtwork.id,'approved custom artwork is attached to each issued QR pass');
@@ -226,6 +229,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/events/media?eventId='+event.id,{cookie:buyer.cookie}),200,'buyer can browse gallery');
   const repeatWallet=expect(await req('/api/tickets',{cookie:buyer.cookie}),200,'tickets remain accessible').tickets;
   assert.equal(repeatWallet.find(t=>t.id===ticket.id).qr,ticket.qr,'online QR stays stable');
+  assert.equal(repeatWallet.find(t=>t.id===ticket.id).entry_code,ticket.entry_code,'backup code remains stable');
   const [storedOnline]=await sql`select qr_credential from tickets where id=${ticket.id}`;
   assert.equal(storedOnline.qr_credential,ticket.qr,'credential was stored at issuance');
   expect(await req('/api/events',{cookie:wrong.cookie}),200,'cross-organiser public discovery works');
@@ -262,6 +266,9 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(expect(await req('/api/auth/me',{cookie:operator.cookie}),200,'gate portal').portals.includes('gate'));
   const scans=await Promise.all([post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr})]);
   assert.deepEqual(scans.map((r,i)=>expect(r,200,'concurrent scan '+i).outcome).sort(),['approved','duplicate']);
+  const duplicateManual=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.entry_code.toLowerCase().replaceAll('-',' ')}),200,'manual backup reuse');
+  assert.equal(duplicateManual.outcome,'duplicate','same ticket cannot be admitted again by backup code');
+  assert.equal(duplicateManual.entry_method,'manual');
   const history=expect(await req('/api/gates/activity?eventId='+event.id,{cookie:operator.cookie}),200,'gate log');
   const recordedHistory=expect(await req('/api/gate-history?eventId='+event.id,{cookie:operator.cookie}),200,'operator history after scanning');
   assert.ok(recordedHistory.scans.some(scan=>scan.outcome==='approved'&&scan.ticket_id===ticket.id&&scan.offline_ticket_id===null));
@@ -272,6 +279,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/gates',org.cookie,{eventId:otherEvent.id,email:wrong.email,gateLabel:'Other Gate',mode:'add'}),409,'unverified direct addition rejected');
   expect(await post('/api/gates',org.cookie,{eventId:otherEvent.id,email:operator.email,gateLabel:'Other Gate',mode:'add'}),200,'existing verified operator added');
   assert.equal(expect(await post('/api/scan',operator.cookie,{eventId:otherEvent.id,code:ticket.qr}),200,'wrong-event QR').outcome,'wrong_event');
+  assert.equal(expect(await post('/api/scan',operator.cookie,{eventId:otherEvent.id,code:ticket.entry_code}),200,'backup code does not transfer events').outcome,'invalid');
   expect(await req('/api/gates',{method:'DELETE',cookie:org.cookie,body:{eventId:event.id,email:operator.email}}),200,'revoke gate');
   expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),403,'revoked gate denied');
   expect(await post('/api/platform/organisers',adminCookie,{action:'suspend',userId:org.id}),200,'suspend organiser');
@@ -302,12 +310,14 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(expect(await post('/api/offline/batches',org.cookie,{eventId:privateEvent.id,quantity:2,active:false,idempotencyKey:key}),200,'idempotent offline batch').existing,true);
   const inventory=expect(await req('/api/offline/tickets?eventId='+privateEvent.id,{cookie:org.cookie}),200,'offline inventory').tickets;
   assert.equal(inventory.length,2);assert.ok(inventory.every(t=>t.qr?.startsWith('EVP2.')&&t.active===false),'encrypted inactive tickets');
+  assert.ok(inventory.every(t=>t.entry_code?.startsWith('NX-')&&t.qr.length<140),'offline compact QR and indexed backup codes');
   const first=inventory[0];
   const offlinePath='/api/offline/tickets?eventId='+privateEvent.id;
   const searchPath=offlinePath+'&search='+first.id.slice(0,8);
   assert.deepEqual(expect(await req(searchPath,{cookie:org.cookie}),200,'search by ticket ID prefix').tickets.map(t=>t.id),[first.id]);
   const repeatInventory=expect(await req(offlinePath,{cookie:org.cookie}),200,'refresh offline inventory').tickets;
   assert.equal(repeatInventory.find(t=>t.id===first.id).qr,first.qr,'QR remains stable on refresh');
+  assert.equal(repeatInventory.find(t=>t.id===first.id).entry_code,first.entry_code,'offline backup code remains stable');
   const [storedOffline]=await sql`select qr_credential from offline_tickets where id=${first.id}`;
   assert.equal(storedOffline.qr_credential,first.qr,'offline credential was stored at issuance');
   await sql`update offline_tickets set qr_credential=null where id=${first.id}`;
@@ -316,15 +326,23 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(legacyQr1?.startsWith('EVP2.'));
   assert.equal(legacyQr1,legacyQr2,'concurrent legacy reads agree on one persisted QR');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'inactive ticket scan').outcome,'inactive_or_unavailable');
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.entry_code}),200,'inactive backup code').outcome,'inactive_or_unavailable');
   const patch=await req('/api/offline/tickets',{cookie:org.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[first.id],action:'activate'}});
   expect(patch,200,'activate selected offline ticket');
   const activated=expect(await req(offlinePath,{cookie:org.cookie}),200,'refresh activated credential').tickets;
   assert.equal(activated.find(t=>t.id===first.id).qr,legacyQr1,'activation does not rotate the QR');
-  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'first offline scan').outcome,'approved');
+  const manualAdmission=expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.entry_code}),200,'first offline backup admission');
+  assert.equal(manualAdmission.outcome,'approved');
+  assert.equal(manualAdmission.entry_method,'manual');
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'subsequent QR after manual admission').outcome,'duplicate');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'duplicate offline scan').outcome,'duplicate');
   const offlineHistory=expect(await req('/api/gate-history?eventId='+privateEvent.id,{cookie:org.cookie}),200,'offline scan references').scans;
   for(const outcome of ['approved','duplicate']){
    assert.ok(offlineHistory.some(scan=>scan.outcome===outcome&&scan.offline_ticket_id===first.id&&scan.ticket_id===null));
+  }
+  assert.ok(offlineHistory.some(scan=>scan.entry_method==='manual'&&scan.offline_ticket_id===first.id&&scan.outcome==='approved'),'manual admission logged distinctly');
+  for(const ignored of []){
+   void ignored;
   }
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:'not-a-ticket-credential'}),200,'invalid credential').outcome,'invalid');
   const invalidScan=expect(await req('/api/gate-history?eventId='+privateEvent.id,{cookie:org.cookie}),200,'invalid scan history').scans[0];
@@ -340,6 +358,8 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(newPass.qr?.startsWith('EVP2.'));
   assert.notEqual(newPass.qr,second.qr,'replacement has a different QR');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:second.qr}),200,'revoked original').outcome,'revoked');
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:second.entry_code}),200,'revoked backup code').outcome,'revoked');
+  assert.notEqual(newPass.entry_code,second.entry_code,'reissued ticket receives different backup code');
   const [externalReport] = expect(await req('/api/platform/event-directory?eventId='+privateEvent.id,{cookie:adminCookie}),200,'external inventory in admin report').events;
   assert.equal(externalReport.external_tickets_issued,2);
   assert.equal(externalReport.checked_in,1);
