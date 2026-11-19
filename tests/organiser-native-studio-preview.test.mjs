@@ -20,7 +20,7 @@ test('mode selector and live preview are non-consuming with no fabricated admiss
  assert.match(preview,/choice\('both','Ticket \+ QR'\)/);
  assert.match(preview,/SAMPLE • NOT VALID FOR ENTRY/);
  assert.match(preview,/NO REUSABLE OR DEMO ADMISSION CODE/);
- assert.match(preview,/Real signed QR codes are created only after authorised fulfilment/);
+ assert.match(preview,/Drafts are not applied to existing tickets or issued as admission credentials/);
  assert.doesNotMatch(preview,/QRCodeSVG|react-native-qrcode-svg|EVENTPASS-DEMO-NOT-VALID/);
 });
 test('selected event is authoritative and fields reset when switching events',()=>{
@@ -30,8 +30,21 @@ test('selected event is authoritative and fields reset when switching events',()
  assert.match(preview,/setEnabled\(\{\.\.\.visibleByDefault\}\);setMode\('both'\)/);
 });
 test('UI clearly distinguishes preview-only changes from persisted event values',()=>{
- assert.match(native,/Preview-only fields are not persisted/);
- assert.match(preview,/These preview changes are not published/);
+ assert.match(native,/Save versioned design draft stores preview fields and visibility separately/);
+ assert.match(preview,/Saving a draft does not publish a live ticket/);
  assert.match(native,/api\('events',token,'PATCH',\{eventId,description,category,ticketTheme:theme,admissionLabel,posterTemplate\}\)/);
  assert.match(route,/if\(usage\.in_use\)return fail\('This event has issued tickets or active reservations/);
+});
+
+test('ticket studio restores and saves drafts with authentication while preserving issued ticket snapshots',()=>{
+ assert.match(preview,/apiBase\+'\/api\/organiser\/ticket-designs\?eventId='/);
+ assert.match(preview,/Authorization:'Bearer '\+token/);
+ assert.match(preview,/method:'POST'/);
+ assert.match(preview,/Save versioned design draft/);
+ assert.match(preview,/Existing issued tickets are unchanged/);
+ const api=readFileSync(new URL('../src/app/api/organiser/ticket-designs/route.ts',import.meta.url),'utf8');
+ assert.match(api,/where d\.event_id=\$\{eventId\} and e\.organiser_id=\$\{u\.id\}/);
+ assert.match(api,/where id=\$\{eventId\} and organiser_id=\$\{u\.id\} for update/);
+ assert.match(api,/coalesce\(max\(version\),0\)\+1/);
+ assert.doesNotMatch(api,/update tickets|update ticket_deliveries|update offline_tickets/i);
 });
