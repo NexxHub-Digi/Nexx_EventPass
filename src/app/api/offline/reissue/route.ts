@@ -1,6 +1,7 @@
 import {db} from '@/lib/db';
 import { availableEventTickets } from '@/lib/event-inventory';
 import {issueTicketCredential} from '@/lib/ticket-credentials';
+import {createAdmissionCode} from '@/lib/admission-code';
 import {offlineAccess,uuid} from '@/lib/offline-access';
 import {fail,ok,handleError,payload,str} from '@/lib/http';
 export const runtime='nodejs';
@@ -24,10 +25,10 @@ export async function POST(req:Request){
     return {error:'No remaining capacity for a replacement',status:409};
    const replacementId=crypto.randomUUID();
    const credential=issueTicketCredential(replacementId,event.id,event.qr_keyword_ciphertext);
-   const replacement=await tx`insert into offline_tickets(id,batch_id,event_id,organiser_id,serial_number,status,active,distribution,qr_credential)
+   const replacement=await tx`insert into offline_tickets(id,batch_id,event_id,organiser_id,serial_number,status,active,distribution,qr_credential,admission_code)
     values(${replacementId},${old.batch_id},${event.id},${old.organiser_id},
     (select coalesce(max(serial_number),0)+1 from offline_tickets where batch_id=${old.batch_id}),
-    'issued',${old.active},'unassigned',${credential}) returning id,serial_number,active`;
+    'issued',${old.active},'unassigned',${credential},${createAdmissionCode(replacementId,event.id)}) returning id,serial_number,active`;
    await tx`update offline_tickets set status='revoked',active=false,replaced_by=${replacement[0].id} where id=${ticketId}`;
    await tx`insert into offline_ticket_audit(organiser_id,event_id,batch_id,ticket_id,actor_id,operation_id,action,details)
     values(${old.organiser_id},${eventId},${old.batch_id},${ticketId},${access.user.id},${crypto.randomUUID()},'reissued',
