@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { createEncryptedQr, decodeEncryptedQr, encryptOrganiserKeyword } from '../src/lib/qr-encryption.ts';
+import { createEncryptedQr, decodeEncryptedQr, encryptOrganiserKeyword, qrEventHint } from '../src/lib/qr-encryption.ts';
 
 process.env.QR_SIGNING_SECRET = 'local-test-only-super-long-master-secret-at-least-32';
 const eventId=randomUUID(), ticketId=randomUUID();
@@ -9,11 +9,12 @@ const cipher=encryptOrganiserKeyword(eventId,'sunset-private-keyword-2026');
 test('organiser keyword is encrypted at rest and not exposed in ticket',()=>{
   assert.ok(!cipher.includes('sunset-private-keyword-2026'));
   const qr=createEncryptedQr(ticketId,eventId,cipher);
-  assert.match(qr,/^EVP2\./);
+  assert.match(qr,/^EVP3\./);
   assert.ok(!qr.includes(ticketId));
   assert.ok(!qr.includes('sunset-private'));
   assert.deepEqual(decodeEncryptedQr(qr,eventId,cipher),{ticketId,eventId});
-  assert.ok(qr.length<140,'new encrypted credentials use compact 16-byte ticket identifiers');
+  assert.equal(qr.length,85,'EVP3 QR payload is 85 characters');
+  assert.equal(qrEventHint(qr),eventId,'the event hint is available without key disclosure');
 });
 test('AES-GCM uses fresh random nonces',()=>{
   assert.notEqual(createEncryptedQr(ticketId,eventId,cipher),createEncryptedQr(ticketId,eventId,cipher));
@@ -23,6 +24,7 @@ test('invalid tags, event mismatch and tampering are rejected',()=>{
   assert.equal(decodeEncryptedQr(qr,randomUUID(),cipher),null);
   assert.equal(decodeEncryptedQr(qr.replace(/\.([A-Za-z0-9_-])/,(_,first)=>'.'+(first==='A'?'B':'A')),eventId,cipher),null);
   assert.equal(decodeEncryptedQr('EVP2.'+eventId+'.bogus',eventId,cipher),null);
+  assert.equal(decodeEncryptedQr('EVP3.'+'0'.repeat(80),eventId,cipher),null);
   assert.equal(decodeEncryptedQr('EVP1.'+eventId+'.bogus',eventId,cipher),null);
 });
 test('the wrong organiser keyword cannot decrypt an event',()=>{
