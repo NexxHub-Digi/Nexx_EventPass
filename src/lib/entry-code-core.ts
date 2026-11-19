@@ -13,9 +13,9 @@ export function deriveEntryCode(ticketId:string,eventId:string,key:string):strin
  if(typeof key!=='string'||key.length<32)throw Error('QR_SIGNING_SECRET must be at least 32 characters');
  const digest=createHmac('sha256',key).update('EventPass:manual-admission:v1:')
   .update(eventId.toLowerCase()).update(':').update(ticketId.toLowerCase()).digest();
- let value=BigInt('0x'+digest.subarray(0,8).toString('hex'))>>4n;
+ let value=BigInt('0x'+digest.subarray(0,8).toString('hex'))>>BigInt(4);
  let encoded='';
- for(let i=0;i<12;i++){encoded=alphabet[Number(value&31n)]+encoded;value>>=5n;}
+ for(let i=0;i<12;i++){encoded=alphabet[Number(value&BigInt(31))]+encoded;value>>=BigInt(5);}
  return 'NX-'+encoded.slice(0,4)+'-'+encoded.slice(4,8)+'-'+encoded.slice(8,12);
 }
 export function entryCodeHash(input:string):string|null {
