@@ -218,5 +218,31 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/auth/logout',buyer.cookie,{}),200,'server-side session revocation');
   expect(await req('/api/tickets',{bearer:buyer.token}),403,'revoked mobile token cannot access wallet');
   expect(await req('/api/tickets'),403,'logged-out anonymous request cannot access wallet');
+  // Offline ticketing: anonymous recipients, optional activation and single-use QR.
+  const privateEvent=expect(await post('/api/events',org.cookie,{
+    title:'E2E Private External Event',venue:'Private venue',startsAt:new Date(Date.now()+60*60*1000).toISOString(),
+    capacity:5,priceNgn:0,qrKeyword:'private-offline-qr-keyword',ticketTheme:'aurora',visibility:'private'
+  }),201,'create private external event').event;
+  assert.equal(privateEvent.status,'published');
+  assert.ok(!expect(await req('/api/events'),200,'public event discovery').events.some(e=>e.id===privateEvent.id),'private event hidden');
+  expect(await post('/api/offline/batches',wrong.cookie,{eventId:privateEvent.id,quantity:2,idempotencyKey:randomUUID()}),403,'non-organiser cannot issue offline tickets');
+  const key=randomUUID();
+  const batch=expect(await post('/api/offline/batches',org.cookie,{eventId:privateEvent.id,quantity:2,category:'General',label:'Offline E2E',active:false,idempotencyKey:key}),201,'generate inactive offline batch').batch;
+  assert.equal(expect(await post('/api/offline/batches',org.cookie,{eventId:privateEvent.id,quantity:2,active:false,idempotencyKey:key}),200,'idempotent offline batch').existing,true);
+  const inventory=expect(await req('/api/offline/tickets?eventId='+privateEvent.id,{cookie:org.cookie}),200,'offline inventory').tickets;
+  assert.equal(inventory.length,2);assert.ok(inventory.every(t=>t.qr?.startsWith('EVP2.')&&t.active===false),'encrypted inactive tickets');
+  const first=inventory[0];
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'inactive ticket scan').outcome,'inactive_or_unavailable');
+  const patch=await req('/api/offline/tickets',{cookie:org.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[first.id],action:'activate'}});
+  expect(patch,200,'activate selected offline ticket');
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'first offline scan').outcome,'approved');
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'duplicate offline scan').outcome,'duplicate');
+  expect(await req('/api/offline/tickets',{cookie:wrong.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[first.id],action:'activate'}}),403,'unauthorised activation');
+  const second=inventory[1];
+  expect(await req('/api/offline/tickets',{cookie:org.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[second.id],action:'distribution',distribution:'sold',amountNgn:4000}}),200,'record external sale');
+  const replacement=expect(await post('/api/offline/reissue',org.cookie,{eventId:privateEvent.id,ticketId:second.id,reason:'Lost printed ticket'}),200,'atomic replacement');
+  assert.ok(replacement.replacement.id!==second.id);
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:second.qr}),200,'revoked original').outcome,'revoked');
+  assert.ok(expect(await req('/api/offline/activity?eventId='+privateEvent.id,{cookie:org.cookie}),200,'offline activity').history.length>=4);
  }finally{await sql.end()}
 },{timeout:180000});
