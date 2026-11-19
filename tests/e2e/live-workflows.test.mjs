@@ -264,6 +264,16 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(operatorGates.length,1);
   assert.ok(expect(await req('/api/gates',{cookie:org.cookie}),200,'organiser gate workspace').gates.length);
   assert.ok(expect(await req('/api/auth/me',{cookie:operator.cookie}),200,'gate portal').portals.includes('gate'));
+  const rehearsal=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.entry_code,testOnly:true}),200,'test-only backup code rehearsal');
+  assert.equal(rehearsal.outcome,'valid_test');
+  assert.equal(rehearsal.testOnly,true);
+  assert.match(rehearsal.message,/TEST ONLY/);
+  const rehearsalQr=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr,testOnly:true}),200,'test-only QR rehearsal');
+  assert.equal(rehearsalQr.outcome,'valid_test');
+  const previewInvalid=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:'NX-0000-0000-0000',testOnly:true}),200,'test-only invalid code');
+  assert.equal(previewInvalid.outcome,'invalid');
+  assert.equal((await sql`select redeemed_at from tickets where id=${ticket.id}`)[0].redeemed_at,null,'rehearsal never consumes the ticket');
+  assert.equal((await sql`select count(*)::int as count from entry_scans where scanner_id=${operator.id} and event_id=${event.id}`)[0].count,0,'rehearsals never record an admission');
   const scans=await Promise.all([post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr})]);
   assert.deepEqual(scans.map((r,i)=>expect(r,200,'concurrent scan '+i).outcome).sort(),['approved','duplicate']);
   const duplicateManual=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.entry_code.toLowerCase().replaceAll('-',' ')}),200,'manual backup reuse');
