@@ -10,7 +10,7 @@ export async function GET(req:Request){
    if(!uuid(mediaId))return fail('Invalid media',400);
    const results=await db()`select m.media_data,m.mime_type,m.file_name from event_media m
    join events e on e.id=m.event_id join app_users owner on owner.id=e.organiser_id
-   where m.id=${mediaId} and ((e.status='published' and e.verification_status='verified' and m.approved and owner.account_status='active')
+   where m.id=${mediaId} and ((e.status='published' and e.verification_status='verified' and e.visibility='public' and m.approved and owner.account_status='active')
     or (e.organiser_id=${u?.id||null} and ${u?.role==='organiser'})
     or ${u?.role==='platform_admin'&&u?.account_status==='active'}) limit 1`;
    if(!results[0])return fail('Media not found',404);
@@ -24,7 +24,7 @@ export async function GET(req:Request){
   if(!uuid(eventId))return fail('Event ID required',400);
   const data=await db()`select m.id,m.event_id,m.media_type,m.mime_type,m.file_name,m.created_at
   from event_media m join events e on e.id=m.event_id join app_users owner on owner.id=e.organiser_id
-  where e.id=${eventId} and ((e.status='published' and e.verification_status='verified' and m.approved and owner.account_status='active')
+  where e.id=${eventId} and ((e.status='published' and e.verification_status='verified' and e.visibility='public' and m.approved and owner.account_status='active')
     or (e.organiser_id=${u?.id||null} and ${u?.role==='organiser'})
     or ${u?.role==='platform_admin'&&u?.account_status==='active'}) order by m.created_at asc limit 15`;
   return ok({media:data.map(x=>({...x,url:'/api/events/media?id='+x.id}))});
