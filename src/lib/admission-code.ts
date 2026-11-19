@@ -11,9 +11,14 @@ export function createAdmissionCode(ticketId:string,eventId:string):string {
  const secret=process.env[SECRET_NAME];
  if(!secret||secret.length<32)throw Error(SECRET_NAME+' must be at least 32 characters');
  const digest=createHmac('sha256',secret).update('eventpass:manual-admission:v1:'+eventId.toLowerCase()+':'+ticketId.toLowerCase()).digest();
- let bits=BigInt('0x'+digest.subarray(0,8).toString('hex'))>>4n;
+ // Extract twelve consecutive five-bit chunks from the first 60 HMAC bits.
+ // Byte operations work with the project's ES2019 compilation target.
  let code='';
- for(let index=0;index<12;index++){code=ALPHABET[Number(bits&31n)]+code;bits>>=5n}
+ for(let index=0;index<12;index++){
+  const bit=index*5,offset=bit%8,byte=Math.floor(bit/8);
+  const chunk=((digest[byte]<<8)|digest[byte+1])>>(11-offset);
+  code+=ALPHABET[chunk&31];
+ }
  return code;
 }
 export function normalizeAdmissionCode(raw:unknown):string|null {
