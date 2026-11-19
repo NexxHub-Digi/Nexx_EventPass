@@ -18,6 +18,7 @@ jobs:
       - run: npm run test:workflow
       - run: node --test tests/organiser-native-media-parity.test.mjs
       - run: node --test tests/organiser-native-studio-preview.test.mjs
+      - run: node --test tests/ticket-studio-persistence.test.mjs
       - run: node --test tests/organiser-native-dashboard.test.mjs
       - run: node --experimental-strip-types --test tests/user-native-discovery.test.mjs
       - run: node --test tests/gate-native-rehearsal.test.mjs
