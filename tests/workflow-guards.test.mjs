@@ -42,7 +42,8 @@ test('manual gate codes are one-way indexed and cannot bypass normal single-use 
  assert.match(gate,/entryCodeHash/);
  assert.match(gate,/redeemed_at is null/);
  assert.match(gate,/entry_method/);
- assert.match(entry,/createHmac/);
+ assert.match(entry,/deriveEntryCode/);
+ assert.match(read('src/lib/entry-code-core.ts'),/createHmac/);
  assert.match(entry,/createHash/);
  assert.match(migration,/primary key\(event_id,code_hash\)/);
  assert.doesNotMatch(migration,/code_plaintext/);
