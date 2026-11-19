@@ -15,7 +15,13 @@ export async function POST(req:Request){
   const verifiedMime=(file.type==='image/png'&&isPng)||(file.type==='image/jpeg'&&isJpeg)||
     (file.type==='image/webp'&&isWebp)||(file.type==='application/pdf'&&isPdf);
   if(!verifiedMime)return fail('Receipt content does not match its file type',400);
-  const rows=await db()`update ticket_orders set receipt_data=${contents},receipt_mime=${file.type},receipt_uploaded_at=now(),reservation_expires_at=now()+interval '24 hours' where id=${orderId} and buyer_id=${u.id} and status='pending' and reservation_expires_at>now() returning id`;
+  const rows=await db()`with saved as (
+   update ticket_orders set receipt_data=${contents},receipt_mime=${file.type},receipt_uploaded_at=now(),
+    reservation_expires_at=case when receipt_uploaded_at is null then now()+interval '24 hours' else reservation_expires_at end
+   where id=${orderId} and buyer_id=${u.id} and payment_method='manual' and status='pending' and reservation_expires_at>now() returning id
+  ), notified as (
+   insert into payment_review_notifications(order_id) select id from saved on conflict do nothing
+  ) select id from saved`;
   if(!rows[0])return fail('Active reservation required; expired payments need organiser refund review',409);
   return ok({success:true});
  }catch(e){return handleError(e)}

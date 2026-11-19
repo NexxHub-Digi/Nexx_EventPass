@@ -10,8 +10,11 @@ export async function GET(req:Request){
   const canSeeAll=u.role==='platform_admin';
   const rows=await db()`select e.id,e.title,e.venue,e.starts_at,e.status,e.verification_status,e.capacity,e.price_ngn,e.ticket_theme,e.admission_label,
    host.id as organiser_id,host.full_name as organiser_name,host.email as organiser_email,
-   (select count(*)::int from tickets t where t.event_id=e.id) as tickets_issued,
-   (select count(*)::int from tickets t where t.event_id=e.id and t.redeemed_at is not null) as checked_in,
+   ((select count(*)::int from tickets t where t.event_id=e.id and t.status='issued')
+    + (select count(*)::int from offline_tickets t where t.event_id=e.id and t.status='issued')) as tickets_issued,
+   (select count(*)::int from offline_tickets t where t.event_id=e.id and t.status='issued') as external_tickets_issued,
+   ((select count(*)::int from tickets t where t.event_id=e.id and t.redeemed_at is not null)
+    + (select count(*)::int from offline_tickets t where t.event_id=e.id and t.redeemed_at is not null)) as checked_in,
    (select count(*)::int from ticket_orders o where o.event_id=e.id and o.status='pending' and o.reservation_expires_at>now()) as pending_orders,
    (select coalesce(sum(o.quantity),0)::int from ticket_orders o where o.event_id=e.id and o.status='pending' and o.reservation_expires_at>now()) as reserved_seats,
    (select coalesce(sum(o.amount_ngn),0)::bigint from ticket_orders o where o.event_id=e.id and o.status='approved') as confirmed_revenue_ngn,

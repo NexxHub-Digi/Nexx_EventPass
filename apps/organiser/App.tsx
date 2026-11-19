@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {Alert,Share,ScrollView,Pressable,Text,TextInput,View,StyleSheet,ActivityIndicator,Image} from 'react-native';
+import {AppState,Alert,Share,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
@@ -8,17 +8,44 @@ WebBrowser.maybeCompleteAuthSession();
 
 const PORTAL: string="organiser",TITLE="Nexx EventPass Event Organiser",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
-type Event={id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;verification_status?:string;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
+type Event={payment_account_id?:string|null;onsite_payments_enabled?:boolean;id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;verification_status?:string;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type Ticket={id:string;title:string;qr:string|null;status:string;redeemed_at:string|null};
-type Order={id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number};
+type BankAccount={id:string;bank_name:string;account_name:string;account_number:string;status:string;review_note?:string};
+type Order={payment_method?:'manual'|'onsite'|'free';id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number};
 type Gate={event_id:string;title:string;gate_label:string};
 type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
 async function api(p:string,t:string,method='GET',data?:unknown){const multi=data instanceof FormData;const r=await fetch(BASE+'/api/'+p,{method,headers:{...(multi?{}:{'Content-Type':'application/json'}),...(t?{Authorization:'Bearer '+t}:{})},body:multi?data: data?JSON.stringify(data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v}
 export default function App(){
+ const [booting,setBooting]=useState(true);
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [bank,setBank]=useState(''),[accName,setAccName]=useState(''),[accNo,setAccNo]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[date,setDate]=useState(''),[time,setTime]=useState('19:00'),[price,setPrice]=useState('5000'),[capacity,setCapacity]=useState('100'),[keyword,setKeyword]=useState(''),[staff,setStaff]=useState('');
  const [description,setDescription]=useState(''),[category,setCategory]=useState('Music'),[theme,setTheme]=useState('aurora'),[admissionLabel,setAdmissionLabel]=useState('ADMIT ONE'),[posterTemplate,setPosterTemplate]=useState('none'),[media,setMedia]=useState<{id:string;media_type:string;url:string;approved:boolean}[]>([]);
+ const [previewOrder,setPreviewOrder]=useState('');
+ const [inbox,setInbox]=useState<{pending:number;unread:number;payments:{id:string;event_title:string;buyer_name:string;amount_ngn:number;payment_reference:string;receipt_mime:string}[]}>({pending:0,unread:0,payments:[]});
+ async function refreshInbox(t=token){setInbox(await api('organiser/payment-inbox',t))}
+ useEffect(()=>{
+  if(!token||member?.role!=='organiser'||member.account_status!=='active')return;
+  const refresh=()=>{if(AppState.currentState==='active')void refreshInbox(token).catch(()=>{})};
+  refresh();
+  const interval=setInterval(refresh,15000);
+  const listener=AppState.addEventListener('change',refresh);
+  return ()=>{clearInterval(interval);listener.remove()};
+ },[token,member?.id,member?.role,member?.account_status]);
+ function reviewInbox(id:string,decision:'approved'|'rejected'){
+  const approving=decision==='approved';
+  Alert.alert(approving?'Confirm funds received':'Reject payment',approving?'Approve only after confirming the transfer reached the bank account.':'The buyer can ask Platform Support to review their submitted receipt.',[
+   {text:'Cancel',style:'cancel'},
+   {text:approving?'Approve':'Reject',onPress:()=>void exec(async()=>{
+    await api('review',token,'POST',{orderId:id,decision});
+    await refreshInbox();
+    if(eventId)setOrders((await api('orders?eventId='+eventId,token)).orders||[]);
+   })}
+  ]);
+ }
+ const [bankAccounts,setBankAccounts]=useState<BankAccount[]>([]),[eventBankId,setEventBankId]=useState('');
+ const verifiedBanks=bankAccounts.filter(account=>account.status==='verified');
+ const [onsiteOrder,setOnsiteOrder]=useState(''),[collected,setCollected]=useState(''),[collectionRef,setCollectionRef]=useState('');
  const [tab,setTab]=useState<'dashboard'|'events'|'tickets'|'payments'|'team'|'profile'>('dashboard');
  const [themes,setThemes]=useState<[string,string][]>([['aurora','Aurora Glow'],['midnight','Midnight Gold'],['sunset','Sunset Social'],['neon','Neon Pulse'],['minimal','Minimal Ivory'],['custom','Custom Artwork']]);
  async function uploadEventFile(purpose=''){if(!eventId)throw Error('Select an event');
@@ -46,9 +73,15 @@ export default function App(){
  const ev=await api('events',t);setEvents(ev.events||[]);
  const [b,themeList]=await Promise.all([api('organiser/payment-account',t),api('ticket-themes',t)]);
  if(themeList.themes?.length)setThemes(themeList.themes.map((x:{id:string;name:string})=>[x.id,x.name]));
- setBank(b.account?.bank_name||'');setAccName(b.account?.account_name||'');setAccNo(b.account?.account_number||'');
+ setBankAccounts(b.accounts||[]);
  }
- useEffect(()=>{SecureStore.getItemAsync('eventpass_token').then(t=>{if(t){setToken(t);load(t).catch(e=>setError((e as Error).message))}}).catch(()=>{})},[]);
+ useEffect(()=>{
+  let mounted=true;
+  void SecureStore.getItemAsync('eventpass_token').then(async t=>{if(t&&mounted){setToken(t);await load(t)}})
+   .catch(e=>{if(mounted)setError(e instanceof Error?e.message:'Could not open your session')})
+   .finally(()=>{if(mounted)setBooting(false)});
+  return ()=>{mounted=false};
+ },[]);
  async function exec(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
  async function login(){await exec(async()=>{
    const redirect='eventpassorganiser://oauth';
@@ -64,17 +97,32 @@ export default function App(){
  })}
  async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null)}}
  const input=(hint:string,value:string,update:(x:string)=>void,secret=false)=><TextInput style={s.input} placeholder={hint} placeholderTextColor="#94a3b8" value={value} onChangeText={update} autoCapitalize="none" secureTextEntry={secret}/>;
- const button=(label:string,fn:()=>void,sub=false)=><Pressable onPress={fn} disabled={busy} style={[s.button,sub&&s.subButton]}><Text style={s.buttonText}>{label}</Text></Pressable>;
- return <View style={s.root}><View style={s.head}><Text style={s.brand}>◈ NEXX <Text style={{color:'#45D6C9'}}>EVENTPASS</Text></Text><Text style={s.hint}>{TITLE}</Text></View><ScrollView contentContainerStyle={s.body}>
- {!member?<><Text style={s.title}>Google sign-in</Text>
- <Text style={s.hint}>Apply with Google. You can create and publish events after Platform Admin verification.</Text>
- {button('Continue with Google',()=>{void login()})}
- </>:<>
+ const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&s.pressed,busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
+ if(booting||(busy&&!member))return <View style={{flex:1,backgroundColor:'#0b1020',justifyContent:'center',alignItems:'center',gap:14}} accessibilityLiveRegion="polite">
+  <View style={{borderRadius:18,backgroundColor:'#6f4edd',width:64,height:64,alignItems:'center',justifyContent:'center'}}><Text style={{color:'#fff',fontSize:32}}>◈</Text></View>
+  <Text style={{color:'#f8faff',fontWeight:'800',fontSize:22}}>Nexx EventPass</Text>
+  <Text style={{color:'#ced8f0'}}>{booting?'Opening EventPass…':'Connecting to Google…'}</Text>
+  <ActivityIndicator color="#a98cff"/>
+ </View>;
+ return <View style={s.root}>
+  <StatusBar barStyle="light-content"/>
+  <View style={s.head}>
+   <View style={s.brandRow}><Text accessibilityElementsHidden style={s.brandMark}>◈</Text><View style={s.brandCopy}>
+    <Text style={s.brand}>Nexx <Text style={{color:'#8ff0d5'}}>EventPass</Text></Text>
+    <Text style={s.headLabel}>Event studio</Text>
+   </View></View>
+   {member&&<Pressable accessibilityRole="button" accessibilityLabel="Sign out" disabled={busy} onPress={()=>void logout()} style={s.accountBadge}><Text style={s.headLabel}>Sign out</Text></Pressable>}
+  </View>
+  <ScrollView key={member?tab:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
+ {!member?<View style={s.welcome}>
+   <Text style={s.welcomeLabel}>Event studio</Text><Text style={s.welcomeTitle}>Run your events.</Text>
+   <Text style={s.welcomeText}>Manage listings, issue tickets and confirm payments.</Text>
+   {button('Continue with Google',()=>{void login()})}
+  </View>:<>
  <Text style={s.title}>Welcome, {member.full_name}</Text><Text style={s.hint}>{member.email}</Text>
+ {inbox.unread>0&&member.role==='organiser'&&button(inbox.unread+' new payment receipt'+(inbox.unread===1?'':'s'),()=>setTab('payments'))}
  {(member.account_status==='pending'||member.requested_role==='organiser')?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
- <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8,marginVertical:12}}>
- {(['dashboard','events','tickets','payments','team','profile'] as const).map(name=><Pressable key={name} accessibilityRole="button" accessibilityState={{selected:tab===name}} onPress={()=>setTab(name)} style={[s.navChip,tab===name&&s.navSelected]}><Text style={s.buttonText}>{name==='tickets'?'Ticket Studio':name==='team'?'Gate Team':name.charAt(0).toUpperCase()+name.slice(1)}</Text></Pressable>)}
- </ScrollView>
+
  {tab==='dashboard'&&<View style={s.card}><Text style={s.title}>Organiser dashboard</Text>
   <Text style={s.hint}>Events: {events.filter(e=>e.organiser_id===member.id).length} · Published: {events.filter(e=>e.organiser_id===member.id&&e.status==='published').length}</Text>
   <Text style={s.hint}>Selected event: {events.find(e=>e.id===eventId)?.title||'None'}</Text>
@@ -84,8 +132,27 @@ export default function App(){
  {tab==='profile'&&<View style={s.card}><Text style={s.title}>My organiser profile</Text><Text style={s.hint}>Name: {member.full_name}</Text><Text style={s.hint}>Email: {member.email}</Text><Text style={s.hint}>Status: {member.account_status}</Text></View>}
  {events.some(e=>e.organiser_id===member.id)&&<View style={s.card}><Text style={s.hint}>ACTIVE EVENT · Choose an event for tickets, payments and gates</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8}}>{events.filter(e=>e.organiser_id===member.id).map(e=><Pressable key={e.id} onPress={()=>{setEventId(e.id);setOrders([]);setMedia([]);setDescription(e.description||'');setCategory(e.category||'Other');setTheme(e.ticket_theme||'aurora');setAdmissionLabel(e.admission_label||'ADMIT ONE');setPosterTemplate(e.poster_template||'none');void exec(async()=>{setOrders((await api('orders?eventId='+e.id,token)).orders||[]);setMedia((await api('events/media?eventId='+e.id,token)).media||[])})}} style={[s.navChip,eventId===e.id&&s.navSelected]}><Text style={s.buttonText}>{e.title}</Text></Pressable>)}</ScrollView></View>}
  {tab==='payments'&&<>
+ <Text style={s.title}>Pending payments ({inbox.pending})</Text>
+ {button('Refresh pending payments',()=>void exec(async()=>refreshInbox()),true)}
+ {inbox.unread>0&&button('Mark notifications read',()=>void exec(async()=>{await api('organiser/payment-inbox',token,'PATCH');await refreshInbox()}),true)}
+ {inbox.payments.map(payment=><View style={s.card} key={payment.id}>
+  <Text style={s.title}>{payment.event_title}</Text>
+  <Text style={s.hint}>{payment.buyer_name} · ₦{Number(payment.amount_ngn).toLocaleString()} · {payment.payment_reference}</Text>
+  {payment.receipt_mime?.startsWith('image/')?<>
+   {button(previewOrder===payment.id?'Hide submitted receipt':'View submitted receipt',()=>setPreviewOrder(previewOrder===payment.id?'':payment.id),true)}
+   {previewOrder===payment.id&&<Image accessibilityLabel="Submitted payment receipt" source={{
+    uri:BASE+'/api/orders/receipt?orderId='+encodeURIComponent(payment.id),headers:{Authorization:'Bearer '+token}
+   }} style={{width:'100%',height:300}} resizeMode="contain"/>}
+  </>:<Text style={s.hint}>View PDF receipts in the organiser web workspace.</Text>}
+  {button('Approve verified payment',()=>reviewInbox(payment.id,'approved'))}
+  {button('Reject payment',()=>reviewInbox(payment.id,'rejected'),true)}
+ </View>)}
  <Text style={s.title}>Your bank details</Text>{input('Bank',bank,setBank)}{input('Account name',accName,setAccName)}{input('Account number',accNo,setAccNo)}
-{button('Save details',()=>{void exec(async()=>{await api('organiser/payment-account',token,'POST',{bankName:bank,accountName:accName,accountNumber:accNo});Alert.alert('Saved')})})}
+{bankAccounts.map(account=><View key={account.id} style={s.card}><Text style={s.hint}>{account.bank_name} · {account.account_number} · {account.status}</Text>{!!account.review_note&&<Text style={s.hint}>{account.review_note}</Text>}</View>)}
+{button('Submit account for review',()=>{void exec(async()=>{
+ await api('organiser/payment-account',token,'POST',{bankName:bank,accountName:accName,accountNumber:accNo});
+ setBank('');setAccName('');setAccNo('');await load(token);Alert.alert('Bank account submitted','Platform Admin must verify it before use.');
+})})}
 </>}
 {tab==='events'&&<>
 <Text style={s.title}>Create a new event</Text><Text style={s.hint}>Create multiple listings; each is reviewed before it appears in User discovery.</Text>
@@ -109,11 +176,15 @@ export default function App(){
  <Text style={{fontSize:33}}>🎭</Text><Text style={{color:'#ffe3a0',textAlign:'center',fontWeight:'900',fontSize:14}}>{eventTitle||'Your Event'}</Text><Text style={{color:'#f4d88b',fontSize:10,textAlign:'center'}}>{name}</Text><Text style={{color:'#fff',fontSize:10}}>{posterTemplate===id?'✓ Selected':'Choose poster'}</Text>
  </Pressable>)}
 </ScrollView>
+{Number(price)>0&&<><Text style={s.hint}>Verified bank account for this event</Text>
+ {!verifiedBanks.length&&<Text style={s.hint}>Submit a bank account and wait for Platform Admin verification.</Text>}
+ {verifiedBanks.map(account=><Pressable key={account.id} accessibilityRole="radio" accessibilityState={{selected:eventBankId===account.id}} onPress={()=>setEventBankId(account.id)} style={s.card}><Text style={s.hint}>{eventBankId===account.id?'✓ ':''}{account.bank_name} · {account.account_number}</Text></Pressable>)}
+</>}
 {button('Create event for review',()=>{void exec(async()=>{
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!/^\d{2}:\d{2}$/.test(time))throw Error('Use date YYYY-MM-DD and time HH:MM');
  const startsAt=new Date(date+'T'+time+':00');
  if(!Number.isFinite(startsAt.getTime())||startsAt.getTime()<=Date.now())throw Error('Choose a future event date and time');
- const result=await api('events',token,'POST',{title:eventTitle,venue,description,category,ticketTheme:theme,admissionLabel,posterTemplate,startsAt:startsAt.toISOString(),priceNgn:Number(price),capacity:Number(capacity),qrKeyword:keyword});
+ const result=await api('events',token,'POST',{title:eventTitle,venue,description,category,ticketTheme:theme,admissionLabel,posterTemplate,startsAt:startsAt.toISOString(),priceNgn:Number(price),paymentAccountId:eventBankId,capacity:Number(capacity),qrKeyword:keyword});
  await load(token);setEventId(result.event.id);setEventTitle('');setKeyword('');
  Alert.alert('Event created','Upload posters and ticket artwork, then wait for Platform Admin verification.');
 })})}
@@ -143,7 +214,32 @@ export default function App(){
 </ScrollView>
  </>}
  {tab==='payments'&&<>
- <Text style={s.title}>Manual payment approval</Text>{orders.map(o=><View style={s.card} key={o.id}><Text style={s.hint}>{o.buyer_name||o.buyer_email} · ₦{Number(o.amount_ngn).toLocaleString()} · {o.status}</Text><Text style={s.hint}>Receipt: {o.receipt_uploaded_at?'Submitted — view on web':'Missing'}</Text>{o.status==='pending'&&button('Approve verified transfer',()=>{void exec(async()=>{await api('review',token,'POST',{orderId:o.id,decision:'approved'});setOrders((await api('orders?eventId='+eventId,token)).orders||[])})})}</View>)}
+ <Text style={s.title}>Payment approvals</Text>
+ {events.some(event=>event.id===eventId&&event.price_ngn>0)&&<><Text style={s.hint}>Checkout bank account</Text>
+ {verifiedBanks.map(account=><Pressable key={account.id} accessibilityRole="radio" accessibilityState={{selected:events.find(event=>event.id===eventId)?.payment_account_id===account.id}}
+  onPress={()=>void exec(async()=>{await api('events',token,'PATCH',{action:'payment_account',eventId,paymentAccountId:account.id});await load(token)})} style={s.card}>
+   <Text style={s.hint}>{events.find(event=>event.id===eventId)?.payment_account_id===account.id?'✓ ':''}{account.bank_name} · {account.account_number}</Text>
+  </Pressable>)}</>}
+ {button(events.find(event=>event.id===eventId)?.onsite_payments_enabled?'Disable onsite payments':'Enable onsite payments',()=>{void exec(async()=>{
+  const enabled=!events.find(event=>event.id===eventId)?.onsite_payments_enabled;
+  await api('finance',token,'PATCH',{action:'onsite',eventId,enabled});
+  setEvents(previous=>previous.map(event=>event.id===eventId?{...event,onsite_payments_enabled:enabled}:event));
+ })},true)}
+ {orders.map(o=><View style={s.card} key={o.id}>
+  <Text style={s.hint}>{o.buyer_name||o.buyer_email} · ₦{Number(o.amount_ngn).toLocaleString()} · {o.status}</Text>
+  <Text selectable style={s.hint}>Order {o.id}</Text>
+  <Text style={s.hint}>{o.payment_method==='onsite'?'Onsite':o.payment_method==='free'?'Free':'Receipt: '+(o.receipt_uploaded_at?'Submitted — view on web':'Missing')}</Text>
+  {o.status==='pending'&&(o.payment_method==='onsite'?
+   onsiteOrder===o.id?<>{input('Exact amount collected (₦)',collected,setCollected)}{input('Collection reference',collectionRef,setCollectionRef)}
+   {button('Confirm collection and issue tickets',()=>{void exec(async()=>{
+    await api('review',token,'POST',{orderId:o.id,decision:'approved',collectedAmountNgn:Number(collected),collectionReference:collectionRef});
+    setOrders((await api('orders?eventId='+eventId,token)).orders||[]);setOnsiteOrder('');
+   })})}</>:button('Record onsite collection',()=>{setCollected('');setCollectionRef('');setOnsiteOrder(o.id)}):
+   button(o.payment_method==='free'?'Approve free ticket':'Approve verified transfer',()=>{void exec(async()=>{
+    await api('review',token,'POST',{orderId:o.id,decision:'approved'});
+    setOrders((await api('orders?eventId='+eventId,token)).orders||[]);
+   })}))}
+ </View>)}
 </>}
 {tab==='team'&&<>
 {input('Gate operator email',staff,setStaff)}{button('Invite gate operator',()=>{void exec(async()=>{const r=await api('gates',token,'POST',{eventId,email:staff,gateLabel:'Main gate'});await Share.share({message:'Your private Nexx EventPass gate invitation (expires in 72 hours): '+r.invitationLink});Alert.alert('Invitation created','Share the link privately. The invited recipient signs in using Google to accept.')})})}{button('Add existing verified person',()=>{void exec(async()=>{const r=await api('gates',token,'POST',{eventId,email:staff,gateLabel:'Main gate',mode:'add'});Alert.alert('Operator added',r.message);setStaff('')})},true)}</>}
@@ -151,6 +247,40 @@ export default function App(){
  </>}
  {button('Sign out',()=>{void logout()},true)}</>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
- </ScrollView></View>
+ </ScrollView>
+ {member?.role==='organiser'&&<View style={s.navigation}>
+  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7,paddingHorizontal:5}}>
+   {([['dashboard','Overview'],['events','Events'],['tickets','Ticket Studio'],['payments','Payments'],['team','Gate Team'],['profile','Profile']] as const).map(([id,label])=>
+    <Pressable key={id} accessibilityRole="tab" accessibilityState={{selected:tab===id}} disabled={busy} style={[s.navChip,tab===id&&s.navSelected]} onPress={()=>setTab(id)}>
+     <Text style={[s.navText,tab===id&&s.navTextCurrent]}>{label}</Text>
+    </Pressable>)}
+  </ScrollView>
+ </View>}
+ </View>
 }
-const s=StyleSheet.create({root:{flex:1,backgroundColor:'#0B1020'},head:{backgroundColor:'#171F33',paddingHorizontal:22,paddingTop:55,paddingBottom:20},brand:{fontSize:19,fontWeight:'900',color:'#fff'},body:{padding:22,paddingBottom:80},title:{color:'#fff',fontSize:23,fontWeight:'800',marginVertical:13},hint:{color:'#A4B1C8',fontSize:13,lineHeight:21,marginVertical:8},input:{borderWidth:1,borderColor:'#3A4966',backgroundColor:'#222E48',color:'#fff',minHeight:51,borderRadius:11,paddingHorizontal:14,marginVertical:8},button:{padding:15,backgroundColor:'#8B5CF6',borderRadius:10,alignItems:'center',marginVertical:8},subButton:{backgroundColor:'#283650'},buttonText:{color:'#fff',fontWeight:'800'},navChip:{backgroundColor:'#283650',paddingVertical:11,paddingHorizontal:16,borderRadius:12,borderWidth:1,borderColor:'#3A4966'},navSelected:{backgroundColor:'#6240a9',borderColor:'#45D6C9'},card:{backgroundColor:'#171F33',padding:17,borderRadius:12,borderWidth:1,borderColor:'#3A4966',marginVertical:9},error:{color:'#FDA4AF',backgroundColor:'#4A2634',padding:13,borderRadius:10,marginVertical:12}});
+const s=StyleSheet.create({
+ root:{flex:1,backgroundColor:'#0b1020'},
+ head:{backgroundColor:'#111a31',borderBottomWidth:1,borderColor:'#334362',paddingHorizontal:18,paddingTop:(Platform.OS==='android'?(StatusBar.currentHeight||0):Platform.OS==='ios'?54:14)+8,paddingBottom:15,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},
+ brandRow:{flexDirection:'row',alignItems:'center',gap:10,flexShrink:1},brandCopy:{flexShrink:1},
+ brandMark:{fontSize:23,textAlign:'center',lineHeight:44,width:44,height:44,overflow:'hidden',borderRadius:14,color:'#17132b',backgroundColor:'#8ff0d5'},
+ brand:{fontSize:19,fontWeight:'900',color:'#fff',letterSpacing:-.5},
+ headLabel:{fontSize:12,color:'#c6d3ec',fontWeight:'600',marginTop:3},
+ accountBadge:{borderWidth:1,borderColor:'#46577a',paddingHorizontal:11,paddingVertical:9,borderRadius:11},
+ body:{padding:18,paddingBottom:38,width:'100%',maxWidth:760,alignSelf:'center',flexGrow:1},
+ title:{color:'#f7f8ff',fontSize:22,fontWeight:'800',letterSpacing:-.45,marginTop:12,marginBottom:6},
+ hint:{color:'#bac7e0',fontSize:14,lineHeight:21,marginVertical:5},
+ input:{borderWidth:1,borderColor:'#455777',backgroundColor:'#192743',color:'#fff',minHeight:50,borderRadius:12,paddingHorizontal:14,marginVertical:7},
+ button:{minHeight:47,padding:12,backgroundColor:'#5e3fc4',borderRadius:13,alignItems:'center',justifyContent:'center',marginVertical:5,borderWidth:1,borderColor:'#977eff'},
+ subButton:{backgroundColor:'#1c2a46',borderColor:'#4c6185'},buttonText:{color:'#fff',fontSize:14,fontWeight:'800',textAlign:'center'},
+ pressed:{opacity:.8,transform:[{scale:.985}]},disabled:{opacity:.55},
+ card:{backgroundColor:'#16213a',padding:16,borderRadius:17,borderWidth:1,borderColor:'#374b6f',marginVertical:7},
+ error:{color:'#ffd1da',backgroundColor:'#492738',padding:13,borderRadius:11,marginVertical:10},
+ welcome:{backgroundColor:'#1e2350',borderRadius:24,borderWidth:1,borderColor:'#634994',padding:24,marginTop:22,gap:13},
+ welcomeLabel:{color:'#8ff0d5',fontSize:13,fontWeight:'800',letterSpacing:1.2},
+ welcomeTitle:{color:'#fff',fontSize:36,lineHeight:40,fontWeight:'900',letterSpacing:-1.5},
+ welcomeText:{color:'#d0d9f2',fontSize:16,lineHeight:24,marginBottom:6},
+ navigation:{flexDirection:'row',paddingHorizontal:8,paddingTop:8,paddingBottom:Platform.OS==='ios'?24:10,gap:4,backgroundColor:'#111b32',borderTopWidth:1,borderColor:'#354971'},
+ navLink:{flex:1,alignItems:'center',justifyContent:'center',minHeight:49,borderRadius:11,paddingHorizontal:2},
+ navChip:{backgroundColor:'#182744',borderWidth:1,borderColor:'#3a5078',borderRadius:12,minHeight:45,justifyContent:'center',paddingHorizontal:12,paddingVertical:8},navSelected:{borderColor:'#8ff0d5',backgroundColor:'#242852'},
+ navCurrent:{backgroundColor:'#32265c'},navText:{fontSize:12,fontWeight:'700',color:'#c1cdec'},navTextCurrent:{color:'#8ff0d5'},
+});

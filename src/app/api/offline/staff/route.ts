@@ -1,9 +1,8 @@
 import {db} from '@/lib/db';
-import {currentUser} from '@/lib/security';
 import {offlineAccess,uuid} from '@/lib/offline-access';
 import {fail,ok,handleError,payload,str} from '@/lib/http';
 export const runtime='nodejs';
-const permissions=['view','generate','activate','export','distribute','sales','reports','reissue','staff'];
+const permissions=['view','generate','activate','export','distribute','sales','reports','revoke','reissue'];
 
 export async function GET(req:Request){
  try{
@@ -38,10 +37,18 @@ export async function POST(req:Request){
    const owned=await db()`select id from events where organiser_id=${access.user.id} and id=any(${selected}::uuid[])`;
    if(owned.length!==new Set(selected).size)return fail('Selected events must belong to you',403);
   }
-  await db()`insert into offline_ticket_staff(organiser_id,user_id,permissions,scope,selected_event_ids,include_future,expires_at)
-    values(${access.user.id},${user[0].id},${requested}::text[],${scope},${selected}::uuid[],${future},${expires?.toISOString()||null})
+  await db().begin(async tx=>{
+   const [prior]=await tx`select permissions,scope,selected_event_ids,include_future,expires_at,revoked_at
+    from offline_ticket_staff where organiser_id=${access.user.id} and user_id=${user[0].id} for update`;
+   const [grant]=await tx`insert into offline_ticket_staff(organiser_id,user_id,permissions,scope,selected_event_ids,include_future,expires_at)
+    values(${access.user.id},${user[0].id},${requested}::text[],${scope},${scope==='selected'?selected:[]}::uuid[],${future},${expires?.toISOString()||null})
     on conflict(organiser_id,user_id) do update set permissions=excluded.permissions,scope=excluded.scope,selected_event_ids=excluded.selected_event_ids,
-    include_future=excluded.include_future,expires_at=excluded.expires_at,revoked_at=null`;
+    include_future=excluded.include_future,expires_at=excluded.expires_at,created_at=now(),revoked_at=null
+    returning permissions,scope,selected_event_ids,include_future,expires_at,revoked_at`;
+   await tx`insert into offline_ticket_audit(organiser_id,event_id,actor_id,operation_id,action,details)
+    values(${access.user.id},${eventId},${access.user.id},${crypto.randomUUID()},'staff_assigned',
+     ${JSON.stringify({staffId:user[0].id,before:prior||null,after:grant})}::jsonb)`;
+  });
   return ok({success:true,message:'Verified ticket staff access assigned'});
  }catch(e){return handleError(e)}
 }
@@ -50,7 +57,14 @@ export async function DELETE(req:Request){
   const b=await payload(req),eventId=str(b.eventId,40),userId=str(b.userId,40);
   const access=await offlineAccess(eventId,'staff');
   if(!access||access.user.id!==access.event.organiser_id||!uuid.test(userId))return fail('Organiser ownership required',403);
-  await db()`update offline_ticket_staff set revoked_at=now() where organiser_id=${access.user.id} and user_id=${userId}`;
+  await db().begin(async tx=>{
+   const [grant]=await tx`update offline_ticket_staff set revoked_at=now()
+    where organiser_id=${access.user.id} and user_id=${userId} and revoked_at is null
+    returning permissions,scope,selected_event_ids,revoked_at`;
+   if(grant)await tx`insert into offline_ticket_audit(organiser_id,event_id,actor_id,operation_id,action,details)
+    values(${access.user.id},${eventId},${access.user.id},${crypto.randomUUID()},'staff_revoked',
+     ${JSON.stringify({staffId:userId,permissions:grant.permissions,scope:grant.scope,eventIds:grant.selected_event_ids,revokedAt:grant.revoked_at})}::jsonb)`;
+  });
   return ok({success:true});
  }catch(e){return handleError(e)}
 }

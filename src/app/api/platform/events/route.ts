@@ -32,15 +32,22 @@ export async function POST(req:Request){
    if(new Date(owned[0].starts_at).getTime()<=Date.now())return fail('Cannot verify a past event',409);
    const pending=await db()`select count(*)::int as count from event_media where event_id=${eventId} and approved=false`;
    if(Number(pending[0]?.count)>0)return fail('Review every pending media asset before verifying the event',409);
-   await db().begin(async tx=>{
+   const published=await db().begin(async tx=>{
+    const [event]=await tx`select e.price_ngn,a.status as bank_status from events e
+      left join organiser_bank_accounts a on a.id=e.payment_account_id and a.organiser_id=e.organiser_id
+      where e.id=${eventId} for update of e`;
+    if(!event||(Number(event.price_ngn)>0&&event.bank_status!=='verified'))return false;
     await tx`update events set status='published',verification_status='verified',verified_by=${u.id},verified_at=now() where id=${eventId}`;
     await tx`insert into platform_admin_actions(admin_id,action,details) values(${u.id},'verify_event',${JSON.stringify({eventId})}::jsonb)`;
+    return true;
    });
+   if(!published)return fail('A verified organiser bank account is required to publish a paid event',409);
   }else if(action==='reject'){
    const outcome=await db().begin(async tx=>{
     await tx`select id from events where id=${eventId} for update`;
     const outstanding=await tx`select
-      exists(select 1 from tickets where event_id=${eventId}) as issued,
+      (exists(select 1 from tickets where event_id=${eventId}) or
+       exists(select 1 from offline_tickets where event_id=${eventId} and status='issued')) as issued,
       exists(select 1 from ticket_orders where event_id=${eventId} and status='pending' and reservation_expires_at>now()) as reserved`;
     if(outstanding[0]?.issued||outstanding[0]?.reserved)return {blocked:true};
     await tx`update events set status='draft',verification_status='rejected',verified_by=null,verified_at=null where id=${eventId} and status!='cancelled'`;
