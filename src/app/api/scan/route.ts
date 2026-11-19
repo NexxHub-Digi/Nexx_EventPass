@@ -1,16 +1,16 @@
-import { decodeEncryptedQr } from '@/lib/qr-encryption';
+import { decodeEncryptedQr,qrEventHint } from '@/lib/qr-encryption';
 import {entryCodeHash} from '@/lib/ticket-entry-code';
 import { currentUser, decodeQR } from '@/lib/security';import { db } from '@/lib/db';import { fail, handleError, ok, payload, str } from '@/lib/http';
 export const runtime='nodejs';
 export async function POST(req:Request){try{const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active gate account required',403);
-  const b=await payload(req),eventId=str(b.eventId,40),code=b.code;
+  const b=await payload(req),eventId=str(b.eventId,40),code=b.code,testOnly=b.testOnly===true;
   const entryMethod=typeof code==='string'&&code.trim().toUpperCase().replace(/[\s-]/g,'').startsWith('NX')&&code.length<=64?'manual':'qr';
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) return fail('Select a valid assigned event',400);
   if(typeof code!=='string'||code.trim().length<10||code.length>2048) return fail('A QR credential or backup code is required',400);
-  const perm=await db()`select g.gate_label,e.qr_keyword_ciphertext from gate_assignments g join events e on e.id=g.event_id
+  const perm=await db()`select g.gate_label,e.qr_keyword_ciphertext,e.starts_at,e.ends_at from gate_assignments g join events e on e.id=g.event_id
     join app_users owner on owner.id=e.organiser_id
     where g.event_id=${eventId} and g.user_id=${u.id} and e.status='published' and e.verification_status='verified' and owner.role='organiser' and owner.account_status='active'
-    union select 'Organiser'::text,e.qr_keyword_ciphertext from events e join app_users owner on owner.id=e.organiser_id
+    union select 'Organiser'::text,e.qr_keyword_ciphertext,e.starts_at,e.ends_at from events e join app_users owner on owner.id=e.organiser_id
     where e.id=${eventId} and e.organiser_id=${u.id} and owner.account_status='active' and owner.role='organiser' and e.status='published' and e.verification_status='verified'`;
   if(!perm[0])return fail('Not assigned to this event',403);
   const gateLabel=String(perm[0].gate_label);
@@ -25,11 +25,11 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
   }
   // Expose a distinct wrong-event outcome before attempting event-specific decryption.
   // Never admit based on a QR prefix; the actual ticket still requires cryptographic verification.
-  const envelope=code.split('.');
-  const embeddedEventId=envelope[0]==='EVP2'&&envelope.length===3?envelope[1]:envelope[0]==='EVP1'&&envelope.length===4?envelope[2]:null;
+  const embeddedEventId=entryMethod==='manual'?null:qrEventHint(code);
   if(embeddedEventId && /^[0-9a-f-]{36}$/i.test(embeddedEventId) && embeddedEventId!==eventId){
-    await db()`insert into entry_scans(event_id,scanner_id,outcome,gate_label,entry_method) values(${eventId},${u.id},'wrong_event',${gateLabel},'qr')`;
-    return ok({outcome:'wrong_event',message:'Ticket belongs to another event'});
+    if(!testOnly)await db()`insert into entry_scans(event_id,scanner_id,outcome,gate_label,entry_method)
+     values(${eventId},${u.id},'wrong_event',${gateLabel},'qr')`;
+    return ok({outcome:'wrong_event',message:'Ticket belongs to another event',testOnly});
   }
   const codeMatch=manualHash?await db()`select ticket_id,offline_ticket_id from ticket_entry_codes
     where event_id=${eventId} and code_hash=${manualHash} limit 1`:[];
@@ -38,9 +38,26 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
     (source?{eventId,ticketId:String(codeMatch[0].ticket_id||codeMatch[0].offline_ticket_id)}:null):
     (encrypted ? decodeEncryptedQr(code,eventId,String(encrypted)) : decodeQR(code));
   if(!decoded || decoded.eventId!==eventId){
-    await db()`insert into entry_scans(event_id,scanner_id,outcome,gate_label,entry_method)
+    if(!testOnly)await db()`insert into entry_scans(event_id,scanner_id,outcome,gate_label,entry_method)
       values(${eventId},${u.id},${decoded?'wrong_event':'invalid'},${gateLabel},${entryMethod})`;
-    return ok({outcome:decoded?'wrong_event':'invalid',message:'Entry denied',entry_method:entryMethod});
+    return ok({outcome:decoded?'wrong_event':'invalid',message:'Entry denied',entry_method:entryMethod,testOnly});
+  }
+  const startsAt=new Date(perm[0].starts_at).getTime();
+  const endsAt=perm[0].ends_at?new Date(perm[0].ends_at).getTime():startsAt+86400000;
+  const admissionOpensAt=new Date(startsAt-7200000).toISOString();
+  const admissionOpen=startsAt>=Date.now()-86400000&&startsAt<=Date.now()+7200000&&endsAt>Date.now();
+  if(testOnly){
+    // Safe rehearsal: no ticket redemption, entry scan, or financial change.
+    const rows=await db()`select id,status,redeemed_at,true as active from tickets
+     where id=${decoded.ticketId} and event_id=${eventId}
+     union all select id,status,redeemed_at,active from offline_tickets
+     where id=${decoded.ticketId} and event_id=${eventId}`;
+    const ticket=rows[0];
+    const outcome=!ticket?'invalid':ticket.status==='revoked'?'revoked':ticket.redeemed_at?'duplicate':
+      ticket.status==='issued'&&ticket.active?'valid_test':'inactive_or_unavailable';
+    return ok({testOnly:true,outcome,entry_method:entryMethod,opensAt:admissionOpensAt,
+      message:outcome==='valid_test'?'TEST ONLY — valid unused ticket. Entry was not recorded.':
+      'TEST ONLY — ticket is not eligible. Entry was not recorded.'});
   }
   const result=await db().begin(async tx=>{
     const updated=source==='offline'?[]:await tx`update tickets set redeemed_at=now(),redeemed_by=${u.id} where id=${decoded.ticketId} and event_id=${eventId} and status='issued' and redeemed_at is null and exists(select 1 from events where id=${eventId} and status='published' and starts_at between now() - interval '24 hours' and now() + interval '2 hours' and coalesce(ends_at, starts_at + interval '24 hours') > now()) returning id,redeemed_at`;
@@ -68,5 +85,11 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
         jsonb_build_object('gateLabel',${gateLabel}::text,'entryMethod',${entryMethod}::text) from offline_tickets where id=${decoded.ticketId}`;
     return {outcome,prior,admittedAt:updated[0]?.redeemed_at||offlineUpdated[0]?.redeemed_at||null};
   });
-  return ok({...result,entry_method:entryMethod,message:result.outcome==='approved'?'Entry approved':'Entry denied'});
+  const early=result.outcome==='inactive_or_unavailable'&&!admissionOpen;
+  return ok({...result,testOnly:false,entry_method:entryMethod,
+   reason:early?'event_not_open':undefined,opensAt:early?admissionOpensAt:null,
+   message:result.outcome==='approved'?'Entry approved — admit attendee':
+    result.outcome==='duplicate'?'Ticket already admitted — do not admit again':
+    early?'Admission for this event has not opened. Use rehearsal mode to verify without redeeming tickets.':
+    'Entry denied — do not admit'});
 }catch(e){return handleError(e);}}

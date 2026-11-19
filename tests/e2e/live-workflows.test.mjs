@@ -216,7 +216,8 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(approved.delivery,'in_app','user can retrieve ticket immediately');
   expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),409,'prevent double approval');
   const tickets=expect(await req('/api/tickets',{cookie:buyer.cookie}),200,'ticket wallet').tickets;
-  const ticket=tickets.find(t=>t.event_id===event.id);assert.ok(ticket?.qr?.startsWith('EVP2.'));
+  const ticket=tickets.find(t=>t.event_id===event.id);assert.ok(ticket?.qr?.startsWith('EVP3.'));
+  assert.equal(ticket.qr.length,85,'EVP3 QR is 85 printable characters');
   assert.ok(ticket.qr.length<140,'compact encrypted QR reduces visual density');
   assert.match(ticket.entry_code,/^NX-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$/,'backup code shown to owner');
   assert.equal((await sql`select count(*)::int as total from ticket_entry_codes where ticket_id=${ticket.id}`)[0].total,1,'online backup lookup indexed');
@@ -264,6 +265,10 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(operatorGates.length,1);
   assert.ok(expect(await req('/api/gates',{cookie:org.cookie}),200,'organiser gate workspace').gates.length);
   assert.ok(expect(await req('/api/auth/me',{cookie:operator.cookie}),200,'gate portal').portals.includes('gate'));
+  const rehearsal=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.entry_code,testOnly:true}),200,'non-consuming manual rehearsal');
+  assert.equal(rehearsal.outcome,'valid_test');
+  assert.equal(rehearsal.testOnly,true);
+  assert.deepEqual(expect(await req('/api/gate-history?eventId='+event.id,{cookie:operator.cookie}),200,'rehearsal creates no entry audit').scans,[]);
   const scans=await Promise.all([post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr})]);
   assert.deepEqual(scans.map((r,i)=>expect(r,200,'concurrent scan '+i).outcome).sort(),['approved','duplicate']);
   const duplicateManual=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.entry_code.toLowerCase().replaceAll('-',' ')}),200,'manual backup reuse');
@@ -309,7 +314,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const batch=expect(await post('/api/offline/batches',org.cookie,{eventId:privateEvent.id,quantity:2,category:'General',label:'Offline E2E',active:false,idempotencyKey:key}),201,'generate inactive offline batch').batch;
   assert.equal(expect(await post('/api/offline/batches',org.cookie,{eventId:privateEvent.id,quantity:2,active:false,idempotencyKey:key}),200,'idempotent offline batch').existing,true);
   const inventory=expect(await req('/api/offline/tickets?eventId='+privateEvent.id,{cookie:org.cookie}),200,'offline inventory').tickets;
-  assert.equal(inventory.length,2);assert.ok(inventory.every(t=>t.qr?.startsWith('EVP2.')&&t.active===false),'encrypted inactive tickets');
+  assert.equal(inventory.length,2);assert.ok(inventory.every(t=>t.qr?.startsWith('EVP3.')&&t.active===false),'encrypted inactive tickets');
   assert.ok(inventory.every(t=>t.entry_code?.startsWith('NX-')&&t.qr.length<140),'offline compact QR and indexed backup codes');
   const first=inventory[0];
   const offlinePath='/api/offline/tickets?eventId='+privateEvent.id;
@@ -323,7 +328,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   await sql`update offline_tickets set qr_credential=null where id=${first.id}`;
   const legacyReads=await Promise.all([req(offlinePath,{cookie:org.cookie}),req(offlinePath,{cookie:org.cookie})]);
   const [legacyQr1,legacyQr2]=legacyReads.map(r=>expect(r,200,'concurrent first read of pre-migration ticket').tickets.find(t=>t.id===first.id).qr);
-  assert.ok(legacyQr1?.startsWith('EVP2.'));
+  assert.ok(legacyQr1?.startsWith('EVP3.'));
   assert.equal(legacyQr1,legacyQr2,'concurrent legacy reads agree on one persisted QR');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'inactive ticket scan').outcome,'inactive_or_unavailable');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.entry_code}),200,'inactive backup code').outcome,'inactive_or_unavailable');
@@ -331,6 +336,16 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(patch,200,'activate selected offline ticket');
   const activated=expect(await req(offlinePath,{cookie:org.cookie}),200,'refresh activated credential').tickets;
   assert.equal(activated.find(t=>t.id===first.id).qr,legacyQr1,'activation does not rotate the QR');
+  await sql`update events set starts_at=now()+interval '4 hours' where id=${privateEvent.id}`;
+  const auditBefore=(await sql`select count(*)::int as n from entry_scans where event_id=${privateEvent.id}`)[0].n;
+  const earlyTest=expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr,testOnly:true}),200,'early QR rehearsal');
+  assert.equal(earlyTest.outcome,'valid_test');
+  assert.equal((await sql`select count(*)::int as n from entry_scans where event_id=${privateEvent.id}`)[0].n,auditBefore,'rehearsal never records admission');
+  assert.equal((await sql`select redeemed_at from offline_tickets where id=${first.id}`)[0].redeemed_at,null,'rehearsal never redeems');
+  const earlyLive=expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.entry_code}),200,'early live admission denied');
+  assert.equal(earlyLive.outcome,'inactive_or_unavailable');
+  assert.equal(earlyLive.reason,'event_not_open');
+  await sql`update events set starts_at=now()+interval '1 hour' where id=${privateEvent.id}`;
   const manualAdmission=expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.entry_code}),200,'first offline backup admission');
   assert.equal(manualAdmission.outcome,'approved');
   assert.equal(manualAdmission.entry_method,'manual');
@@ -352,7 +367,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const replacement=expect(await post('/api/offline/reissue',org.cookie,{eventId:privateEvent.id,ticketId:second.id,reason:'Lost printed ticket'}),200,'atomic replacement');
   assert.ok(replacement.replacement.id!==second.id);
   const [newPass]=expect(await req(offlinePath,{cookie:org.cookie}),200,'replacement credential').tickets.filter(t=>t.id===replacement.replacement.id);
-  assert.ok(newPass.qr?.startsWith('EVP2.'));
+  assert.ok(newPass.qr?.startsWith('EVP3.'));
   assert.notEqual(newPass.qr,second.qr,'replacement has a different QR');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:second.qr}),200,'revoked original').outcome,'revoked');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:second.entry_code}),200,'revoked backup code').outcome,'revoked');
