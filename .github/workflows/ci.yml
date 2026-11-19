@@ -25,6 +25,7 @@ jobs:
       - run: node --experimental-strip-types --test tests/user-native-discovery.test.mjs
       - run: node --test tests/gate-native-rehearsal.test.mjs
       - run: npm run test:paystack
+      - run: node --test tests/android-local-apk-workflow.test.mjs
       - run: node --test tests/gate-invitations.test.mjs
       - run: npm run build
         env:
