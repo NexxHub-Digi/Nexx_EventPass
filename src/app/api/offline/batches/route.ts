@@ -1,6 +1,7 @@
 import {db} from '@/lib/db';
 import { availableEventTickets, categoryIdPattern } from '@/lib/event-inventory';
 import {issueTicketCredential} from '@/lib/ticket-credentials';
+import {createAdmissionCode} from '@/lib/admission-code';
 import {offlineAccess,uuid} from '@/lib/offline-access';
 import {fail,ok,handleError,payload,str,positiveInt} from '@/lib/http';
 export const runtime='nodejs';
@@ -58,7 +59,7 @@ export async function POST(req:Request){
    const tickets=Array.from({length:qty},(_,index)=>{
     const id=crypto.randomUUID();
     return {id,batch_id:batch.id,event_id:event.id,organiser_id:e.organiser_id,serial_number:index+1,
-     active,qr_credential:issueTicketCredential(id,event.id,event.qr_keyword_ciphertext)};
+     active,qr_credential:issueTicketCredential(id,event.id,event.qr_keyword_ciphertext),admission_code:createAdmissionCode(id,event.id)};
    });
    await tx`insert into offline_tickets ${tx(tickets)}`;
    await tx`insert into offline_ticket_audit(organiser_id,event_id,batch_id,actor_id,operation_id,action,details)
