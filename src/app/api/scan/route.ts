@@ -41,7 +41,7 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
     await tx`insert into entry_scans(event_id,ticket_id,scanner_id,outcome,gate_label) values(${eventId},${!updated[0]||outcome==='invalid'?null:decoded.ticketId},${u.id},${outcome},${gateLabel})`;
     if(offlineUpdated[0])await tx`insert into offline_ticket_audit(organiser_id,event_id,batch_id,ticket_id,actor_id,operation_id,action,details)
        select organiser_id,event_id,batch_id,id,${u.id},${crypto.randomUUID()},'gate_admitted',
-        jsonb_build_object('gateLabel',${gateLabel}) from offline_tickets where id=${decoded.ticketId}`;
+        jsonb_build_object('gateLabel',${gateLabel}::text) from offline_tickets where id=${decoded.ticketId}`;
     return {outcome,prior,admittedAt:updated[0]?.redeemed_at||offlineUpdated[0]?.redeemed_at||null};
   });
   return ok({...result,message:result.outcome==='approved'?'Entry approved':'Entry denied'});
