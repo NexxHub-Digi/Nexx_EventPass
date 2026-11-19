@@ -347,13 +347,22 @@ export default function App(){
  {accounts.map(a=><View key={a.id} style={s.card}>
   <Text style={{color:'#fff',fontWeight:'800',fontSize:16}}>{a.full_name}</Text><Text style={s.hint}>{a.email} · {a.role} · {a.account_status}</Text>
   <Text style={s.hint}>{a.ticket_count} tickets · {a.order_count} orders · {a.event_count} hosted events · {a.gate_event_count} gates</Text>
-  {button('Open user profile',()=>{setSelectedAccount(a.id);setUserName(a.full_name)},true)}
-  {selectedAccount===a.id&&a.role!=='platform_admin'&&<>
-   {input('Name',userName,setUserName)}{button('Save profile',()=>{void changeAccount('configure')})}
-   {a.account_status==='active'?button('Suspend account',()=>{void changeAccount('suspend')},true):button('Restore account',()=>{void changeAccount('restore')})}
-   {input('Deactivation reason',deactivateReason,setDeactivateReason)}
-   {button('Deactivate (keep audit records)',()=>{void Alert.alert('Deactivate','Keep paid ticket and admission records?',[
-    {text:'Cancel',style:'cancel'},{text:'Deactivate',style:'destructive',onPress:()=>{void changeAccount('deactivate')}}])},true)}
+  {button(selectedAccount===a.id?'Close user profile':'Open user profile',()=>{setSelectedAccount(current=>current===a.id?'':a.id);setUserName(a.full_name);setDeactivateReason('')},true)}
+  {selectedAccount===a.id&&<>
+   <Text style={s.hint}>Google identity: {a.google_verified?'Verified Google account':'Not verified / not linked'}</Text>
+   <Text style={s.hint}>Order history: {a.order_count} · Tickets: {a.ticket_count} · Hosted events: {a.event_count} · Gate assignments: {a.gate_event_count}</Text>
+   {a.role==='platform_admin'?<Text style={s.hint}>Platform Administrator accounts cannot be changed here.</Text>:<>
+    {input('Name',userName,setUserName)}{button('Save profile',()=>void changeAccount('configure'))}
+    {a.account_status==='active'?button('Suspend account',()=>Alert.alert('Suspend this account?','This prevents sign-in and operational access. Existing orders, ticket admissions and audit history are retained.',[
+     {text:'Cancel',style:'cancel'},{text:'Suspend account',style:'destructive',onPress:()=>void changeAccount('suspend')}
+    ]),true):a.account_status==='suspended'?button('Restore account',()=>Alert.alert('Restore account access?','Confirm this account is authorised to regain access.',[
+     {text:'Cancel',style:'cancel'},{text:'Restore access',onPress:()=>void changeAccount('restore')}
+    ])):null}
+    {input('Deactivation reason',deactivateReason,setDeactivateReason)}
+    {button('Deactivate (keep audit records)',()=>Alert.alert('Deactivate account?','This disables access while retaining legally required orders, tickets, payment and admission records. A written reason is required.',[
+     {text:'Cancel',style:'cancel'},{text:'Deactivate account',style:'destructive',onPress:()=>void changeAccount('deactivate')}
+    ]),true)}
+   </>}
   </>}
  </View>)}
  </>}
