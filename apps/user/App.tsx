@@ -10,7 +10,7 @@ const PORTAL: string="user",TITLE="Nexx EventPass User",BASE=(process.env.EXPO_P
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
 type Event={visibility?:string;onsite_payments_enabled?:boolean;id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;description?:string;category?:string;ticket_theme?:string;cover_media_id?:string|null;video_media_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type Ticket={id:string;title:string;qr:string|null;status:string;redeemed_at:string|null;ticket_theme?:string;ticket_art_id?:string|null};
-type Order={payment_method?:'manual'|'onsite'|'free';id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number;reservation_expires_at?:string;refund_status?:string};
+type Order={payment_method?:'manual'|'onsite'|'free'|'paystack';id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number;reservation_expires_at?:string;refund_status?:string};
 type Gate={event_id:string;title:string;gate_label:string};
 type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
 async function api(p:string,t:string,method='GET',data?:unknown){const multi=data instanceof FormData;const r=await fetch(BASE+'/api/'+p,{method,headers:{...(multi?{}:{'Content-Type':'application/json'}),...(t?{Authorization:'Bearer '+t}:{})},body:multi?data: data?JSON.stringify(data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v}
@@ -30,7 +30,7 @@ export default function App(){
  const [ref,setRef]=useState(''),[qty,setQty]=useState('1'),[proof,setProof]=useState<DocumentPicker.DocumentPickerAsset|null>(null);
  const [query,setQuery]=useState(''),[category,setCategory]=useState('All'),[gallery,setGallery]=useState<{id:string;media_type:string;url:string}[]>([]);
  const [inventory,setInventory]=useState<{eventId:string;categories:{id:string;name:string;price_ngn:number}[];generalCapacity:number;payment:{payment_account_id:string|null;bank_name:string;bank_account_name:string;bank_account_number:string;onsite_payments_enabled:boolean}}|null>(null);
- const [onsite,setOnsite]=useState(false);
+ const [onsite,setOnsite]=useState(false),[gateway,setGateway]=useState(false),[paystackEnabled,setPaystackEnabled]=useState(false);
  const [ticketCategoryId,setTicketCategoryId]=useState('');
  function checkoutUnitPrice(event:Event){
   return (inventory?.eventId===event.id?inventory.categories.find(item=>item.id===ticketCategoryId)?.price_ngn:undefined)??Number(event.price_ngn);
@@ -39,11 +39,13 @@ export default function App(){
  useEffect(()=>{
   if(!eventId)return;
   let current=true;
-  setTicketCategoryId('');setOnsite(false);
+  setTicketCategoryId('');setOnsite(false);setGateway(false);setPaystackEnabled(false);
   void Promise.all([api('events/ticket-categories?eventId='+encodeURIComponent(eventId),token),
-   api('events/payment-instructions?eventId='+encodeURIComponent(eventId),token)]).then(([data,payment])=>{
+   api('events/payment-instructions?eventId='+encodeURIComponent(eventId),token).catch(()=>({payment:null})),
+   api('payments/paystack/config?eventId='+encodeURIComponent(eventId),token).catch(()=>({enabled:false}))]).then(([data,payment,provider])=>{
+   setPaystackEnabled(provider.enabled===true);
    if(!current)return;
-   setInventory({eventId,categories:data.categories,generalCapacity:data.generalCapacity,payment:payment.payment});
+   setInventory({eventId,categories:data.categories,generalCapacity:data.generalCapacity,payment:payment.payment||{payment_account_id:null,bank_name:'',bank_account_name:'',bank_account_number:'',onsite_payments_enabled:false}});
    if(data.generalCapacity===0)setTicketCategoryId(data.categories[0]?.id||'');
   }).catch(error=>{if(current)setError(error instanceof Error?error.message:'Could not load ticket categories')});
   return ()=>{current=false};
@@ -127,12 +129,17 @@ export default function App(){
    const response=await api('orders',token,'POST',{
     reservationKey:reservationKey.current,
     eventId:event.id,quantity:Number(qty),ticketCategoryId,unitPriceNgn:unitPrice,paymentAccountId:inventory.payment.payment_account_id,
-    paymentMethod:onsite?'onsite':'manual',paymentReference:unitPrice>0?ref:'FREE-TICKET'
+    paymentMethod:gateway?'paystack':onsite?'onsite':'manual',paymentReference:gateway?'PAYSTACK-TEST':unitPrice>0?ref:'FREE-TICKET'
    });
    const order:Order={...response.order,event_title:event.title};
    setOrders(previous=>[order,...previous.filter(item=>item.id!==order.id)]);
    reservationKey.current='';setEventId('');setRef('');setProof(null);setSection('orders');
-   if(proof&&unitPrice>0&&!onsite){
+   if(gateway&&unitPrice>0){
+    const g=await api('payments/paystack/initialize',token,'POST',{orderId:order.id});
+    if(typeof g.authorization_url!=='string'||!g.authorization_url.startsWith('https://checkout.paystack.com/'))throw Error('Invalid checkout');
+    await Linking.openURL(g.authorization_url);return;
+   }
+   if(proof&&unitPrice>0&&!onsite&&!gateway){
     try{await uploadReceipt(order.id,proof)}catch(error){
      setReceiptErrors(previous=>({...previous,[order.id]:'Reservation saved. '+(error instanceof Error?error.message:'Receipt upload failed.')+' Retry here.'}));
      return;
@@ -141,6 +148,18 @@ export default function App(){
    }
   })}finally{reservationInFlight.current=false}
  }
+ async function accessPaystack(orderId:string,verify=false){await exec(async()=>{
+  const g=await api('payments/paystack/initialize',token,'POST',{orderId});
+  if(!g.reference)throw Error('Paystack reference unavailable');
+  if(verify){
+   const status=await api('payments/paystack/verify?reference='+encodeURIComponent(g.reference),token);
+   await load(token);setSection('orders');
+   Alert.alert('Paystack verification',status.status==='issued'||status.status==='already_issued'?'Verified: QR issued.':status.status==='reconciliation_required'?'Reconciliation required.':'Awaiting payment verification.');
+  }else{
+   if(!g.authorization_url?.startsWith('https://checkout.paystack.com/'))throw Error('Paystack checkout unavailable');
+   await Linking.openURL(g.authorization_url);
+  }
+ })}
  async function login(){await exec(async()=>{
    const redirect='eventpassuser://oauth';
    const verifier=Array.from(Crypto.getRandomBytes(32)).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -223,20 +242,21 @@ export default function App(){
   <ScrollView horizontal contentContainerStyle={{gap:10,marginVertical:10}}>{gallery.map(m=><Pressable key={m.id} onPress={()=>{if(m.media_type==='video')void Linking.openURL(BASE+m.url)}}>
    {m.media_type==='video'?<View style={{width:150,height:115,backgroundColor:'#493b7f',justifyContent:'center',alignItems:'center'}}><Text style={{color:'#fff'}}>▶ Play video</Text></View>:
    <Image source={{uri:BASE+m.url}} style={{width:150,height:115,borderRadius:10}}/>}</Pressable>)}</ScrollView>
-  {checkoutUnitPrice(e)>0&&inventory?.eventId===e.id&&inventory.payment.onsite_payments_enabled&&button(onsite?'Switch to bank transfer':'Pay onsite instead',()=>setOnsite(!onsite),true)}
-  {checkoutUnitPrice(e)>0&&<Text style={s.hint}>Paystack setup pending</Text>}
-  {checkoutUnitPrice(e)>0?(onsite?<Text style={s.hint}>Pay onsite before expiry. Show the organiser your order from My orders.</Text>:<Text selectable style={s.hint}>{inventory?.eventId===e.id?'Bank transfer: '+inventory.payment.bank_name+' · '+inventory.payment.bank_account_name+' · '+inventory.payment.bank_account_number:'Verified bank details are unavailable until checkout loads.'}</Text>):<Text style={s.hint}>Free ticket (organiser approval required)</Text>}
+  {checkoutUnitPrice(e)>0&&inventory?.eventId===e.id&&inventory.payment.onsite_payments_enabled&&button(onsite?'Switch to bank transfer':'Pay onsite instead',()=>{setOnsite(!onsite);setGateway(false)},true)}
+  {checkoutUnitPrice(e)>0&&paystackEnabled&&button(gateway?'Use bank transfer':'Use Paystack test checkout',()=>{setGateway(!gateway);setOnsite(false)},true)}
+   {checkoutUnitPrice(e)>0&&!paystackEnabled&&<Text style={s.hint}>Paystack test checkout pending configuration.</Text>}
+  {checkoutUnitPrice(e)>0?(gateway?<Text style={s.hint}>Paystack test checkout. QR issued after verification.</Text>:onsite?<Text style={s.hint}>Pay onsite before expiry. Show the organiser your order from My orders.</Text>:<Text selectable style={s.hint}>{inventory?.eventId===e.id?'Bank transfer: '+inventory.payment.bank_name+' · '+inventory.payment.bank_account_name+' · '+inventory.payment.bank_account_number:'Verified bank details are unavailable until checkout loads.'}</Text>):<Text style={s.hint}>Free ticket (organiser approval required)</Text>}
   {inventory?.eventId===e.id&&inventory.categories.length>0&&<View>
    <Text style={s.hint}>Ticket category</Text>
    {(inventory.generalCapacity>0?[{id:'',name:'General',price_ngn:Number(e.price_ngn)},...inventory.categories]:inventory.categories).map(item=>
     <Pressable key={item.id} accessibilityRole="radio" accessibilityState={{selected:ticketCategoryId===item.id}}
-     onPress={()=>{setTicketCategoryId(item.id);setProof(null);setRef('');setOnsite(false)}} style={[s.card,{backgroundColor:ticketCategoryId===item.id?'#50368d':'#1d2440'}]}>
+     onPress={()=>{setTicketCategoryId(item.id);setProof(null);setRef('');setOnsite(false);setGateway(false)}} style={[s.card,{backgroundColor:ticketCategoryId===item.id?'#50368d':'#1d2440'}]}>
      <Text style={{color:'#fff'}}>{item.name} · ₦{Number(item.price_ngn).toLocaleString()}</Text>
     </Pressable>)}
   </View>}
   {input('Number of tickets',qty,setQty)}
   <Text style={s.hint}>Total · ₦{(checkoutUnitPrice(e)*(Number(qty)||0)).toLocaleString()}</Text>
-  {checkoutUnitPrice(e)>0&&!onsite&&<>{input('Bank transfer reference',ref,setRef)}
+  {checkoutUnitPrice(e)>0&&!onsite&&!gateway&&<>{input('Bank transfer reference',ref,setRef)}
   {button(proof?'Receipt: '+proof.name:'Select payment receipt',()=>{void exec(async()=>{const file=await pickReceipt();if(file)setProof(file)})},true)}</>}
   {button('Request tickets',()=>void reserveEvent(e))}
  </>}</View></View>)}
@@ -245,17 +265,21 @@ export default function App(){
 {section==='tickets'&&<><Text style={s.title}>My ticket wallet</Text>{!tickets.length&&<Text style={s.hint}>Your approved passes appear here.</Text>}{tickets.map(t=><View key={t.id} style={[s.card,{backgroundColor:palette[t.ticket_theme||'aurora']||'#1c4e72'}]}>{t.ticket_art_id&&<Image source={{uri:BASE+'/api/events/media?id='+t.ticket_art_id,headers:{Authorization:'Bearer '+token}}} style={{height:140,borderRadius:9,marginBottom:10}}/>}<Text style={s.title}>{t.title}</Text>{t.qr&&<View style={{backgroundColor:'#fff',padding:14,alignSelf:'center',marginVertical:14,borderRadius:12}}><QRCode value={t.qr} size={200}/></View>}<Text style={s.hint}>{t.redeemed_at?'Already scanned':t.status}</Text></View>)}
 </>}
 {section==='orders'&&<><Text style={s.title}>My orders</Text>{!orders.length&&<Text style={s.hint}>Your reservations appear here.</Text>}{orders.map(o=><View key={o.id} style={s.card}><Text style={{color:'#fff',fontWeight:'800'}}>{o.event_title}</Text>
- <Text style={s.hint}>{o.status} · ₦{Number(o.amount_ngn).toLocaleString()} · {o.payment_method==='onsite'?'Onsite':o.payment_method==='free'?'Free':'Receipt '+(o.receipt_uploaded_at?'submitted':'missing')}</Text>
+ <Text style={s.hint}>{o.status} · ₦{Number(o.amount_ngn).toLocaleString()} · {o.payment_method==='onsite'?'Onsite':o.payment_method==='free'?'Free':o.payment_method==='paystack'?'Paystack test':'Receipt '+(o.receipt_uploaded_at?'submitted':'missing')}</Text>
  {o.status==='pending'&&o.payment_method==='onsite'&&<Text selectable style={s.hint}>Show this order onsite: {o.id}</Text>}
+  {o.status==='pending'&&o.payment_method==='paystack'&&<>
+    {button('Continue Paystack test checkout',()=>void accessPaystack(o.id),true)}
+    {button('Verify Paystack test payment',()=>void accessPaystack(o.id,true),true)}
+  </>}
  {o.status==='pending'&&o.reservation_expires_at&&<Text style={[s.hint,{color:new Date(o.reservation_expires_at).getTime()<=Date.now()?'#FDA4AF':'#68EBD1'}]}>
  {new Date(o.reservation_expires_at).getTime()<=Date.now()?'Reservation expired. Contact organiser if money was sent.':'Reserved until '+new Date(o.reservation_expires_at).toLocaleString()}</Text>}
- {o.status==='pending'&&o.amount_ngn>0&&o.payment_method!=='onsite'&&
+ {o.status==='pending'&&o.amount_ngn>0&&o.payment_method==='manual'&&
    o.reservation_expires_at&&new Date(o.reservation_expires_at).getTime()>Date.now()&&<>
   <Text style={s.hint}>Receipt: PNG, JPEG, WebP or PDF, up to 2 MB.</Text>
   {!!receiptErrors[o.id]&&<Text accessibilityRole="alert" style={s.error}>{receiptErrors[o.id]}</Text>}
   {button(o.receipt_uploaded_at?'Replace receipt':receiptErrors[o.id]?'Retry receipt upload':'Upload receipt',()=>void recoverReceipt(o.id),true)}
  </>}
- {o.status==='pending'&&!o.receipt_uploaded_at&&o.reservation_expires_at&&new Date(o.reservation_expires_at).getTime()>Date.now()&&
+ {o.status==='pending'&&o.payment_method!=='paystack'&&!o.receipt_uploaded_at&&o.reservation_expires_at&&new Date(o.reservation_expires_at).getTime()>Date.now()&&
   button('Cancel unpaid reservation',()=>Alert.alert('Cancel unpaid reservation','If you have already paid, contact the organiser instead.',[
    {text:'Keep reservation',style:'cancel'},
    {text:'Cancel reservation',style:'destructive',onPress:()=>void exec(async()=>{
