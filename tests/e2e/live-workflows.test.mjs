@@ -341,9 +341,6 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
    assert.ok(offlineHistory.some(scan=>scan.outcome===outcome&&scan.offline_ticket_id===first.id&&scan.ticket_id===null));
   }
   assert.ok(offlineHistory.some(scan=>scan.entry_method==='manual'&&scan.offline_ticket_id===first.id&&scan.outcome==='approved'),'manual admission logged distinctly');
-  for(const ignored of []){
-   void ignored;
-  }
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:'not-a-ticket-credential'}),200,'invalid credential').outcome,'invalid');
   const invalidScan=expect(await req('/api/gate-history?eventId='+privateEvent.id,{cookie:org.cookie}),200,'invalid scan history').scans[0];
   assert.equal(invalidScan.outcome,'invalid');

@@ -9,7 +9,6 @@ create table if not exists ticket_entry_codes (
   primary key(event_id,code_hash),
   constraint ticket_entry_codes_exact_source check ((ticket_id is not null) <> (offline_ticket_id is not null))
 );
-alter table entry_scans add column if not exists entry_method text not null default 'qr';
-alter table entry_scans drop constraint if exists entry_scans_entry_method_check;
-alter table entry_scans add constraint entry_scans_entry_method_check check(entry_method in ('qr','manual'));
+alter table entry_scans add column if not exists entry_method text not null default 'qr'
+  check(entry_method in ('qr','manual'));
 create index if not exists entry_scans_manual_attempts_idx on entry_scans(scanner_id,scanned_at desc) where entry_method='manual';
