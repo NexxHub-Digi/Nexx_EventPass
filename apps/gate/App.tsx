@@ -56,7 +56,19 @@ export default function App(){
  const [counts,setCounts]=useState({approved:0,denied:0});
  async function refreshHistory(id:string,t=token){if(!id||!t)return;try{const r=await api('gate-history?eventId='+encodeURIComponent(id),t);setHistory((r.scans||[]).map((x:{id:string;outcome:string;created_at:string})=>({id:x.id,eventId:id,outcome:x.outcome,at:new Date(x.created_at).toLocaleTimeString()})));setCounts({approved:r.counts?.approved||0,denied:r.counts?.denied||0})}catch(e){setError((e as Error).message)}}
  const scanLock=useRef(false);
-async function verify(v:string){if(scanLock.current)return;scanLock.current=true;setOutcome('');setScanning(false);try{await exec(async()=>{if(!eventId)throw Error('Select an event');let r;try{r=await api('scan',token,'POST',{eventId,code:v.trim()})}catch(error){throw Error('Could not verify ticket. Do not admit. '+(error instanceof Error?error.message:''))}setOutcome(r.outcome);setHistory(h=>[{id:Date.now(),eventId,outcome:r.outcome,at:new Date().toLocaleTimeString()},...h].slice(0,100));setTab('scan');await refreshHistory(eventId);setCode('')})}finally{scanLock.current=false}}
+ const lastDecoded=useRef({value:'',at:0});
+async function verify(v:string){if(scanLock.current)return;scanLock.current=true;setOutcome('');try{await exec(async()=>{
+ if(!eventId)throw Error('Select an event');
+ let r;
+ try{r=await api('scan',token,'POST',{eventId,code:v.trim()})}
+ catch(error){throw Error('Could not verify ticket. Do not admit. '+(error instanceof Error?error.message:''))}
+ setOutcome(r.outcome);
+ setHistory(h=>[{id:Date.now(),eventId,outcome:r.outcome,at:new Date().toLocaleTimeString()},...h].slice(0,100));
+ setCounts(c=>({approved:c.approved+(r.outcome==='approved'?1:0),denied:c.denied+(r.outcome==='approved'?0:1)}));
+ setCode('');
+ // Server history sync runs separately so it cannot block the next scan.
+ void refreshHistory(eventId);
+ })}finally{scanLock.current=false}}
 async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');setOutcome('');setCameraError('');setCameraReady(false);await exec(async()=>{
  const perm=permission?.granted?permission:await askPermission();
  if(!perm.granted){
@@ -148,17 +160,29 @@ async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');
  {!eventId?<>{button('Choose an event',()=>setTab('home'))}</>:<View style={s.scanCard}>
  {scanning?<View style={s.camera}><CameraView facing="back" style={{flex:1}} onCameraReady={()=>setCameraReady(true)} onMountError={()=>{
   setCameraReady(false);setScanning(false);setCameraError('Camera could not start. Check permissions or enter the ticket code.');
- }} barcodeScannerSettings={{barcodeTypes:['qr']}} onBarcodeScanned={cameraReady?({data})=>{if(scanning&&!scanLock.current){setScanning(false);void verify(data)}}:undefined}/><View pointerEvents="none" style={s.scanFrame} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+ }} barcodeScannerSettings={{barcodeTypes:['qr']}} onBarcodeScanned={cameraReady?({data})=>{
+   if(!scanning||scanLock.current)return;
+   const now=Date.now();
+   if(data===lastDecoded.current.value&&now-lastDecoded.current.at<2500)return;
+   lastDecoded.current={value:data,at:now};
+   void verify(data);
+  }:undefined}/><View pointerEvents="none" style={s.scanFrame} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
   {cameraReady&&<Animated.View style={{position:'absolute',left:12,right:12,top:12,height:2,backgroundColor:'#aaeedb',opacity:.85,
    transform:[{translateY:reduceMotion?105:scanSweep.interpolate({inputRange:[0,1],outputRange:[0,208]})}]}}/>}
  </View></View>:<View style={s.scanPlaceholder}><Text style={s.scanIcon}>▣</Text><Text style={s.eventTitle}>Ready to verify</Text><Text style={s.hint}>Position the attendee's QR code inside the camera frame.</Text></View>}
  {scanning&&!cameraReady&&<Text accessibilityLiveRegion="polite" style={s.hint}>Starting camera…</Text>}
  {!!cameraError&&<><Text accessibilityRole="alert" style={s.error}>{cameraError}</Text>
  {permission?.canAskAgain===false&&Platform.OS!=='web'&&button('Open device settings',()=>{void Linking.openSettings().catch(()=>setCameraError('Open Settings and allow camera access for EventPass.'))},true)}</>}
- {!scanning&&<>{input('Ticket code',code,setCode)}{!!code.trim()&&button('Verify ticket code',()=>{void verify(code)},true)}</>}
- {button(scanning?'Stop camera':outcome?'Scan next ticket':'Start camera',()=>{if(scanning){setScanning(false);setCameraReady(false)}else void openCamera()})}
+ {!scanning&&<>
+   <Text style={s.hint}>If QR scanning fails, enter the 12-character backup code printed on the ticket.</Text>
+   <TextInput style={s.input} accessibilityLabel="Backup entry code" placeholder="NX-XXXX-XXXX-XXXX"
+    placeholderTextColor="#94a3b8" autoCapitalize="characters" autoCorrect={false}
+    value={code} onChangeText={setCode}/>
+   {!!code.trim()&&button('Verify backup code',()=>{void verify(code)},true)}
+  </>}
+ {button(scanning?'Stop continuous scanner':'Start fast camera',()=>{if(scanning){setScanning(false);setCameraReady(false)}else void openCamera()})}
  </View>}
- {!!outcome&&<Animated.View accessibilityRole="alert" style={[s.result,{opacity:resultMotion,transform:[{translateY:resultMotion.interpolate({inputRange:[0,1],outputRange:[8,0]})}]},{borderColor:outcome==='approved'?'#22C55E':outcome==='duplicate'?'#F59E0B':'#EF4444'}]}><Text style={[s.resultTitle,{color:outcome==='approved'?'#4ADE80':outcome==='duplicate'?'#FBBF24':'#F87171'}]}>{outcome==='approved'?'✓ ENTRY APPROVED':outcome==='duplicate'?'⚠ ALREADY USED':outcome==='wrong_event'?'✕ WRONG EVENT':'✕ ENTRY DENIED'}</Text><Text style={s.hint}>{outcome==='approved'?'Ticket redeemed. Admit this attendee.':'Do not admit. Contact the event organiser if assistance is required.'}</Text></Animated.View>}</>}
+ {!!outcome&&<Animated.View accessibilityRole="alert" style={[s.result,{opacity:resultMotion,transform:[{translateY:resultMotion.interpolate({inputRange:[0,1],outputRange:[8,0]})}]},{borderColor:outcome==='approved'?'#22C55E':outcome==='duplicate'?'#F59E0B':'#EF4444'}]}><Text style={[s.resultTitle,{color:outcome==='approved'?'#4ADE80':outcome==='duplicate'?'#FBBF24':'#F87171'}]}>{outcome==='approved'?'✓ ENTRY APPROVED':outcome==='duplicate'?'⚠ ALREADY USED':outcome==='wrong_event'?'✕ WRONG EVENT':'✕ ENTRY DENIED'}</Text><Text style={s.hint}>{outcome==='approved'?'Ticket redeemed. Admit this attendee. The camera is ready for the next guest.':'Do not admit. Contact the event organiser if assistance is required.'}</Text></Animated.View>}</>}
  {tab==='history'&&<><Text style={s.eyebrow}>SERVER AUDIT HISTORY</Text><Text style={s.heroTitle}>Scan history</Text><Text style={s.hint}>Your last 100 scans for the selected event, stored in Neon.</Text>{history.length===0?<View style={s.card}><Text style={s.hint}>No tickets scanned in this session.</Text></View>:history.map(h=><View key={h.id} style={s.card}><Text style={s.eventTitle}>{h.outcome==='approved'?'✓ Approved':h.outcome==='duplicate'?'⚠ Duplicate':'✕ Rejected'}</Text><Text style={s.hint}>{gates.find(g=>g.event_id===h.eventId)?.title||'Assigned event'} · {h.at}</Text></View>)}</>}
  {tab==='profile'&&<><Text style={s.eyebrow}>ACCOUNT</Text><Text style={s.heroTitle}>Operator profile</Text><View style={s.card}><Text style={s.eventTitle}>{member.full_name}</Text><Text style={s.hint}>{member.email}</Text><Text style={s.hint}>Assigned events: {gates.length}</Text></View>{button('Sign out',()=>{void logout()},true)}</>}
  </>}
