@@ -18,6 +18,8 @@ type ModerationEvent={id:string;title:string;venue:string;organiser_id:string;or
 type MediaReview={id:string;event_id:string;file_name:string;media_type:string};
 type RefundCase={id:string;event_title:string;buyer_email:string;status:string;refund_status:string;amount_ngn:number;refund_note?:string|null};
 type AuditEntry={id:string;action:string;created_at:string;performed_by:string;target_email?:string|null};
+type Theme={id:string;name:string;label:string;color_a:string;color_b:string;accent:string};
+type EventMetrics={id:string;title:string;organiser_name:string;status:string;verification_status:string;tickets_issued:number;external_tickets_issued:number;checked_in:number;pending_orders:number;reserved_seats:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number;capacity:number};
 async function api(p:string,t:string,method='GET',data?:unknown){const multi=data instanceof FormData;const r=await fetch(BASE+'/api/'+p,{method,headers:{...(multi?{}:{'Content-Type':'application/json'}),...(t?{Authorization:'Bearer '+t}:{})},body:multi?data: data?JSON.stringify(data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v}
 export default function App(){
  const scroll=useRef<ScrollView>(null);
@@ -29,7 +31,7 @@ export default function App(){
   return ()=>{mounted=false;listener.remove()};
  },[]);
  const [booting,setBooting]=useState(true);
- const [section,setSection]=useState<'overview'|'organisers'|'events'|'accounts'|'finance'|'audit'|'support'|'settings'|'more'>('overview');
+ const [section,setSection]=useState<'overview'|'organisers'|'accounts'|'events'|'analytics'|'finance'|'support'|'themes'|'audit'|'settings'|'more'>('overview');
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [applicants,setApplicants]=useState<Applicant[]>([]),[organiserEmail,setOrganiserEmail]=useState('');
@@ -41,6 +43,9 @@ export default function App(){
  const [summary,setSummary]=useState<Record<string,number>>({});
  const [moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<MediaReview[]>([]);
  const [auditHistory,setAuditHistory]=useState<AuditEntry[]>([]),[refundCases,setRefundCases]=useState<RefundCase[]>([]);
+ const [eventMetrics,setEventMetrics]=useState<EventMetrics[]>([]),[eventQuery,setEventQuery]=useState('');
+ const [themes,setThemes]=useState<Theme[]>([]),[themeName,setThemeName]=useState(''),[themeLabel,setThemeLabel]=useState(''),[themeA,setThemeA]=useState('#552AA8'),[themeB,setThemeB]=useState('#231A56'),[themeAccent,setThemeAccent]=useState('#FFFFFF');
+ const [accountPage,setAccountPage]=useState(1),[accountCount,setAccountCount]=useState(0),[accountRole,setAccountRole]=useState('');
  const [refundNote,setRefundNote]=useState(''),[ownerFixEvent,setOwnerFixEvent]=useState(''),[ownerFixEmail,setOwnerFixEmail]=useState(''),[ownerFixReason,setOwnerFixReason]=useState('');
  async function load(t:string){
  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
@@ -49,12 +54,13 @@ export default function App(){
  setBankAccounts((await api('organiser/payment-account',t)).accounts||[]);
  if(me.user.account_status==='pending')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
- const [a,people,support,configuration,overview,moderation,audit,refunds]=await Promise.all([
+ const [a,people,support,configuration,overview,moderation,audit,refunds,eventDirectory,themeCatalog]=await Promise.all([
   api('platform/organisers',t),api('platform/users',t),api('support/cases',t),api('platform/settings',t),
-  api('platform/overview',t),api('platform/events',t),api('platform/audit',t),api('refunds',t)]);
+  api('platform/overview',t),api('platform/events',t),api('platform/audit',t),api('refunds',t),api('platform/event-directory',t),api('ticket-themes',t)]);
  setApplicants(a.organisers||[]);setAccounts(people.accounts||[]);setCases(support.cases||[]);setSettings(configuration.settings||{});
  setSummary(overview.stats||{});setModerationEvents(moderation.events||[]);setModerationMedia(moderation.media||[]);
  setAuditHistory(audit.history||[]);setRefundCases(refunds.orders||[]);
+ setEventMetrics(eventDirectory.events||[]);setThemes(themeCatalog.themes||[]);setAccountCount(people.count||0);setAccountPage(people.page||1);
  }
  useEffect(()=>{
   let mounted=true;
@@ -76,7 +82,13 @@ export default function App(){
    await SecureStore.setItemAsync('eventpass_token',data.token);
    setToken(data.token);await load(data.token);
  })}
- async function searchUsers(){await exec(async()=>{const r=await api('platform/users?q='+encodeURIComponent(userSearch),token);setAccounts(r.accounts||[])})}
+ async function searchUsers(page=1,role=accountRole){await exec(async()=>{const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(role)+'&page='+page,token);setAccounts(r.accounts||[]);setAccountPage(r.page||page);setAccountCount(r.count||0)})}
+ async function searchEvents(){await exec(async()=>{const data=await api('platform/event-directory?q='+encodeURIComponent(eventQuery),token);setEventMetrics(data.events||[])})}
+ async function createTheme(){await exec(async()=>{
+  const result=await api('ticket-themes',token,'POST',{name:themeName.trim(),label:themeLabel.trim(),colorA:themeA,colorB:themeB,accent:themeAccent});
+  const updated=await api('ticket-themes',token);setThemes(updated.themes||[]);
+  setThemeName('');setThemeLabel('');Alert.alert('Ticket theme created',result.theme.name+' is now available in the organiser design catalogue.');
+ })}
  async function changeAccount(action:'configure'|'suspend'|'restore'|'deactivate'){await exec(async()=>{
   if(!selectedAccount)throw Error('Select an account');
   if(action==='deactivate'&&!deactivateReason.trim())throw Error('Provide a deactivation reason');
@@ -135,7 +147,7 @@ export default function App(){
   <StatusBar barStyle="light-content"/>
   <View style={s.head}>
    <Pressable style={s.brandRow} accessibilityRole="button" accessibilityLabel="Platform Admin home" disabled={busy||!member} onPress={()=>{
-     setSection('organisers');scroll.current?.scrollTo({y:0,animated:false});
+     setSection('overview');scroll.current?.scrollTo({y:0,animated:false});
    }}>
     <Image accessible={false} source={require('./assets/app-icon.png')} style={s.brandMark}/><View style={s.brandCopy}>
     <Text style={s.brand}>Nexx EventPass</Text><Text style={s.headLabel}>Platform Admin</Text>
@@ -163,9 +175,11 @@ export default function App(){
  </>}
  {section==='more'&&<><Text style={s.title}>More tools</Text>
  {button('Users & access',()=>setSection('accounts'))}
- {button('Payments & refunds',()=>setSection('finance'),true)}
+ {button('Events & analytics',()=>setSection('analytics'),true)}
+  {button('Payments & refunds',()=>setSection('finance'),true)}
  {button('Audit logs',()=>setSection('audit'),true)}
  {button('Support cases',()=>setSection('support'),true)}
+  {button('Ticket themes',()=>setSection('themes'),true)}
  {button('Platform settings',()=>setSection('settings'),true)}
  </>}
  {section==='events'&&<><Text style={s.title}>Event moderation</Text>
@@ -272,7 +286,7 @@ export default function App(){
  </ScrollView>
   </Animated.View>
  {member&&<View style={s.navigation}>{([['overview','Overview'],['organisers','Organisers'],['events','Events'],['more','More']] as const).map(([key,label])=>{
-  const selected=section===key||(key==='more'&&(['accounts','finance','audit','support','settings'] as string[]).includes(section));
+  const selected=section===key||(key==='more'&&(['accounts','analytics','finance','audit','support','themes','settings'] as string[]).includes(section));
   return <Pressable key={key} accessibilityRole="tab" accessibilityState={{selected}} disabled={busy}
   style={({pressed})=>[s.navLink,selected&&s.navCurrent,pressed&&(reduceMotion?s.pressedStill:s.pressed)]} onPress={()=>setSection(key)}>
   <Text style={[s.navText,selected&&s.navTextCurrent]}>{label}</Text></Pressable>})}</View>}
