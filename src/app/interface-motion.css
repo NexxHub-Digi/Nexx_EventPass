@@ -147,3 +147,4 @@
   .ep-loading-track i { animation:ep-loading-progress 1.35s ease-in-out infinite; }
 }
 .ep-login .ep-switch-button { min-width:48px; min-height:48px; display:grid; place-items:center; padding:0; }
+.nxp .nxp-home-button { background:transparent; color:inherit; text-align:start; border:0; padding:0; }

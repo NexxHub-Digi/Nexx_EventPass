@@ -36,6 +36,9 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
     const html=await page.text();
     assert.ok(html.includes('Continue with Google'),'Google-only sign-in on '+portal+' page');
     assert.ok(html.includes('aria-label="Switch portal"'),'corner portal switch on '+portal+' page');
+    const homePath=portal==='user'?'/':'/'+portal;
+    const homeLink=html.match(/<a[^>]*class="ep-logo"[^>]*>/)?.[0];
+    assert.ok(homeLink?.includes('href="'+homePath+'"'),'role sign-in links home to its own portal');
     assert.ok(html.includes('/api/auth/google?portal='+(portal==='platform-admin'?'platform_admin':portal)),'correct Google OAuth portal on '+portal+' page');
   }
   const failedCallback=await fetch(base+'/api/auth/google/callback?error=access_denied',{redirect:'manual'});

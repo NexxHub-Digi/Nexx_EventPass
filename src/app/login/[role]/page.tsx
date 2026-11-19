@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import {useParams} from 'next/navigation';
 import Link from 'next/link';
+import {portalHome} from '@/lib/portal-home';
 import EventPassLoading from '@/components/EventPassLoading';
 
 const portals={
@@ -44,7 +45,7 @@ export default function RoleLogin(){
   <div className="ep-ambient ep-ambient-one"/><div className="ep-ambient ep-ambient-two"/>
   <div className="ep-login-layout">
    <header className="ep-login-header">
-    <Link href="/" className="ep-logo" aria-label="Nexx EventPass home"><span className="ep-logo-icon">✓</span><span>Nexx <b>EventPass</b></span></Link>
+    <Link href={portalHome[role]} className="ep-logo" aria-label={current.label+' home'}><span className="ep-logo-icon">✓</span><span>Nexx <b>EventPass</b></span></Link>
     <div className="ep-switch-wrap">
      <button type="button" className="ep-switch-button" aria-label="Switch portal" title="Switch portal" aria-expanded={switchOpen} onClick={()=>setSwitchOpen(!switchOpen)}><svg aria-hidden="true" width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h16m-4-4 4 4-4 4M21 17H5m4-4-4 4 4 4"/></svg></button>
      {switchOpen&&<><button type="button" className="ep-switch-dismiss" aria-label="Close portal menu" onClick={()=>setSwitchOpen(false)}/><nav className="ep-switch-menu" aria-label="Choose portal">{(Object.keys(portals) as Role[]).map(key=><Link key={key} href={'/login/'+key} aria-current={key===role?'page':undefined} onClick={()=>setSwitchOpen(false)}>{portals[key].label}{key===role&&<span>✓</span>}</Link>)}</nav></>}

@@ -14,7 +14,7 @@ export default function GateInvitation(){
  }
  const returnTo='/invite/gate?token='+token;
  return <main className="role-login-shell"><section className="role-login-card">
-  <Link href="/" className="role-login-brand">◈ NEXX <strong>EVENTPASS</strong></Link><div className="eyebrow">PRIVATE EVENT INVITATION</div>
+  <Link href="/gate" className="role-login-brand" aria-label="Gate Operator home">◈ NEXX <strong>EVENTPASS</strong></Link><div className="eyebrow">PRIVATE EVENT INVITATION</div>
   <h1>Join your assigned gate</h1>
   <p>No separate gate account or password registration is required. Sign in with the Google email your organiser invited, then confirm the event assignment.</p>
   {notice&&<p role="status" className="rw-message">{notice}</p>}

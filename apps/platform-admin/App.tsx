@@ -1,5 +1,5 @@
-import React,{useEffect,useState} from 'react';
-import {Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator} from 'react-native';
+import React,{useEffect,useRef,useState} from 'react';
+import {Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
@@ -16,6 +16,7 @@ type AdminAccount={id:string;email:string;full_name:string;role:string;account_s
 type SupportCase={id:string;subject:string;description:string;organiser_name:string;status:string;priority:string;resolution:string};
 async function api(p:string,t:string,method='GET',data?:unknown){const multi=data instanceof FormData;const r=await fetch(BASE+'/api/'+p,{method,headers:{...(multi?{}:{'Content-Type':'application/json'}),...(t?{Authorization:'Bearer '+t}:{})},body:multi?data: data?JSON.stringify(data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v}
 export default function App(){
+ const scroll=useRef<ScrollView>(null);
  const [booting,setBooting]=useState(true);
  const [section,setSection]=useState<'organisers'|'accounts'|'support'|'settings'>('organisers');
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -73,7 +74,7 @@ export default function App(){
  const input=(hint:string,value:string,update:(x:string)=>void,secret=false)=><TextInput style={s.input} placeholder={hint} placeholderTextColor="#94a3b8" value={value} onChangeText={update} autoCapitalize="none" secureTextEntry={secret}/>;
  const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&s.pressed,busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
  if(booting||(busy&&!member))return <View style={{flex:1,backgroundColor:'#0b1020',justifyContent:'center',alignItems:'center',gap:14}} accessibilityLiveRegion="polite">
-  <View style={{borderRadius:18,backgroundColor:'#6f4edd',width:64,height:64,alignItems:'center',justifyContent:'center'}}><Text style={{color:'#fff',fontSize:32}}>◈</Text></View>
+  <Image accessible={false} source={require('./assets/app-icon.png')} style={{width:72,height:72,borderRadius:18}}/>
   <Text style={{color:'#f8faff',fontWeight:'800',fontSize:22}}>Nexx EventPass</Text>
   <Text style={{color:'#ced8f0'}}>{booting?'Opening EventPass…':'Connecting to Google…'}</Text>
   <ActivityIndicator color="#a98cff"/>
@@ -81,13 +82,15 @@ export default function App(){
  return <View style={s.root}>
   <StatusBar barStyle="light-content"/>
   <View style={s.head}>
-   <View style={s.brandRow}><Text accessibilityElementsHidden style={s.brandMark}>◈</Text><View style={s.brandCopy}>
-    <Text style={s.brand}>Nexx <Text style={{color:'#9ccfff'}}>EventPass</Text></Text>
-    <Text style={s.headLabel}>Platform operations</Text>
-   </View></View>
+   <Pressable style={s.brandRow} accessibilityRole="button" accessibilityLabel="Platform Admin home" disabled={busy||!member} onPress={()=>{
+     setSection('organisers');scroll.current?.scrollTo({y:0,animated:false});
+   }}>
+    <Image accessible={false} source={require('./assets/app-icon.png')} style={s.brandMark}/><View style={s.brandCopy}>
+    <Text style={s.brand}>Nexx EventPass</Text><Text style={s.headLabel}>Platform Admin</Text>
+   </View></Pressable>
    {member&&<Pressable accessibilityRole="button" accessibilityLabel="Sign out" disabled={busy} onPress={()=>void logout()} style={s.accountBadge}><Text style={s.headLabel}>Sign out</Text></Pressable>}
   </View>
-  <ScrollView key={member?section:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
+  <ScrollView ref={scroll} key={member?section:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
  {!member?<View style={s.welcome}>
    <Text style={s.welcomeLabel}>Platform operations</Text><Text style={s.welcomeTitle}>Manage EventPass.</Text>
    <Text style={s.welcomeText}>Review accounts, verify bank details and resolve support cases.</Text>
@@ -152,7 +155,7 @@ const s=StyleSheet.create({
  root:{flex:1,backgroundColor:'#0b1020'},
  head:{backgroundColor:'#111a31',borderBottomWidth:1,borderColor:'#334362',paddingHorizontal:18,paddingTop:(Platform.OS==='android'?(StatusBar.currentHeight||0):Platform.OS==='ios'?54:14)+8,paddingBottom:15,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},
  brandRow:{flexDirection:'row',alignItems:'center',gap:10,flexShrink:1},brandCopy:{flexShrink:1},
- brandMark:{fontSize:23,textAlign:'center',lineHeight:44,width:44,height:44,overflow:'hidden',borderRadius:14,color:'#17132b',backgroundColor:'#9ccfff'},
+ brandMark:{width:44,height:44,borderRadius:12},
  brand:{fontSize:19,fontWeight:'900',color:'#fff',letterSpacing:-.5},
  headLabel:{fontSize:12,color:'#c6d3ec',fontWeight:'600',marginTop:3},
  accountBadge:{borderWidth:1,borderColor:'#46577a',paddingHorizontal:11,paddingVertical:9,borderRadius:11},

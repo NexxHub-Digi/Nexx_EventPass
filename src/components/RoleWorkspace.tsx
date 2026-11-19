@@ -2,6 +2,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {QRCodeSVG} from 'qrcode.react';
 import {useParams} from 'next/navigation';
+import {portalHome} from '@/lib/portal-home';
 import {ticketThemes,findTicketTheme} from '@/lib/ticket-themes';
 import {masqueradeTemplates,isMasqueradeTemplate,masqueradePosterTemplates,isMasqueradePoster} from '@/lib/masquerade-templates';
 import {EventPosterDesign} from '@/components/EventPosterDesign';
@@ -281,6 +282,15 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     'Camera unavailable. Check camera permissions or enter the ticket code below.');
   }
  }
+ function resetPortalHome(){
+  setMessage('');
+  if(role==='platform-admin')setAdminTab('overview');
+  if(role==='organiser')setOrganiserTab('dashboard');
+  if(role==='gate'){
+   stopScan();setEventId('');setScanCode('');setScanOutcome('');setScans([]);
+  }
+  window.scrollTo({top:0,behavior:'instant'});
+ }
  async function signout(){await api('auth/logout','POST');window.location.assign('/login/'+role)}
  const input=(label:string,value:string,onChange:(v:string)=>void,type='text')=><label className="rw-field">{label}<input value={value} onChange={e=>onChange(e.target.value)} type={type}/></label>;
  const themeFor=(id:string)=>themeCatalog.find(t=>t.id===id)||findTicketTheme(id);
@@ -295,7 +305,10 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  if(!me)return <main className="rw-shell"><h1>{title}</h1><p>Sign in to continue.</p><a className="rw-primary-link" href={'/login/'+role}>Sign in to {title}</a></main>;
  if(role==='organiser'&&me.role==='user'&&me.requested_role==='organiser')return <main className="rw-shell"><h1>Organiser approval pending</h1><p>Your Google or email account is registered. The Platform Administrator must approve your organiser request before your management interface becomes active.</p><p>{me.email}</p><a className="google-auth-button" href="/api/auth/google?portal=organiser&intent=link"><span className="google-g" aria-hidden="true">G</span> Link Google account</a><button onClick={()=>{void signout()}}>Sign out</button></main>;
  if(!allowed)return <main className="rw-shell"><h1>{title} access inactive</h1><p>Your account does not have permission to access this interface.</p><p>Organisers require administrator approval. Gate operators require an invitation from an organiser and a Google-verified email.</p><a href="/login/user">Open User interface</a></main>;
- return <main className="rw-shell" data-portal={role}><style>{`.rw-workspace-shell{display:grid;grid-template-columns:225px minmax(0,1fr);gap:16px;align-items:start}.rw-workspace-shell>.rw-layout{width:100%}@media(max-width:800px){.rw-workspace-shell{grid-template-columns:1fr}.rw-workspace-shell>aside,.rw-workspace-shell>nav{position:static!important}.rw-workspace-shell>nav{grid-template-columns:repeat(2,minmax(0,1fr));display:grid!important}.rw-workspace-shell>nav .eyebrow{grid-column:1/-1}}`}</style><div className="rw-top"><div><a href="/" className="rw-brand">◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title} · Nexx Future</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
+ return <main className="rw-shell" data-portal={role}><style>{`.rw-workspace-shell{display:grid;grid-template-columns:225px minmax(0,1fr);gap:16px;align-items:start}.rw-workspace-shell>.rw-layout{width:100%}@media(max-width:800px){.rw-workspace-shell{grid-template-columns:1fr}.rw-workspace-shell>aside,.rw-workspace-shell>nav{position:static!important}.rw-workspace-shell>nav{grid-template-columns:repeat(2,minmax(0,1fr));display:grid!important}.rw-workspace-shell>nav .eyebrow{grid-column:1/-1}}`}</style><div className="rw-top"><div><a href={portalHome[role]} className="rw-brand" aria-label={title+' home'} onClick={event=>{
+   if(role==='user'||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+   event.preventDefault();resetPortalHome();
+  }}>◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title} · Nexx Future</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
  <nav className="rw-portal-switch" aria-label={`${title} workspace navigation`}><span aria-current="page">{title} workspace</span></nav>
  {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
  {role==='platform-admin'&&<header className="rw-panel" style={{marginBottom:16}}><div className="eyebrow">NEXX EVENTPASS / CONTROL CENTER</div><h1>Platform administration</h1><p>Manage your platform from one focused workspace at a time.</p></header>}
