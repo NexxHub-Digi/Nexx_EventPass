@@ -178,13 +178,13 @@ async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');
  {scanning&&!cameraReady&&<Text accessibilityLiveRegion="polite" style={s.hint}>Starting camera…</Text>}
  {!!cameraError&&<><Text accessibilityRole="alert" style={s.error}>{cameraError}</Text>
  {permission?.canAskAgain===false&&Platform.OS!=='web'&&button('Open device settings',()=>{void Linking.openSettings().catch(()=>setCameraError('Open Settings and allow camera access for EventPass.'))},true)}</>}
- {!scanning&&<>
-   <Text style={s.hint}>If QR scanning fails, enter the 12-character backup code printed on the ticket.</Text>
+ <View style={{marginVertical:10}}>
+   <Text style={s.hint}>QR unreadable? Type the printed backup code without closing the scanner.</Text>
    <TextInput style={s.input} accessibilityLabel="Backup entry code" placeholder="NX-XXXX-XXXX-XXXX"
     placeholderTextColor="#94a3b8" autoCapitalize="characters" autoCorrect={false}
     value={code} onChangeText={setCode}/>
-   {!!code.trim()&&button('Verify backup code',()=>{void verify(code)},true)}
-  </>}
+   {!!code.trim()&&button(testMode?'Test backup code':'Verify and admit by code',()=>{void verify(code)},true)}
+  </View>
  {button(scanning?'Stop continuous scanner':'Start fast camera',()=>{if(scanning){setScanning(false);setCameraReady(false)}else void openCamera()})}
  </View>}
  {!!outcome&&<Animated.View accessibilityRole="alert" style={[s.result,{opacity:resultMotion,transform:[{translateY:resultMotion.interpolate({inputRange:[0,1],outputRange:[8,0]})}]},{borderColor:outcome==='approved'?'#22C55E':outcome==='valid_test'?'#60A5FA':outcome==='duplicate'?'#F59E0B':'#EF4444'}]}><Text style={[s.resultTitle,{color:outcome==='approved'?'#4ADE80':outcome==='valid_test'?'#93C5FD':outcome==='duplicate'?'#FBBF24':'#F87171'}]}>{outcome==='approved'?'✓ ENTRY APPROVED':outcome==='valid_test'?'✓ VALID TEST — NOT ADMITTED':outcome==='duplicate'?'⚠ ALREADY USED':outcome==='wrong_event'?'✕ WRONG EVENT':'✕ ENTRY DENIED'}</Text><Text style={s.hint}>{resultMessage||'Do not admit. Contact the event organiser if assistance is required.'}</Text></Animated.View>}</>}
