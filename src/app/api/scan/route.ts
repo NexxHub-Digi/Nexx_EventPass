@@ -3,14 +3,14 @@ import {entryCodeHash} from '@/lib/ticket-entry-code';
 import { currentUser, decodeQR } from '@/lib/security';import { db } from '@/lib/db';import { fail, handleError, ok, payload, str } from '@/lib/http';
 export const runtime='nodejs';
 export async function POST(req:Request){try{const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active gate account required',403);
-  const b=await payload(req),eventId=str(b.eventId,40),code=b.code;
+  const b=await payload(req),eventId=str(b.eventId,40),code=b.code,testOnly=b.testOnly===true;
   const entryMethod=typeof code==='string'&&code.trim().toUpperCase().replace(/[\s-]/g,'').startsWith('NX')&&code.length<=64?'manual':'qr';
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) return fail('Select a valid assigned event',400);
   if(typeof code!=='string'||code.trim().length<10||code.length>2048) return fail('A QR credential or backup code is required',400);
-  const perm=await db()`select g.gate_label,e.qr_keyword_ciphertext from gate_assignments g join events e on e.id=g.event_id
+  const perm=await db()`select g.gate_label,e.qr_keyword_ciphertext,e.starts_at,e.ends_at from gate_assignments g join events e on e.id=g.event_id
     join app_users owner on owner.id=e.organiser_id
     where g.event_id=${eventId} and g.user_id=${u.id} and e.status='published' and e.verification_status='verified' and owner.role='organiser' and owner.account_status='active'
-    union select 'Organiser'::text,e.qr_keyword_ciphertext from events e join app_users owner on owner.id=e.organiser_id
+    union select 'Organiser'::text,e.qr_keyword_ciphertext,e.starts_at,e.ends_at from events e join app_users owner on owner.id=e.organiser_id
     where e.id=${eventId} and e.organiser_id=${u.id} and owner.account_status='active' and owner.role='organiser' and e.status='published' and e.verification_status='verified'`;
   if(!perm[0])return fail('Not assigned to this event',403);
   const gateLabel=String(perm[0].gate_label);
@@ -42,6 +42,27 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
       values(${eventId},${u.id},${decoded?'wrong_event':'invalid'},${gateLabel},${entryMethod})`;
     return ok({outcome:decoded?'wrong_event':'invalid',message:'Entry denied',entry_method:entryMethod});
   }
+  // Test-only mode is an authorised pre-event rehearsal: never redeem or log an
+  // approved admission. Incorrect manual guesses remain in the anti-bruteforce audit.
+  if(testOnly){
+    const matches=await db()`select id,status,redeemed_at,true as active from tickets
+      where id=${decoded.ticketId} and event_id=${eventId}
+      union all select id,status,redeemed_at,active from offline_tickets
+      where id=${decoded.ticketId} and event_id=${eventId}`;
+    const ticket=matches[0];
+    const outcome=!ticket?'invalid':ticket.status==='revoked'?'revoked':ticket.redeemed_at?'duplicate':
+      ticket.status==='issued'&&ticket.active?'valid_test':'inactive_or_unavailable';
+    if(outcome==='invalid'&&entryMethod==='manual')await db()`insert into entry_scans(event_id,scanner_id,outcome,gate_label,entry_method)
+      values(${eventId},${u.id},'invalid',${gateLabel},'manual')`;
+    return ok({outcome,entry_method:entryMethod,testOnly:true,
+      message:outcome==='valid_test'?'Ticket verified — TEST ONLY. No admission was recorded.':
+        outcome==='duplicate'?'Ticket already used — do not admit.':
+        outcome==='inactive_or_unavailable'?'This offline ticket is inactive or unavailable.':
+        outcome==='revoked'?'Ticket has been revoked.':'Ticket is not valid for this event.'});
+  }
+  const startAt=new Date(perm[0].starts_at).getTime(),now=Date.now();
+  const endsAt=perm[0].ends_at?new Date(perm[0].ends_at).getTime():startAt+86400000;
+  const admissionOpen=startAt>=now-86400000&&startAt<=now+7200000&&endsAt>now;
   const result=await db().begin(async tx=>{
     const updated=source==='offline'?[]:await tx`update tickets set redeemed_at=now(),redeemed_by=${u.id} where id=${decoded.ticketId} and event_id=${eventId} and status='issued' and redeemed_at is null and exists(select 1 from events where id=${eventId} and status='published' and starts_at between now() - interval '24 hours' and now() + interval '2 hours' and coalesce(ends_at, starts_at + interval '24 hours') > now()) returning id,redeemed_at`;
     // Offline tickets have no buyer account or payment order. Their security state is independent.
@@ -52,12 +73,13 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
       and starts_at between now() - interval '24 hours' and now() + interval '2 hours'
       and coalesce(ends_at,starts_at+interval '24 hours') > now())
      returning id,redeemed_at`;
-    let outcome='approved';let prior=null;
+    let outcome='approved';let prior=null;let reason:string|null=null;
     let onlineTicketId=updated[0]?.id??null;
     let offlineTicketId=offlineUpdated[0]?.id??null;
     if(!updated[0]&&!offlineUpdated[0]){const previous=await tx`select id,status,redeemed_at,'online' as source from tickets where id=${decoded.ticketId} and event_id=${eventId}
       union all select id,status,redeemed_at,'offline' as source from offline_tickets where id=${decoded.ticketId} and event_id=${eventId}`;
       const old=previous[0];outcome=!old?'invalid':old.status==='revoked'?'revoked':old.redeemed_at?'duplicate':'inactive_or_unavailable';prior=old?.redeemed_at||null;
+      if(outcome==='inactive_or_unavailable')reason=!admissionOpen?'event_not_open':old?.source==='offline'?'ticket_inactive_or_unavailable':'ticket_unavailable';
       if(old?.source==='online')onlineTicketId=old.id;
       if(old?.source==='offline')offlineTicketId=old.id;
     }
@@ -66,7 +88,13 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
     if(offlineUpdated[0])await tx`insert into offline_ticket_audit(organiser_id,event_id,batch_id,ticket_id,actor_id,operation_id,action,details)
        select organiser_id,event_id,batch_id,id,${u.id},${crypto.randomUUID()},'gate_admitted',
         jsonb_build_object('gateLabel',${gateLabel}::text,'entryMethod',${entryMethod}::text) from offline_tickets where id=${decoded.ticketId}`;
-    return {outcome,prior,admittedAt:updated[0]?.redeemed_at||offlineUpdated[0]?.redeemed_at||null};
+    return {outcome,reason,prior,admittedAt:updated[0]?.redeemed_at||offlineUpdated[0]?.redeemed_at||null};
   });
-  return ok({...result,entry_method:entryMethod,message:result.outcome==='approved'?'Entry approved':'Entry denied'});
+  return ok({...result,testOnly:false,entry_method:entryMethod,
+    opensAt:result.reason==='event_not_open'?new Date(startAt-7200000).toISOString():null,
+    message:result.outcome==='approved'?'Entry approved — admit attendee':
+      result.outcome==='duplicate'?'Ticket already used — do not admit':
+      result.reason==='event_not_open'?'Valid ticket, but admission has not opened yet. Use Test ticket for rehearsal.':
+      result.reason==='ticket_inactive_or_unavailable'?'Ticket is inactive or not eligible for admission.':
+      result.outcome==='revoked'?'Ticket has been revoked.':'Entry denied'});
 }catch(e){return handleError(e);}}
