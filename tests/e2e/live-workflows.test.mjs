@@ -264,6 +264,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.deepEqual(scans.map((r,i)=>expect(r,200,'concurrent scan '+i).outcome).sort(),['approved','duplicate']);
   const history=expect(await req('/api/gates/activity?eventId='+event.id,{cookie:operator.cookie}),200,'gate log');
   const recordedHistory=expect(await req('/api/gate-history?eventId='+event.id,{cookie:operator.cookie}),200,'operator history after scanning');
+  assert.ok(recordedHistory.scans.some(scan=>scan.outcome==='approved'&&scan.ticket_id===ticket.id&&scan.offline_ticket_id===null));
   assert.ok(recordedHistory.scans.length&&recordedHistory.scans.every(scan=>scan.created_at));
   assert.equal(Number(history.stats.admitted),1);assert.equal(Number(history.stats.duplicates),1);
   const otherEvent=expect(await post('/api/events',org.cookie,{title:'E2E Other Event',venue:'E2E Other Venue',startsAt:date,capacity:3,priceNgn:0,qrKeyword:'other-private-keyword',ticketTheme:dynamicTheme.id}),201,'second event').event;
@@ -321,6 +322,15 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(activated.find(t=>t.id===first.id).qr,legacyQr1,'activation does not rotate the QR');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'first offline scan').outcome,'approved');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'duplicate offline scan').outcome,'duplicate');
+  const offlineHistory=expect(await req('/api/gate-history?eventId='+privateEvent.id,{cookie:org.cookie}),200,'offline scan references').scans;
+  for(const outcome of ['approved','duplicate']){
+   assert.ok(offlineHistory.some(scan=>scan.outcome===outcome&&scan.offline_ticket_id===first.id&&scan.ticket_id===null));
+  }
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:'not-a-ticket-credential'}),200,'invalid credential').outcome,'invalid');
+  const invalidScan=expect(await req('/api/gate-history?eventId='+privateEvent.id,{cookie:org.cookie}),200,'invalid scan history').scans[0];
+  assert.equal(invalidScan.outcome,'invalid');
+  assert.equal(invalidScan.offline_ticket_id,null);
+  assert.equal(invalidScan.ticket_id,null);
   expect(await req('/api/offline/tickets',{cookie:wrong.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[first.id],action:'activate'}}),403,'unauthorised activation');
   const second=inventory[1];
   expect(await req('/api/offline/tickets',{cookie:org.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[second.id],action:'distribution',distribution:'sold',amountNgn:4000}}),200,'record external sale');
@@ -387,7 +397,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   ]);
   assert.deepEqual(contenders.map(response=>response.status).sort(),[201,409],'online and external issuance cannot both claim the last category seat');
   expect(await post('/api/offline/batches',org.cookie,{eventId:privateEvent.id,ticketCategoryId:balcony.id,quantity:1,idempotencyKey:randomUUID()}),400,'reject another event’s category');
-  expect(await post('/api/orders',wrong.cookie,{eventId:lastSeatEvent.id,quantity:1,paymentReference:'General seat fixture'}),201,'General seat remains independently available');
+  const request={eventId:lastSeatEvent.id,quantity:1,paymentReference:'General seat fixture',reservationKey:randomUUID()};
+  const duplicateReservation=await Promise.all([post('/api/orders',wrong.cookie,request),post('/api/orders',wrong.cookie,request)]);
+  assert.deepEqual(duplicateReservation.map(result=>result.status).sort(),[200,201]);
+  assert.equal(duplicateReservation[0].data.order.id,duplicateReservation[1].data.order.id);
+  expect(await post('/api/orders',wrong.cookie,{...request,quantity:2}),409,'reject conflicting reservation key reuse');
 
   const onsiteBuyer=await signUp('onsite-buyer');
   const patchFinance=(cookie,body)=>req('/api/finance',{cookie,method:'PATCH',body});
@@ -433,5 +447,56 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(expect(await patchFinance(adminCookie,{...remittance,receivedNgn:75}),200,'correct settlement from statement').status,'matched');
   assert.equal(Number((await ledger(org.cookie)).totals.outstanding_ngn),0);
   await patchFinance(adminCookie,{action:'commission',basisPoints:0});
+  const [wrongOwnerEvent]=await sql`insert into events(organiser_id,title,slug,venue,starts_at,price_ngn,capacity,status,verification_status,visibility)
+   values(${admin.id},'E2E admin-owned legacy event',${'admin-owned-'+tag},'Test',now()+interval '1 hour',0,1,'published','verified','public') returning id`;
+  assert.ok(!expect(await req('/api/events'),200,'public discovery hides invalid owner').events.some(event=>event.id===wrongOwnerEvent.id));
+  assert.ok(expect(await req('/api/events',{cookie:adminCookie}),200,'admin still sees event for correction').events.some(event=>event.id===wrongOwnerEvent.id));
+  expect(await req('/api/events/payment-instructions?eventId='+wrongOwnerEvent.id),404,'booking hides invalid owner');
+  expect(await req('/api/events/ticket-categories?eventId='+wrongOwnerEvent.id),404,'inventory hides invalid owner');
+  expect(await post('/api/platform/events',adminCookie,{eventId:wrongOwnerEvent.id,action:'verify'}),409,'admin cannot publish events with an ineligible owner');
+
+  const correction={eventId:wrongOwnerEvent.id,action:'correct_owner',expectedOwnerId:admin.id,
+   organiserEmail:org.email,reason:'Confirmed owner in fixture',ownershipConfirmed:true};
+  assert.ok(expect(await req('/api/platform/events',{cookie:adminCookie}),200,'moderation flags invalid owner').events
+    .some(event=>event.id===wrongOwnerEvent.id&&!event.owner_eligible));
+  expect(await post('/api/platform/events',org.cookie,correction),403,'correction requires Platform Admin');
+  expect(await post('/api/platform/events',adminCookie,{...correction,ownershipConfirmed:false}),400,'correction requires explicit confirmation');
+  await sql`insert into gate_assignments(event_id,user_id) values(${wrongOwnerEvent.id},${admin.id})`;
+  expect(await post('/api/platform/events',adminCookie,correction),409,'gate dependencies block correction');
+  await sql`delete from gate_assignments where event_id=${wrongOwnerEvent.id}`;
+  expect(await post('/api/platform/events',adminCookie,correction),200,'admin corrects confirmed owner');
+  const [corrected]=await sql`select organiser_id,status,verification_status from events where id=${wrongOwnerEvent.id}`;
+  assert.deepEqual({...corrected},{organiser_id:org.id,status:'draft',verification_status:'pending'});
+  const [correctionAudit]=await sql`select details from platform_admin_actions where action='correct_event_owner' and details->>'eventId'=${wrongOwnerEvent.id}`;
+  assert.equal(correctionAudit.details.previousOwnerId,admin.id);
+  expect(await post('/api/platform/events',adminCookie,correction),409,'stale correction cannot transfer an eligible event');
+
+  const pricedEvent=expect(await post('/api/events',org.cookie,{
+   title:'E2E category pricing',venue:'Test',startsAt:new Date(Date.now()+3600000).toISOString(),
+   priceNgn:1000,capacity:4,paymentAccountId:secondBank.id,qrKeyword:'category-pricing-test'
+  }),201,'create priced category fixture').event;
+  const vip=expect(await post('/api/events/ticket-categories',org.cookie,{eventId:pricedEvent.id,name:'VIP',capacity:2,priceNgn:2000}),201,'configure VIP price').category;
+  const complimentary=expect(await post('/api/events/ticket-categories',org.cookie,{eventId:pricedEvent.id,name:'Complimentary',capacity:1,priceNgn:0}),201,'configure complimentary allocation').category;
+  expect(await post('/api/platform/events',adminCookie,{eventId:pricedEvent.id,action:'verify'}),200,'publish priced fixture');
+  const vipOrder={eventId:pricedEvent.id,ticketCategoryId:vip.id,quantity:1,paymentReference:'PRICING-FIXTURE',paymentAccountId:secondBank.id};
+  expect(await post('/api/orders',wrong.cookie,{...vipOrder,unitPriceNgn:1000}),409,'reject stale price');
+  const firstVip=expect(await post('/api/orders',wrong.cookie,{...vipOrder,unitPriceNgn:2000}),201,'purchase uses category price').order;
+  assert.equal(firstVip.amount_ngn,2000);
+  assert.equal(firstVip.unit_price_ngn,2000);
+  expect(await req('/api/events/ticket-categories',{cookie:org.cookie,method:'PATCH',body:{eventId:pricedEvent.id,categoryId:vip.id,priceNgn:2500}}),200,'edit the price for new orders');
+  const secondVip=expect(await post('/api/orders',wrong.cookie,{...vipOrder,unitPriceNgn:2500}),201,'accept new price').order;
+  assert.equal(secondVip.unit_price_ngn,2500);
+  assert.equal(expect(await req('/api/orders',{cookie:wrong.cookie}),200,'historical price snapshot').orders.find(order=>order.id===firstVip.id).unit_price_ngn,2000);
+  const free=expect(await post('/api/orders',wrong.cookie,{eventId:pricedEvent.id,ticketCategoryId:complimentary.id,quantity:1,paymentReference:'FREE-TICKET',unitPriceNgn:0}),201,'reserve complimentary allocation').order;
+  assert.equal(free.amount_ngn,0);
+  assert.equal(free.payment_method,'free');
+
+  const cancel={action:'cancel',orderId:firstVip.id};
+  expect(await req('/api/orders',{cookie:onsiteBuyer.cookie,method:'PATCH',body:cancel}),404,'only buyer can cancel reservation');
+  expect(await req('/api/orders',{cookie:wrong.cookie,method:'PATCH',body:cancel}),200,'buyer cancels unpaid reservation');
+  expect(await req('/api/orders',{cookie:wrong.cookie,method:'PATCH',body:cancel}),200,'duplicate cancellation is safe');
+  expect(await post('/api/review',org.cookie,{orderId:firstVip.id,decision:'approved'}),409,'cancelled order cannot issue a ticket');
+  expect(await post('/api/orders',wrong.cookie,{...vipOrder,unitPriceNgn:2500}),201,'cancellation releases category capacity');
+
  }finally{await sql.end()}
 },{timeout:180000});

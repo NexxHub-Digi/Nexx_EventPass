@@ -27,7 +27,7 @@ type SupportCase={payment_order_id?:string|null;id:string;organiser_id:string;or
 type EventReport={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;status:string;verification_status:string;capacity:number;tickets_issued:number;external_tickets_issued:number;reserved_seats:number;pending_orders:number;checked_in:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number};
 type RefundCase={id:string;event_id:string;event_title:string;buyer_email:string;organiser_name:string;amount_ngn:number;status:string;refund_status:string;refund_note:string;reservation_expires_at:string};
 type AuditRecord={id:string;action:string;performed_by:string;target_email?:string;created_at:string;details:Record<string,unknown>};
-type ModerationEvent={id:string;title:string;venue:string;starts_at:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;pending_media:number};
+type ModerationEvent={id:string;organiser_id:string;owner_eligible:boolean;title:string;venue:string;starts_at:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;pending_media:number};
 const roles={user:'User',organiser:'Event Organiser',gate:'Gate Operator','platform-admin':'Platform Administrator'} as const;
 type Role=keyof typeof roles;
 const money=(v:number)=>'₦'+Number(v).toLocaleString('en-NG');
@@ -156,6 +156,13 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   await api('platform/events','POST',{eventId,action,mediaId});
   const result=await api('platform/events');setModerationEvents(result.events||[]);setModerationMedia(result.media||[]);
   setMessage('Event review completed');
+ })}
+ async function correctEventOwner(event:ModerationEvent,form:HTMLFormElement){await run(async()=>{
+  const fields=new FormData(form);
+  await api('platform/events','POST',{eventId:event.id,action:'correct_owner',expectedOwnerId:event.organiser_id,
+   organiserEmail:fields.get('organiserEmail'),reason:fields.get('reason'),ownershipConfirmed:fields.get('ownershipConfirmed')==='on'});
+  const result=await api('platform/events');setModerationEvents(result.events||[]);setModerationMedia(result.media||[]);
+  setMessage('Owner corrected. The listing is now a draft and requires a new publication review.');
  })}
  async function loadUserMedia(id:string){setSelectedEvent(id);if(!id){setEventMedia([]);return}
   try{const v=await api('events/media?eventId='+encodeURIComponent(id));setEventMedia(v.media||[])}
@@ -446,7 +453,15 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    <p>Verify the identity, location, date, marketing materials and ticket promises before publishing an event to the public marketplace.</p>
    {moderationEvents.map(ev=><div className="rw-review-card" key={ev.id}>
      <div><strong>{ev.title}</strong><p>{ev.venue} · {nice(ev.starts_at)}</p><small>Submitted by {ev.organiser_name} ({ev.organiser_email})</small><p>Listing: {ev.verification_status} · {ev.pending_media} unreviewed assets</p></div>
-     <div className="rw-actions">{ev.verification_status!=='verified'&&<>{btn('Verify & publish',()=>{void moderateEvent(ev.id,'verify')})}{btn('Reject listing',()=>{void moderateEvent(ev.id,'reject')},true)}</>}</div>
+     {!ev.owner_eligible&&ev.status!=='cancelled'&&<form className="rw-layout" onSubmit={e=>{e.preventDefault();void correctEventOwner(ev,e.currentTarget)}}>
+      <strong>Correct event owner</strong>
+      <p>The listing is unavailable for booking. Correcting the owner returns it to draft and clears its payment settings.</p>
+      <label>Confirmed organiser email<input name="organiserEmail" type="email" required maxLength={254}/></label>
+      <label>Reason and verification reference<textarea name="reason" required minLength={12} maxLength={500}/></label>
+      <label><input name="ownershipConfirmed" type="checkbox" required/> I confirmed this organiser owns the event.</label>
+      <button className="primary" type="submit">Correct owner</button>
+     </form>}
+     <div className="rw-actions">{ev.owner_eligible&&ev.verification_status!=='verified'&&<>{btn('Verify & publish',()=>{void moderateEvent(ev.id,'verify')})}{btn('Reject listing',()=>{void moderateEvent(ev.id,'reject')},true)}</>}</div>
      <div className="rw-gallery">{moderationMedia.filter(m=>m.event_id===ev.id).map(m=><div className="rw-media-card" key={m.id}>
        {m.media_type==='video'?<video src={m.url} playsInline controls preload="metadata"/>:<img src={m.url} alt={m.file_name}/>}
        <small>{m.file_name}</small><div className="rw-actions">{btn('Approve',()=>{void moderateEvent(ev.id,'approve_media',m.id)})}{btn('Reject',()=>{void moderateEvent(ev.id,'reject_media',m.id)},true)}</div>
