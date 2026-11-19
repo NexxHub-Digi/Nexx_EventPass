@@ -48,7 +48,7 @@ export default function App(){
  const [eventMetrics,setEventMetrics]=useState<EventMetrics[]>([]),[eventQuery,setEventQuery]=useState('');
  const [themes,setThemes]=useState<Theme[]>([]),[themeName,setThemeName]=useState(''),[themeLabel,setThemeLabel]=useState(''),[themeA,setThemeA]=useState('#552AA8'),[themeB,setThemeB]=useState('#231A56'),[themeAccent,setThemeAccent]=useState('#FFFFFF');
  const [accountPage,setAccountPage]=useState(1),[accountCount,setAccountCount]=useState(0),[accountRole,setAccountRole]=useState('');
- const [refundNote,setRefundNote]=useState(''),[ownerFixEvent,setOwnerFixEvent]=useState(''),[ownerFixEmail,setOwnerFixEmail]=useState(''),[ownerFixReason,setOwnerFixReason]=useState('');
+ const [refundNotes,setRefundNotes]=useState<Record<string,string>>({}),[ownerFixEvent,setOwnerFixEvent]=useState(''),[ownerFixEmail,setOwnerFixEmail]=useState(''),[ownerFixReason,setOwnerFixReason]=useState('');
  async function load(t:string){
  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
  if(!(PORTAL==='organiser'&&me.user.account_status==='pending') && !(me.portals||[]).includes(PORTAL)){await SecureStore.deleteItemAsync('eventpass_token');setMember(null);setToken('');throw Error('This account is not authorised for this app')}
@@ -130,9 +130,10 @@ export default function App(){
   Alert.alert('Ownership corrected','The listing returned to draft for a new review.');
  })}
  async function updateRefund(orderId:string,action:'review_required'|'initiated'|'settled'){await exec(async()=>{
-  if(action==='settled'&&refundNote.trim().length<10)throw Error('Add a verified settlement reference or explanation (10+ characters).');
-  await api('refunds',token,'PATCH',{orderId,action,note:refundNote.trim()});
-  setRefundCases((await api('refunds',token)).orders||[]);setRefundNote('');
+  const note=(refundNotes[orderId]||'').trim();
+  if(action==='settled'&&note.length<10)throw Error('Enter a verified settlement reference for this order (10+ characters).');
+  await api('refunds',token,'PATCH',{orderId,action,note});
+  setRefundCases((await api('refunds',token)).orders||[]);setRefundNotes(previous=>({...previous,[orderId]:''}));
   Alert.alert('Refund case updated','The action has been recorded in the payment audit.');
  })}
  async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null)}}
@@ -265,17 +266,24 @@ export default function App(){
  </>}
  {section==='finance'&&<><Text style={s.title}>Payments and refunds</Text>
  <Text style={s.hint}>Verify settlement evidence before marking refunds completed.</Text>
- {input('Refund note / settlement reference',refundNote,setRefundNote)}
+ <Text style={s.hint}>Refunds must be reviewed, initiated and independently verified before settlement. Record evidence separately for each order.</Text>
  {!refundCases.length&&<Text style={s.hint}>No payment exceptions awaiting review.</Text>}
  {refundCases.map(refund=><View key={refund.id} style={s.card}>
   <Text style={s.title}>{refund.event_title}</Text>
   <Text style={s.hint}>{refund.buyer_email} · ₦{Number(refund.amount_ngn).toLocaleString('en-NG')}</Text>
   <Text style={s.hint}>{refund.status} · {refund.refund_status}</Text>
   {!!refund.refund_note&&<Text style={s.hint}>Previous note: {refund.refund_note}</Text>}
-  {button('Open review',()=>void updateRefund(refund.id,'review_required'),true)}
-  {button('Refund initiated',()=>void updateRefund(refund.id,'initiated'),true)}
-  {button('Mark settled with evidence',()=>Alert.alert('Confirm refund settlement?','Only mark settled after independently verifying the transfer to the buyer.',[
-   {text:'Cancel',style:'cancel'},{text:'Confirm settlement',onPress:()=>void updateRefund(refund.id,'settled')}]))}
+  {refund.refund_status==='not_required'&&button('Open review',()=>void updateRefund(refund.id,'review_required'),true)}
+  {refund.refund_status==='review_required'&&button('Refund initiated',()=>Alert.alert('Initiate refund?','Only record initiation after arranging repayment to the buyer.',[
+   {text:'Cancel',style:'cancel'},{text:'Record initiation',onPress:()=>void updateRefund(refund.id,'initiated')}
+  ]),true)}
+  {refund.refund_status==='initiated'&&<>
+   <TextInput accessibilityLabel={'Settlement reference for '+refund.buyer_email} placeholder="Verified transfer reference (minimum 10 characters)" placeholderTextColor="#a4b1c8" style={s.input} maxLength={500} value={refundNotes[refund.id]||''} onChangeText={value=>setRefundNotes(previous=>({...previous,[refund.id]:value}))}/>
+   {button('Mark settled with evidence',()=>Alert.alert('Confirm refund settlement?','Verify the transfer for '+refund.buyer_email+' before confirming. The transaction will become read-only.',[
+    {text:'Cancel',style:'cancel'},{text:'Confirm settlement',onPress:()=>void updateRefund(refund.id,'settled')}
+   ]))}
+  </>}
+  {refund.refund_status==='settled'&&<Text style={s.hint}>Settlement recorded — read only</Text>}
  </View>)}
  </>}
  {section==='audit'&&<><Text style={s.title}>Administrative audit trail</Text>
