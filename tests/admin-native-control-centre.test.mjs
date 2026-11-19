@@ -26,7 +26,7 @@ test('events analytics source is the permission-protected directory, with accura
  assert.match(native,/Confirmed order revenue/);
  assert.match(native,/Pending orders:/);
  assert.match(native,/Refund cases:/);
- assert.match(events,/role!=='platform_admin'/);
+ assert.match(events,/\!\['organiser','platform_admin'\]\.includes\(u\.role\)/);
  assert.match(events,/confirmed_revenue_ngn/);
 });
 test('administrator native ticket theme publisher uses existing guarded API',()=>{
