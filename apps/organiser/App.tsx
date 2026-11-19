@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
 import * as DocumentPicker from 'expo-document-picker';
+import TicketStudioPreview from './TicketStudioPreview';
 WebBrowser.maybeCompleteAuthSession();
 
 const PORTAL: string="organiser",TITLE="Nexx EventPass Event Organiser",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
@@ -11,6 +12,7 @@ type Member={id:string;email:string;full_name:string;role:string;account_status:
 type Event={payment_account_id?:string|null;onsite_payments_enabled?:boolean;id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;verification_status?:string;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type Ticket={id:string;title:string;qr:string|null;status:string;redeemed_at:string|null};
 type BankAccount={id:string;bank_name:string;account_name:string;account_number:string;status:string;review_note?:string};
+type FinanceTotals={gross_ngn:number|string;commission_ngn:number|string;organiser_net_ngn:number|string;outstanding_ngn:number|string};
 type Order={payment_method?:'manual'|'onsite'|'free';id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number};
 type Gate={event_id:string;title:string;gate_label:string};
 type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
@@ -28,9 +30,11 @@ export default function App(){
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [bank,setBank]=useState(''),[accName,setAccName]=useState(''),[accNo,setAccNo]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[date,setDate]=useState(''),[time,setTime]=useState('19:00'),[price,setPrice]=useState('5000'),[capacity,setCapacity]=useState('100'),[keyword,setKeyword]=useState(''),[staff,setStaff]=useState('');
- const [description,setDescription]=useState(''),[category,setCategory]=useState('Music'),[theme,setTheme]=useState('aurora'),[admissionLabel,setAdmissionLabel]=useState('ADMIT ONE'),[posterTemplate,setPosterTemplate]=useState('none'),[media,setMedia]=useState<{id:string;media_type:string;url:string;approved:boolean}[]>([]);
+ const [description,setDescription]=useState(''),[category,setCategory]=useState('Music'),[theme,setTheme]=useState('aurora'),[admissionLabel,setAdmissionLabel]=useState('ADMIT ONE'),[posterTemplate,setPosterTemplate]=useState('none'),[media,setMedia]=useState<{id:string;media_type:string;url:string;approved:boolean;file_name?:string}[]>([]);
  const [previewOrder,setPreviewOrder]=useState('');
  const [inbox,setInbox]=useState<{pending:number;unread:number;payments:{id:string;event_title:string;buyer_name:string;amount_ngn:number;payment_reference:string;receipt_mime:string}[]}>({pending:0,unread:0,payments:[]});
+ const [finances,setFinances]=useState<FinanceTotals|null>(null),[financeError,setFinanceError]=useState('');
+ async function refreshFinances(t=token){try{const data=await api('finance',t);setFinances(data.totals||null);setFinanceError('')}catch(error){setFinances(null);setFinanceError('Financial totals unavailable. Retry refresh.')}}
  async function refreshInbox(t=token){setInbox(await api('organiser/payment-inbox',t))}
  useEffect(()=>{
   if(!token||member?.role!=='organiser'||member.account_status!=='active')return;
@@ -67,6 +71,16 @@ export default function App(){
    Alert.alert('Uploaded','Media is waiting for Platform Admin review.');
   });
  }
+ function confirmRemoveMedia(mediaId:string){
+  Alert.alert('Remove uploaded artwork?','This removes the selected media from this event. Artwork used on issued tickets cannot be deleted.',[
+   {text:'Keep artwork',style:'cancel'},
+   {text:'Remove',style:'destructive',onPress:()=>void exec(async()=>{
+    await api('events/media',token,'DELETE',{id:mediaId});
+    setMedia((await api('events/media?eventId='+encodeURIComponent(eventId),token)).media||[]);
+    Alert.alert('Media removed','The unused upload is no longer attached to this event.');
+   })}
+  ]);
+ }
  async function saveDesign(){if(!eventId)return;
   await exec(async()=>{
    await api('events',token,'PATCH',{eventId,description,category,ticketTheme:theme,admissionLabel,posterTemplate});
@@ -80,6 +94,7 @@ export default function App(){
  if(me.user.account_status==='pending'||me.user.requested_role==='organiser')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
  const [b,themeList]=await Promise.all([api('organiser/payment-account',t),api('ticket-themes',t)]);
+ await Promise.all([refreshInbox(t).catch(()=>{}),refreshFinances(t)]);
  if(themeList.themes?.length)setThemes(themeList.themes.map((x:{id:string;name:string})=>[x.id,x.name]));
  setBankAccounts(b.accounts||[]);
  }
@@ -152,9 +167,17 @@ export default function App(){
  {(member.account_status==='pending'||member.requested_role==='organiser')?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
 
  {tab==='dashboard'&&<View style={s.card}><Text style={s.title}>Organiser dashboard</Text>
-  <Text style={s.hint}>Events: {events.filter(e=>e.organiser_id===member.id).length} · Published: {events.filter(e=>e.organiser_id===member.id&&e.status==='published').length}</Text>
+  <Text style={s.hint}>Your events: {events.filter(e=>e.organiser_id===member.id).length} · Published: {events.filter(e=>e.organiser_id===member.id&&e.status==='published').length}</Text>
   <Text style={s.hint}>Selected event: {events.find(e=>e.id===eventId)?.title||'None'}</Text>
-  <Text style={s.hint}>Pending event payment reviews: {orders.filter(o=>o.status==='pending').length}</Text>
+  <Text style={s.hint}>Pending payment reviews across your events: {inbox.pending}</Text>
+  <Text style={s.hint}>New payment notifications: {inbox.unread}</Text>
+  {finances?<View accessibilityLabel="Verified organiser financial totals" style={[s.card,{backgroundColor:'#1d2a49'}]}>
+   <Text style={s.hint}>Confirmed collections: ₦{Number(finances.gross_ngn).toLocaleString('en-NG')}</Text>
+   <Text style={s.hint}>Platform commissions: ₦{Number(finances.commission_ngn).toLocaleString('en-NG')}</Text>
+   <Text style={s.hint}>Organiser net: ₦{Number(finances.organiser_net_ngn).toLocaleString('en-NG')}</Text>
+   <Text style={s.hint}>Outstanding commission remittance: ₦{Number(finances.outstanding_ngn).toLocaleString('en-NG')}</Text>
+  </View>:<Text accessibilityRole="alert" style={s.hint}>{financeError||'Loading verified financial totals…'}</Text>}
+  {button('Refresh dashboard',()=>void exec(async()=>{await Promise.all([refreshInbox(),refreshFinances()])}),true)}
   {button('Manage events',()=>setTab('events'))}{button('Review payments',()=>setTab('payments'),true)}
  </View>}
  {tab==='profile'&&<View style={s.card}><Text style={s.title}>My organiser profile</Text><Text style={s.hint}>Name: {member.full_name}</Text><Text style={s.hint}>Email: {member.email}</Text><Text style={s.hint}>Status: {member.account_status}</Text></View>}
@@ -190,8 +213,8 @@ export default function App(){
 {input('Price in NGN',price,setPrice)}{input('Capacity',capacity,setCapacity)}{input('Private QR keyword (8+ characters)',keyword,setKeyword,true)}
 <Text style={s.title}>Ticket templates</Text><Text style={s.hint}>Choose one of the luxury STJ-inspired masquerade layouts, or another theme. Every issued ticket receives its own real QR.</Text>{theme.startsWith('stj-')&&<View style={{borderWidth:3,borderColor:'#f1c36a',backgroundColor:'#240732',borderRadius:12,flexDirection:'row',overflow:'hidden',marginVertical:12,minHeight:145}}>
  <View style={{flex:3,padding:11,justifyContent:'space-around',alignItems:'center'}}>
-  <Text style={{fontSize:27}}>🎭 ✨</Text><Text numberOfLines={2} style={{fontSize:16,color:'#ffe4a3',fontWeight:'900',textAlign:'center'}}>{eventTitle||events.find(e=>e.id===eventId)?.title||'Your Masquerade Event'}</Text>
-  <Text style={{fontSize:10,color:'#fff',textAlign:'center'}}>{venue||events.find(e=>e.id===eventId)?.venue||'Your event venue'}</Text>
+  <Text style={{fontSize:27}}>🎭 ✨</Text><Text numberOfLines={2} style={{fontSize:16,color:'#ffe4a3',fontWeight:'900',textAlign:'center'}}>{eventTitle||'Your Masquerade Event'}</Text>
+  <Text style={{fontSize:10,color:'#fff',textAlign:'center'}}>{venue||'Your event venue'}</Text>
   <Text style={{fontSize:12,color:'#f9d77b',fontWeight:'900'}}>{admissionLabel}</Text>
  </View><View style={{flex:1,borderLeftColor:'#ffcf74',borderLeftWidth:2,borderStyle:'dashed',alignItems:'center',justifyContent:'center',padding:6}}>
   <Text style={{fontSize:25,color:'#f7d77c'}}>◈</Text><Text style={{fontSize:8,color:'#fff',textAlign:'center'}}>QR GENERATED ON APPROVAL</Text>
@@ -220,24 +243,30 @@ export default function App(){
 </>}
 {!!eventId&&<>
  {tab==='tickets'&&<>
- <Text style={s.title}>Event media & ticket artwork</Text><Text style={s.hint}>Upload posters, short videos and custom design images for platform review.</Text>
+ <Text style={s.title}>Event media & ticket artwork</Text><Text style={s.hint}>Upload, review, and remove unused posters, videos or ticket artwork. Approved artwork used on issued tickets stays protected.</Text>
  {button('Upload photo or short video',()=>{void uploadEventFile()})}
  {button('Import custom ticket artwork',()=>{void uploadEventFile('ticket_art')},true)}
- <ScrollView horizontal contentContainerStyle={{gap:12,marginVertical:14}}>{media.map(m=><View key={m.id} style={{width:160}}>{m.media_type==='video'?<Text style={s.hint}>▶ Video uploaded</Text>:<Image source={{uri:BASE+m.url,headers:{Authorization:'Bearer '+token}}} style={{width:150,height:115,borderRadius:10}}/>}<Text style={s.hint}>{m.approved?'Approved':'Pending media review'}</Text></View>)}</ScrollView>
- <Text style={s.title}>Update ticket design</Text>{theme.startsWith('stj-')&&<View style={{borderWidth:3,borderColor:'#f1c36a',backgroundColor:'#240732',borderRadius:12,flexDirection:'row',overflow:'hidden',marginVertical:12,minHeight:145}}>
- <View style={{flex:3,padding:11,justifyContent:'space-around',alignItems:'center'}}>
-  <Text style={{fontSize:27}}>🎭 ✨</Text><Text numberOfLines={2} style={{fontSize:16,color:'#ffe4a3',fontWeight:'900',textAlign:'center'}}>{eventTitle||events.find(e=>e.id===eventId)?.title||'Your Masquerade Event'}</Text>
-  <Text style={{fontSize:10,color:'#fff',textAlign:'center'}}>{venue||events.find(e=>e.id===eventId)?.venue||'Your event venue'}</Text>
-  <Text style={{fontSize:12,color:'#f9d77b',fontWeight:'900'}}>{admissionLabel}</Text>
- </View><View style={{flex:1,borderLeftColor:'#ffcf74',borderLeftWidth:2,borderStyle:'dashed',alignItems:'center',justifyContent:'center',padding:6}}>
-  <Text style={{fontSize:25,color:'#f7d77c'}}>◈</Text><Text style={{fontSize:8,color:'#fff',textAlign:'center'}}>QR GENERATED ON APPROVAL</Text>
- </View></View>}
+ {media.length===0&&<View style={s.card}><Text style={s.hint}>No media uploaded for this event. Start with a poster or import your own ticket artwork.</Text></View>}
+ <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:12,marginVertical:14}}>{media.map(m=><View key={m.id} style={{width:174}}>
+  {m.media_type==='video'?<View style={[s.card,{minHeight:115,justifyContent:'center'}]}><Text style={s.hint}>▶ Video uploaded</Text></View>:<Image accessibilityLabel={m.file_name||'Event artwork preview'} source={{uri:BASE+m.url,headers:{Authorization:'Bearer '+token}}} style={{width:160,height:115,borderRadius:10}}/>}
+  <Text style={s.hint} numberOfLines={2}>{m.file_name||m.media_type.replace('_',' ')}</Text>
+  <Text style={s.hint}>{m.approved?'✓ Approved':'Pending media review'}</Text>
+  <Pressable accessibilityRole="button" accessibilityLabel={'Remove '+(m.file_name||m.media_type)} disabled={busy} onPress={()=>confirmRemoveMedia(m.id)} style={[s.button,s.subButton,{minHeight:44}]}><Text style={s.buttonText}>Remove upload</Text></Pressable>
+ </View>)}</ScrollView>
+ <Text style={s.title}>Update ticket design</Text>
+ <TicketStudioPreview key={eventId} eventId={eventId}
+  title={events.find(e=>e.id===eventId)?.title||''}
+  venue={events.find(e=>e.id===eventId)?.venue||''}
+  startsAt={events.find(e=>e.id===eventId)?.starts_at||''}
+  priceNgn={Number(events.find(e=>e.id===eventId)?.price_ngn||0)}
+  organiser={member.full_name} admissionLabel={admissionLabel} theme={theme} token={token} apiBase={BASE}/>
+ <Text style={s.hint}>Save versioned design draft stores preview fields and visibility separately. Save event design updates the event theme, admission label, description and category; published ticket issuance remains unchanged.</Text>
 {input('Ticket admission label',admissionLabel,setAdmissionLabel)}<ScrollView horizontal contentContainerStyle={{gap:8}}>{themes.map(([id,name])=><Pressable key={id} onPress={()=>setTheme(id)} style={[s.card,{backgroundColor:theme===id?'#513c83':'#273351'}]}><Text style={s.buttonText}>{name}</Text></Pressable>)}</ScrollView>
  {input('Description',description,setDescription)}{input('Category',category,setCategory)}{button('Save event design',()=>{void saveDesign()})}
 <Text style={s.title}>Promotional poster collection</Text><Text style={s.hint}>The two portrait layouts promote your event and do not contain an admission QR.</Text>
 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:12,marginVertical:13}}>
  {([['stj-apartment-party','Masked Apartment Evening'],['stj-lounge-nights','Lounge Masquerade Night']] as const).map(([id,name])=><Pressable key={id} onPress={()=>setPosterTemplate(posterTemplate===id?'none':id)} style={[s.card,{width:150,height:205,backgroundColor:id==='stj-apartment-party'?'#45124c':'#35072e',borderColor:posterTemplate===id?'#ffd878':'#59466b',borderWidth:2,alignItems:'center',justifyContent:'space-around'}]}>
- <Text style={{fontSize:33}}>🎭</Text><Text style={{color:'#ffe3a0',textAlign:'center',fontWeight:'900',fontSize:14}}>{eventTitle||'Your Event'}</Text><Text style={{color:'#f4d88b',fontSize:10,textAlign:'center'}}>{name}</Text><Text style={{color:'#fff',fontSize:10}}>{posterTemplate===id?'✓ Selected':'Choose poster'}</Text>
+ <Text style={{fontSize:33}}>🎭</Text><Text style={{color:'#ffe3a0',textAlign:'center',fontWeight:'900',fontSize:14}}>{events.find(e=>e.id===eventId)?.title||'Your Event'}</Text><Text style={{color:'#f4d88b',fontSize:10,textAlign:'center'}}>{name}</Text><Text style={{color:'#fff',fontSize:10}}>{posterTemplate===id?'✓ Selected':'Choose poster'}</Text>
  </Pressable>)}
 </ScrollView>
  </>}

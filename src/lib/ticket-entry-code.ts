@@ -1,11 +1,11 @@
 /** Back-up admission code: deterministic, keyed, human-readable, and never stored in plaintext.
  * The 12 Crockford-Base32 symbols offer 60 bits; only authenticated event gates can test codes.
  */
-import {createHmac,createHash} from 'node:crypto';
+import {deriveEntryCode,entryCodeHash} from '@/lib/entry-code-core';
+export {normaliseEntryCode,entryCodeHash} from '@/lib/entry-code-core';
 import type {TransactionSql} from 'postgres';
 import {db} from '@/lib/db';
 
-const alphabet='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 export type EntrySource='online'|'offline';
 export type TicketEntry={id:string;eventId:string};
 function masterKey(){
@@ -13,23 +13,8 @@ function masterKey(){
  if(key.length<32)throw Error('QR_SIGNING_SECRET must be configured before issuing entry codes');
  return key;
 }
-export function normaliseEntryCode(input:string):string|null {
- if(typeof input!=='string'||input.length>64)return null;
- const cleaned=input.toUpperCase().replace(/[\s-]/g,'').replace(/O/g,'0').replace(/[IL]/g,'1');
- if(!/^NX[0-9A-HJKMNP-TV-Z]{12}$/.test(cleaned))return null;
- return cleaned;
-}
 export function entryCodeForTicket(ticketId:string,eventId:string):string {
- const digest=createHmac('sha256',masterKey()).update('EventPass:manual-admission:v1:')
-  .update(eventId.toLowerCase()).update(':').update(ticketId.toLowerCase()).digest();
- const sixty=(BigInt('0x'+digest.subarray(0,8).toString('hex'))>>BigInt(4));
- let value=sixty,encoded='';
- for(let i=0;i<12;i++){encoded=alphabet[Number(value&BigInt(31))]+encoded;value>>=BigInt(5)}
- return 'NX-'+encoded.slice(0,4)+'-'+encoded.slice(4,8)+'-'+encoded.slice(8,12);
-}
-export function entryCodeHash(input:string):string|null {
- const normalised=normaliseEntryCode(input);
- return normalised?createHash('sha256').update('EventPass:entry-lookup:v1:').update(normalised).digest('hex'):null;
+ return deriveEntryCode(ticketId,eventId,masterKey());
 }
 export async function registerEntryCodes(tx:TransactionSql,eventId:string,ticketIds:string[],source:EntrySource){
  if(!ticketIds.length)return;

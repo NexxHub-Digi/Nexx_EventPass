@@ -11,13 +11,15 @@ type Event={id:string;title:string;venue:string;organiser_id:string;starts_at:st
 type Ticket={id:string;title:string;qr:string|null;status:string;redeemed_at:string|null};
 type Order={id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number};
 type Gate={event_id:string;title:string;gate_label:string};
-type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
+type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null;event_count?:number;pending_orders?:number;tickets_issued?:number;gate_operators?:number;can_create_events?:boolean;can_invite_gates?:boolean;can_verify_payments?:boolean};
 type AdminAccount={id:string;email:string;full_name:string;role:string;account_status:string;google_verified:boolean;ticket_count:number;order_count:number;event_count:number;gate_event_count:number};
 type SupportCase={id:string;subject:string;description:string;organiser_name:string;status:string;priority:string;resolution:string};
 type ModerationEvent={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;owner_eligible:boolean;pending_media:number};
 type MediaReview={id:string;event_id:string;file_name:string;media_type:string};
 type RefundCase={id:string;event_title:string;buyer_email:string;status:string;refund_status:string;amount_ngn:number;refund_note?:string|null};
 type AuditEntry={id:string;action:string;created_at:string;performed_by:string;target_email?:string|null};
+type Theme={id:string;name:string;label:string;color_a:string;color_b:string;accent:string};
+type EventMetrics={id:string;title:string;organiser_name:string;status:string;verification_status:string;tickets_issued:number;external_tickets_issued:number;checked_in:number;pending_orders:number;reserved_seats:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number;capacity:number};
 async function api(p:string,t:string,method='GET',data?:unknown){const multi=data instanceof FormData;const r=await fetch(BASE+'/api/'+p,{method,headers:{...(multi?{}:{'Content-Type':'application/json'}),...(t?{Authorization:'Bearer '+t}:{})},body:multi?data: data?JSON.stringify(data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v}
 export default function App(){
  const scroll=useRef<ScrollView>(null);
@@ -29,10 +31,11 @@ export default function App(){
   return ()=>{mounted=false;listener.remove()};
  },[]);
  const [booting,setBooting]=useState(true);
- const [section,setSection]=useState<'overview'|'organisers'|'events'|'accounts'|'finance'|'audit'|'support'|'settings'|'more'>('overview');
+ const [section,setSection]=useState<'overview'|'organisers'|'accounts'|'events'|'analytics'|'finance'|'support'|'themes'|'audit'|'settings'|'more'>('overview');
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [applicants,setApplicants]=useState<Applicant[]>([]),[organiserEmail,setOrganiserEmail]=useState('');
+ const [selectedOrganiser,setSelectedOrganiser]=useState(''),[organiserName,setOrganiserName]=useState('');
  const [accounts,setAccounts]=useState<AdminAccount[]>([]),[userSearch,setUserSearch]=useState(''),[selectedAccount,setSelectedAccount]=useState(''),[userName,setUserName]=useState(''),[deactivateReason,setDeactivateReason]=useState('');
  const [cases,setCases]=useState<SupportCase[]>([]),[resolution,setResolution]=useState(''),[settings,setSettings]=useState<Record<string,string>>({});
  const [settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
@@ -41,6 +44,9 @@ export default function App(){
  const [summary,setSummary]=useState<Record<string,number>>({});
  const [moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<MediaReview[]>([]);
  const [auditHistory,setAuditHistory]=useState<AuditEntry[]>([]),[refundCases,setRefundCases]=useState<RefundCase[]>([]);
+ const [eventMetrics,setEventMetrics]=useState<EventMetrics[]>([]),[eventQuery,setEventQuery]=useState('');
+ const [themes,setThemes]=useState<Theme[]>([]),[themeName,setThemeName]=useState(''),[themeLabel,setThemeLabel]=useState(''),[themeA,setThemeA]=useState('#552AA8'),[themeB,setThemeB]=useState('#231A56'),[themeAccent,setThemeAccent]=useState('#FFFFFF');
+ const [accountPage,setAccountPage]=useState(1),[accountCount,setAccountCount]=useState(0),[accountRole,setAccountRole]=useState('');
  const [refundNote,setRefundNote]=useState(''),[ownerFixEvent,setOwnerFixEvent]=useState(''),[ownerFixEmail,setOwnerFixEmail]=useState(''),[ownerFixReason,setOwnerFixReason]=useState('');
  async function load(t:string){
  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
@@ -49,12 +55,13 @@ export default function App(){
  setBankAccounts((await api('organiser/payment-account',t)).accounts||[]);
  if(me.user.account_status==='pending')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
- const [a,people,support,configuration,overview,moderation,audit,refunds]=await Promise.all([
+ const [a,people,support,configuration,overview,moderation,audit,refunds,eventDirectory,themeCatalog]=await Promise.all([
   api('platform/organisers',t),api('platform/users',t),api('support/cases',t),api('platform/settings',t),
-  api('platform/overview',t),api('platform/events',t),api('platform/audit',t),api('refunds',t)]);
+  api('platform/overview',t),api('platform/events',t),api('platform/audit',t),api('refunds',t),api('platform/event-directory',t),api('ticket-themes',t)]);
  setApplicants(a.organisers||[]);setAccounts(people.accounts||[]);setCases(support.cases||[]);setSettings(configuration.settings||{});
  setSummary(overview.stats||{});setModerationEvents(moderation.events||[]);setModerationMedia(moderation.media||[]);
  setAuditHistory(audit.history||[]);setRefundCases(refunds.orders||[]);
+ setEventMetrics(eventDirectory.events||[]);setThemes(themeCatalog.themes||[]);setAccountCount(people.count||0);setAccountPage(people.page||1);
  }
  useEffect(()=>{
   let mounted=true;
@@ -76,12 +83,27 @@ export default function App(){
    await SecureStore.setItemAsync('eventpass_token',data.token);
    setToken(data.token);await load(data.token);
  })}
- async function searchUsers(){await exec(async()=>{const r=await api('platform/users?q='+encodeURIComponent(userSearch),token);setAccounts(r.accounts||[])})}
+ async function searchUsers(page=1,role=accountRole){await exec(async()=>{const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(role)+'&page='+page,token);setAccounts(r.accounts||[]);setAccountPage(r.page||page);setAccountCount(r.count||0)})}
+ async function searchEvents(){await exec(async()=>{const data=await api('platform/event-directory?q='+encodeURIComponent(eventQuery),token);setEventMetrics(data.events||[])})}
+ async function updateOrganiserName(id:string){await exec(async()=>{await api('platform/organisers',token,'POST',{action:'configure',userId:id,fullName:organiserName.trim()});await load(token);Alert.alert('Organiser updated','Profile change was saved and audited.')})}
+ async function toggleOrganiserCapability(a:Applicant,key:'can_create_events'|'can_invite_gates'|'can_verify_payments'){
+  await exec(async()=>{
+   const values={can_create_events:a.can_create_events!==false,can_invite_gates:a.can_invite_gates!==false,can_verify_payments:a.can_verify_payments!==false};
+   values[key]=!values[key];
+   await api('platform/organisers',token,'POST',{action:'capabilities',userId:a.id,canCreateEvents:values.can_create_events,canInviteGates:values.can_invite_gates,canVerifyPayments:values.can_verify_payments});
+   await load(token);Alert.alert('Permissions updated','The organiser capability change is saved in the platform audit.');
+  });
+ }
+ async function createTheme(){await exec(async()=>{
+  const result=await api('ticket-themes',token,'POST',{name:themeName.trim(),label:themeLabel.trim(),colorA:themeA,colorB:themeB,accent:themeAccent});
+  const updated=await api('ticket-themes',token);setThemes(updated.themes||[]);
+  setThemeName('');setThemeLabel('');Alert.alert('Ticket theme created',result.theme.name+' is now available in the organiser design catalogue.');
+ })}
  async function changeAccount(action:'configure'|'suspend'|'restore'|'deactivate'){await exec(async()=>{
   if(!selectedAccount)throw Error('Select an account');
   if(action==='deactivate'&&!deactivateReason.trim())throw Error('Provide a deactivation reason');
   await api('platform/users',token,'PATCH',{action,userId:selectedAccount,fullName:userName,reason:deactivateReason});
-  const r=await api('platform/users?q='+encodeURIComponent(userSearch),token);setAccounts(r.accounts||[]);
+  const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(accountRole)+'&page='+accountPage,token);setAccounts(r.accounts||[]);setAccountCount(r.count||0);
   Alert.alert('Account updated','Change recorded in platform audit.');
  })}
  async function resolveCase(id:string,status:'in_progress'|'resolved'){await exec(async()=>{
@@ -135,7 +157,7 @@ export default function App(){
   <StatusBar barStyle="light-content"/>
   <View style={s.head}>
    <Pressable style={s.brandRow} accessibilityRole="button" accessibilityLabel="Platform Admin home" disabled={busy||!member} onPress={()=>{
-     setSection('organisers');scroll.current?.scrollTo({y:0,animated:false});
+     setSection('overview');scroll.current?.scrollTo({y:0,animated:false});
    }}>
     <Image accessible={false} source={require('./assets/app-icon.png')} style={s.brandMark}/><View style={s.brandCopy}>
     <Text style={s.brand}>Nexx EventPass</Text><Text style={s.headLabel}>Platform Admin</Text>
@@ -163,10 +185,49 @@ export default function App(){
  </>}
  {section==='more'&&<><Text style={s.title}>More tools</Text>
  {button('Users & access',()=>setSection('accounts'))}
- {button('Payments & refunds',()=>setSection('finance'),true)}
+ {button('Events & analytics',()=>setSection('analytics'),true)}
+  {button('Payments & refunds',()=>setSection('finance'),true)}
  {button('Audit logs',()=>setSection('audit'),true)}
  {button('Support cases',()=>setSection('support'),true)}
+  {button('Ticket themes',()=>setSection('themes'),true)}
  {button('Platform settings',()=>setSection('settings'),true)}
+ </>}
+ {section==='analytics'&&<><Text style={s.title}>Events & analytics</Text>
+ <Text style={s.hint}>Confirmed revenue excludes pending orders and manually tracked offline sales.</Text>
+ {input('Search event or organiser',eventQuery,setEventQuery)}
+ {button('Search event reports',()=>{void searchEvents()},true)}
+ {!eventMetrics.length&&<Text style={s.hint}>No events match this search. Try another title or organiser.</Text>}
+ {eventMetrics.map(event=><View key={event.id} style={s.card}>
+  <Text style={s.title}>{event.title}</Text><Text style={s.hint}>Organiser: {event.organiser_name} · {event.status} · {event.verification_status}</Text>
+  <Text style={s.hint}>Issued: {event.tickets_issued} (offline {event.external_tickets_issued}) · Admitted: {event.checked_in}</Text>
+  <Text style={s.hint}>Capacity: {event.capacity} · Pending orders: {event.pending_orders} · Reserved seats: {event.reserved_seats}</Text>
+  <Text style={s.hint}>Confirmed order revenue: ₦{Number(event.confirmed_revenue_ngn).toLocaleString('en-NG')}</Text>
+  <Text style={s.hint}>Refund cases: {event.refund_cases} · Gate assignments: {event.active_gate_operators}</Text>
+  {button('Open moderation',()=>setSection('events'),true)}
+ </View>)}
+ </>}
+ {section==='themes'&&<><Text style={s.title}>Ticket themes</Text>
+ <Text style={s.hint}>Create reusable ticket themes for organisers. Each colour must be a six-digit HEX value.</Text>
+ {input('New theme name',themeName,setThemeName)}
+ {input('Theme category or label',themeLabel,setThemeLabel)}
+ {input('Background colour A (e.g. #552AA8)',themeA,setThemeA)}
+ {input('Background colour B (e.g. #231A56)',themeB,setThemeB)}
+ {input('Accent colour (e.g. #FFFFFF)',themeAccent,setThemeAccent)}
+ <View accessibilityLabel="New ticket theme preview" style={[s.card,{backgroundColor:/^#[A-Fa-f0-9]{6}$/.test(themeA)?themeA:'#253251',borderColor:/^#[A-Fa-f0-9]{6}$/.test(themeAccent)?themeAccent:'#506180',borderWidth:2}]}>
+  <Text style={{color:'#fff',fontWeight:'900'}}>{themeName.trim()||'New ticket theme'}</Text>
+  <Text style={{color:'#fff'}}>{themeLabel.trim()||'Preview only — not published'}</Text>
+  <View style={{backgroundColor:/^#[A-Fa-f0-9]{6}$/.test(themeB)?themeB:'#231A56',height:16,borderRadius:8,marginTop:8}}/>
+ </View>
+ {button('Create ticket theme',()=>Alert.alert('Publish new ticket theme?','Organisers will be able to select this design. Review its name and colours before publishing.',[
+  {text:'Cancel',style:'cancel'},{text:'Create theme',onPress:()=>void createTheme()}
+ ]))}
+ <Text style={s.title}>Available themes ({themes.length})</Text>
+ {themes.map(theme=><View key={theme.id} style={s.card}>
+  <View style={{height:10,backgroundColor:theme.color_a,borderRadius:5,marginBottom:8}}/>
+  <Text style={s.title}>{theme.name}</Text>
+  <Text style={s.hint}>{theme.label} · {theme.id}</Text>
+  <Text style={s.hint}>{theme.color_a} / {theme.color_b} · Accent: {theme.accent}</Text>
+ </View>)}
  </>}
  {section==='events'&&<><Text style={s.title}>Event moderation</Text>
  <Text style={s.hint}>Review listing ownership, eligibility and pending media.</Text>
@@ -235,13 +296,34 @@ export default function App(){
  })},true)}</>:button('Reject account',()=>{setBankReviewId(account.id);setBankReviewNote('')},true)}
 </View>)}
 {applicants.map(a=><View key={a.id} style={s.card}><Text style={s.title}>{a.full_name}</Text><Text style={s.hint}>{a.email} · {a.role} · {a.account_status}</Text>
+ {button(selectedOrganiser===a.id?'Close organiser profile':'View organiser profile',()=>{setSelectedOrganiser(previous=>previous===a.id?'':a.id);setOrganiserName(a.full_name)},true)}
+ {selectedOrganiser===a.id&&<View style={s.card}>
+  <Text style={s.hint}>Events: {a.event_count??0} · Issued tickets: {a.tickets_issued??0} · Pending orders: {a.pending_orders??0} · Assigned gate operators: {a.gate_operators??0}</Text>
+  <Text style={s.hint}>Google verification is required for organiser creation. Open Users & access to review the linked identity and verification record.</Text>
+  {a.role==='organiser'&&<>
+   {input('Organiser display name',organiserName,setOrganiserName)}
+   {button('Save organiser profile',()=>void updateOrganiserName(a.id))}
+   {([['can_create_events','Create events'],['can_invite_gates','Invite gate operators'],['can_verify_payments','Verify payments']] as const).map(([key,label])=><Pressable key={key} accessibilityRole="switch" accessibilityState={{checked:a[key]!==false,disabled:busy}} disabled={busy} style={[s.button,s.subButton]} onPress={()=>Alert.alert('Change organiser permission?',label+' will be '+(a[key]!==false?'disabled':'enabled')+' for this organiser.',[
+    {text:'Cancel',style:'cancel'},{text:'Confirm',onPress:()=>void toggleOrganiserCapability(a,key)}
+   ])}><Text style={s.buttonText}>{a[key]!==false?'✓ ':'○ '}{label}</Text></Pressable>)}
+  </>}
+ </View>}
 {a.role==='user'&&a.requested_role==='organiser'&&button('Approve organiser',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'approve',userId:a.id});await load(token)})})}
 {a.role==='organiser'&&a.account_status==='active'&&button('Suspend',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'suspend',userId:a.id});await load(token)})},true)}
 {a.role==='organiser'&&a.account_status==='suspended'&&button('Restore',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'restore',userId:a.id});await load(token)})})}</View>)}
  </>}
  {section==='accounts'&&<><Text style={s.title}>All users and access</Text><Text style={s.hint}>Search user, organiser and gate identities. Open a profile to see ticket and event counts.</Text>
  {input('Search account by email or name',userSearch,setUserSearch)}
- {button('Search accounts',()=>{void searchUsers()},true)}
+ <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>
+  {([['','All'],['user','Users'],['organiser','Organisers'],['platform_admin','Admins']] as const).map(([role,label])=><Pressable key={role} accessibilityRole="button" accessibilityState={{selected:accountRole===role}} style={[s.button,s.subButton,accountRole===role&&{borderColor:'#5DE9C5'}]} onPress={()=>{setAccountRole(role);void searchUsers(1,role)}}><Text style={s.buttonText}>{label}</Text></Pressable>)}
+ </View>
+ {button('Search accounts',()=>{void searchUsers(1)},true)}
+ <Text style={s.hint}>Showing page {accountPage} of {Math.max(1,Math.ceil(accountCount/40))} · {accountCount} matching accounts</Text>
+ <View style={{flexDirection:'row',gap:10}}>
+  <Pressable accessibilityRole="button" accessibilityState={{disabled:accountPage<=1||busy}} disabled={accountPage<=1||busy} style={[s.button,s.subButton,{flex:1}]} onPress={()=>void searchUsers(accountPage-1)}><Text style={s.buttonText}>Previous</Text></Pressable>
+  <Pressable accessibilityRole="button" accessibilityState={{disabled:accountPage*40>=accountCount||busy}} disabled={accountPage*40>=accountCount||busy} style={[s.button,s.subButton,{flex:1}]} onPress={()=>void searchUsers(accountPage+1)}><Text style={s.buttonText}>Next</Text></Pressable>
+ </View>
+ {!accounts.length&&<Text style={s.hint}>No accounts match these filters.</Text>}
  {accounts.map(a=><View key={a.id} style={s.card}>
   <Text style={{color:'#fff',fontWeight:'800',fontSize:16}}>{a.full_name}</Text><Text style={s.hint}>{a.email} · {a.role} · {a.account_status}</Text>
   <Text style={s.hint}>{a.ticket_count} tickets · {a.order_count} orders · {a.event_count} hosted events · {a.gate_event_count} gates</Text>
@@ -272,7 +354,7 @@ export default function App(){
  </ScrollView>
   </Animated.View>
  {member&&<View style={s.navigation}>{([['overview','Overview'],['organisers','Organisers'],['events','Events'],['more','More']] as const).map(([key,label])=>{
-  const selected=section===key||(key==='more'&&(['accounts','finance','audit','support','settings'] as string[]).includes(section));
+  const selected=section===key||(key==='more'&&(['accounts','analytics','finance','audit','support','themes','settings'] as string[]).includes(section));
   return <Pressable key={key} accessibilityRole="tab" accessibilityState={{selected}} disabled={busy}
   style={({pressed})=>[s.navLink,selected&&s.navCurrent,pressed&&(reduceMotion?s.pressedStill:s.pressed)]} onPress={()=>setSection(key)}>
   <Text style={[s.navText,selected&&s.navTextCurrent]}>{label}</Text></Pressable>})}</View>}

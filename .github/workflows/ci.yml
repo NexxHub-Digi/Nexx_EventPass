@@ -14,7 +14,15 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run test:qr
+      - run: npm run test:entry-codes
       - run: npm run test:workflow
+      - run: node --test tests/admin-native-control-centre.test.mjs
+      - run: node --test tests/organiser-native-media-parity.test.mjs
+      - run: node --test tests/organiser-native-studio-preview.test.mjs
+      - run: node --test tests/ticket-studio-persistence.test.mjs
+      - run: node --test tests/organiser-native-dashboard.test.mjs
+      - run: node --experimental-strip-types --test tests/user-native-discovery.test.mjs
+      - run: node --test tests/gate-native-rehearsal.test.mjs
       - run: npm run test:paystack
       - run: node --test tests/gate-invitations.test.mjs
       - run: npm run build
