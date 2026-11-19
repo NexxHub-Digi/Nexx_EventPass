@@ -7,6 +7,7 @@ import {masqueradeTemplates,isMasqueradeTemplate,masqueradePosterTemplates,isMas
 import {EventPosterDesign} from '@/components/EventPosterDesign';
 import {TicketDesign} from '@/components/TicketDesign';
 import TicketStudioEditor from '@/components/TicketStudioEditor';
+import OfflineTicketManager from '@/components/OfflineTicketManager';
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null};
 type Event={id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;verification_status?:string;organiser?:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;cover_media_id?:string|null;video_media_id?:string|null;ticket_art_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type Order={id:string;event_id:string;event_title:string;reservation_expires_at?:string;refund_status?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
@@ -57,7 +58,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string}|null>(null);
  const [adminTab,setAdminTab]=useState('overview');
  const [showEventDesign,setShowEventDesign]=useState(false);
- const [organiserTab,setOrganiserTab]=useState<'dashboard'|'events'|'tickets'|'payments'|'team'|'profile'|'settings'>('dashboard');
+ const [organiserTab,setOrganiserTab]=useState<'dashboard'|'events'|'tickets'|'offline'|'payments'|'team'|'profile'|'settings'>('dashboard');
  const [gateOperators,setGateOperators]=useState<GateOperator[]>([]);
  const [staffEmail,setStaffEmail]=useState(''),[gateLabel,setGateLabel]=useState('Main gate'),[newOrganiser,setNewOrganiser]=useState(''),[latestInvite,setLatestInvite]=useState('');
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
@@ -362,7 +363,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    {!moderationEvents.length&&<p>No pending event or media submissions.</p>}
   </section></div></div>}
  {role==='organiser'&&<div className="rw-workspace-shell"><nav className="rw-panel" aria-label="Organiser navigation" style={{display:'grid',gap:8,alignContent:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:8}}>ORGANISER WORKSPACE</div>
-   {(['dashboard','events','tickets','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>setOrganiserTab(tab)} style={{textTransform:'capitalize',textAlign:'left',padding:12}}>{tab==='tickets'?'Ticket Studio':tab==='team'?'Gate Management':tab==='payments'?'Payments & Bank Details':tab==='dashboard'?'Overview':tab}</button>)}
+   {(['dashboard','events','tickets','offline','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>setOrganiserTab(tab)} style={{textTransform:'capitalize',textAlign:'left',padding:12}}>{tab==='tickets'?'Ticket Studio':tab==='offline'?'Offline Ticketing':tab==='team'?'Gate Management':tab==='payments'?'Payments & Bank Details':tab==='dashboard'?'Overview':tab}</button>)}
   </nav><div className="rw-layout" style={{minWidth:0}}>
   <section className="rw-panel rw-wide" aria-label="Active organiser event" style={{padding:16}}>
     <div className="eyebrow">ACTIVE EVENT CONTEXT</div>
@@ -378,6 +379,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     </label>
     {eventId&&<div className="rw-actions">{btn('Ticket Studio',()=>setOrganiserTab('tickets'),true)}{btn('Payment approvals',()=>setOrganiserTab('payments'),true)}{btn('Gate team',()=>setOrganiserTab('team'),true)}</div>}
   </section>
+  {organiserTab==='offline'&&<OfflineTicketManager events={events} organiserId={me.id}/>}
   {organiserTab==='profile'&&<section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER PROFILE</div><h2>My account</h2><p><strong>Name:</strong> {me?.full_name||'Not set'}</p><p><strong>Email:</strong> {me?.email}</p><p><strong>Account status:</strong> {me?.account_status}</p><p>For changes to verified identity or organiser permissions, contact Platform Support under Settings.</p></section>}
   
   {organiserTab==='dashboard'&&<section className="rw-panel rw-wide" style={{display:organiserTab==='dashboard'?'':'none'}}><div className="eyebrow">ORGANISER DASHBOARD</div><h2>Welcome, {me?.full_name||'Organiser'}</h2><p>Manage your events, tickets, payments and admissions from one place.</p><div className="rw-stats">
