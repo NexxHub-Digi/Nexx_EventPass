@@ -1,12 +1,20 @@
 import {currentUser} from '@/lib/security';
 import {db} from '@/lib/db';
+import {categoryIdPattern as uuid} from '@/lib/event-inventory';
 import {fail,ok,handleError,payload,str} from '@/lib/http';
 export const runtime='nodejs';
 const valid=(id:string)=>/^[0-9a-f-]{36}$/i.test(id);
 export async function GET(req:Request){
  try{
-  const u=await currentUser();if(!u||u.account_status!=='active'||!['organiser','platform_admin'].includes(u.role))return fail('Active organiser or Platform Admin required',403);
-  const url=new URL(req.url),orgId=str(url.searchParams.get('organiserId'),40);
+  const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active account required',403);
+  const url=new URL(req.url);
+  if(url.searchParams.get('scope')==='payment'){
+   const cases=await db()`select id,payment_order_id,subject,status,resolution,updated_at
+     from platform_support_cases where opened_by=${u.id} and payment_order_id is not null order by updated_at desc limit 100`;
+   return ok({cases});
+  }
+  if(!['organiser','platform_admin'].includes(u.role))return fail('Active organiser or Platform Admin required',403);
+  const orgId=str(url.searchParams.get('organiserId'),40);
   const cases=u.role==='platform_admin'?
    await db()`select c.*,org.full_name as organiser_name,org.email as organiser_email,owner.full_name as opened_by_name
     from platform_support_cases c join app_users org on org.id=c.organiser_id join app_users owner on owner.id=c.opened_by
@@ -19,8 +27,21 @@ export async function GET(req:Request){
 }
 export async function POST(req:Request){
  try{
-  const u=await currentUser();if(!u||u.account_status!=='active'||!['organiser','platform_admin'].includes(u.role))return fail('Active organiser or admin required',403);
+  const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active account required',403);
   const b=await payload(req),subject=str(b.subject,150),description=str(b.description,1500),requestedOrganiser=str(b.organiserId,40);
+  if(b.orderId!==undefined){
+   const id=str(b.orderId,40);
+   if(!uuid.test(id)||description.length<10)return fail('Select an order and describe what happened');
+   const cases=await db()`insert into platform_support_cases(organiser_id,opened_by,subject,description,payment_order_id)
+    select e.organiser_id,${u.id},'Rejected payment: '||e.title,${description},o.id
+    from ticket_orders o join events e on e.id=o.event_id
+    where o.id=${id} and o.buyer_id=${u.id} and o.status='rejected' and o.amount_ngn>0 and o.receipt_uploaded_at is not null
+    on conflict do nothing returning id,status`;
+   if(cases[0])return ok({case:cases[0]},201);
+   const [existing]=await db()`select id,status from platform_support_cases where opened_by=${u.id} and payment_order_id=${id}`;
+   return existing?ok({case:existing}):fail('You can request payment support for your rejected orders with a submitted receipt',409);
+  }
+  if(!['organiser','platform_admin'].includes(u.role))return fail('Active organiser or admin required',403);
   const priority=str(b.priority,10)||'normal';
   if(subject.length<5||description.length<10||!['low','normal','high','urgent'].includes(priority))return fail('Provide a subject, description and valid priority',400);
   const orgId=u.role==='organiser'?u.id:requestedOrganiser;

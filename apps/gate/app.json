@@ -16,18 +16,27 @@
         "CAMERA"
       ],
       "blockedPermissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-foreground.png",
+        "backgroundColor": "#231b4d"
+      }
     },
     "plugins": [
       [
         "expo-camera",
         {
           "cameraPermission": "Allow EventPass Gate Operator to scan tickets.",
-          "recordAudioAndroid": false
+          "recordAudioAndroid": false,
+          "microphonePermission": false
         }
       ],
       "expo-secure-store"
-    ]
+    ],
+    "icon": "./assets/app-icon.png"
   }
 }

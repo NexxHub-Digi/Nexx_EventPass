@@ -2,15 +2,19 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {QRCodeSVG} from 'qrcode.react';
 import {useParams} from 'next/navigation';
+import {portalHome} from '@/lib/portal-home';
 import {ticketThemes,findTicketTheme} from '@/lib/ticket-themes';
 import {masqueradeTemplates,isMasqueradeTemplate,masqueradePosterTemplates,isMasqueradePoster} from '@/lib/masquerade-templates';
 import {EventPosterDesign} from '@/components/EventPosterDesign';
 import {TicketDesign} from '@/components/TicketDesign';
 import TicketStudioEditor from '@/components/TicketStudioEditor';
+import EventPassLoading from '@/components/EventPassLoading';
+import FinanceLedger from '@/components/FinanceLedger';
 import OfflineTicketManager from '@/components/OfflineTicketManager';
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null};
-type Event={id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;verification_status?:string;organiser?:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;cover_media_id?:string|null;video_media_id?:string|null;ticket_art_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
-type Order={id:string;event_id:string;event_title:string;reservation_expires_at?:string;refund_status?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
+type Event={payment_account_id?:string|null;onsite_payments_enabled?:boolean;id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;verification_status?:string;organiser?:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;cover_media_id?:string|null;video_media_id?:string|null;ticket_art_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
+type BankAccount={id:string;bank_name:string;account_name:string;account_number:string;status:'pending'|'verified'|'rejected';organiser_name?:string;review_note?:string};
+type Order={payment_method?:'manual'|'onsite'|'free';id:string;event_id:string;event_title:string;reservation_expires_at?:string;refund_status?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
 type Ticket={id:string;event_id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;redeemed_at?:string|null;ticket_theme?:string;admission_label?:string;ticket_art_id?:string|null};
 type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string};
 type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null;can_create_events?:boolean;can_invite_gates?:boolean;can_verify_payments?:boolean};
@@ -19,8 +23,8 @@ type Invite={id:string;event_id:string;invitee_email:string;gate_label:string;st
 type Scan={id:string;outcome:string;operator?:string;gate_label:string;scanned_at:string};
 type EventMedia={id:string;event_id?:string;media_type:string;file_name:string;approved?:boolean;url:string};
 type AdminAccount={id:string;email:string;full_name:string;role:string;account_status:string;google_verified:boolean;order_count:number;ticket_count:number;event_count:number;gate_event_count:number;created_at:string};
-type SupportCase={id:string;organiser_id:string;organiser_name:string;subject:string;description:string;status:string;priority:string;resolution:string};
-type EventReport={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;status:string;verification_status:string;capacity:number;tickets_issued:number;reserved_seats:number;pending_orders:number;checked_in:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number};
+type SupportCase={payment_order_id?:string|null;id:string;organiser_id:string;organiser_name:string;subject:string;description:string;status:string;priority:string;resolution:string};
+type EventReport={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;status:string;verification_status:string;capacity:number;tickets_issued:number;external_tickets_issued:number;reserved_seats:number;pending_orders:number;checked_in:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number};
 type RefundCase={id:string;event_id:string;event_title:string;buyer_email:string;organiser_name:string;amount_ngn:number;status:string;refund_status:string;refund_note:string;reservation_expires_at:string};
 type AuditRecord={id:string;action:string;performed_by:string;target_email?:string;created_at:string;details:Record<string,unknown>};
 type ModerationEvent={id:string;title:string;venue:string;starts_at:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;pending_media:number};
@@ -44,7 +48,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [eventDescription,setEventDescription]=useState(''),[eventCategory,setEventCategory]=useState('Music'),[ticketTheme,setTicketTheme]=useState('aurora'),[admissionLabel,setAdmissionLabel]=useState('ADMIT ONE'),[posterTemplate,setPosterTemplate]=useState('none');
  const [eventMedia,setEventMedia]=useState<EventMedia[]>([]),[moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<EventMedia[]>([]);
  const [organisers,setOrganisers]=useState<Organiser[]>([]),[stats,setStats]=useState<Record<string,number>>({});
- const [selectedOrganiser,setSelectedOrganiser]=useState(''),[editName,setEditName]=useState(''),[editBank,setEditBank]=useState(''),[editAccount,setEditAccount]=useState(''),[editNumber,setEditNumber]=useState('');
+ const [selectedOrganiser,setSelectedOrganiser]=useState(''),[editName,setEditName]=useState('');
  const [canCreate,setCanCreate]=useState(true),[canGates,setCanGates]=useState(true),[canPayments,setCanPayments]=useState(true);
  const [eventReports,setEventReports]=useState<EventReport[]>([]),[reportSearch,setReportSearch]=useState(''),[selectedReport,setSelectedReport]=useState(''),[auditHistory,setAuditHistory]=useState<AuditRecord[]>([]);
  const [refundCases,setRefundCases]=useState<RefundCase[]>([]),[refundNote,setRefundNote]=useState('');
@@ -52,7 +56,10 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [cases,setCases]=useState<SupportCase[]>([]),[caseSubject,setCaseSubject]=useState(''),[caseDescription,setCaseDescription]=useState(''),[casePriority,setCasePriority]=useState('normal'),[caseResolution,setCaseResolution]=useState('');
  const [platformSettings,setPlatformSettings]=useState<Record<string,string>>({}),[settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
  const [bankName,setBankName]=useState(''),[accountName,setAccountName]=useState(''),[accountNumber,setAccountNumber]=useState('');
- const [paymentSaved,setPaymentSaved]=useState<{bank_name:string;account_name:string;account_number:string}|null>(null),[paymentLoaded,setPaymentLoaded]=useState(false);
+ const [bankAccounts,setBankAccounts]=useState<BankAccount[]>([]);
+ const [eventBankId,setEventBankId]=useState('');
+ const verifiedBanks=bankAccounts.filter(account=>account.status==='verified');
+
  const [eventVisibility,setEventVisibility]=useState('public');
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
@@ -62,6 +69,18 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [organiserTab,setOrganiserTab]=useState<'dashboard'|'events'|'tickets'|'offline'|'payments'|'team'|'profile'|'settings'>('dashboard');
  const [gateOperators,setGateOperators]=useState<GateOperator[]>([]);
  const [staffEmail,setStaffEmail]=useState(''),[gateLabel,setGateLabel]=useState('Main gate'),[newOrganiser,setNewOrganiser]=useState(''),[latestInvite,setLatestInvite]=useState('');
+ const [inbox,setInbox]=useState<{pending:number;unread:number;payments:{id:string;event_title:string;buyer_name:string;amount_ngn:number;payment_reference:string;reservation_expires_at:string;read_at:string|null}[]}>({pending:0,unread:0,payments:[]});
+ async function refreshInbox(){setInbox(await api('organiser/payment-inbox'))}
+ useEffect(()=>{
+  if(role!=='organiser'||me?.role!=='organiser'||me.account_status!=='active')return;
+  const refresh=()=>{if(document.visibilityState==='visible')void refreshInbox().catch(()=>{})};
+  refresh();
+  const timer=window.setInterval(refresh,15000);
+  document.addEventListener('visibilitychange',refresh);
+  return ()=>{window.clearInterval(timer);document.removeEventListener('visibilitychange',refresh)};
+ },[role,me?.id,me?.role,me?.account_status]);
+ const cameraGeneration=useRef(0);
+ const verificationInFlight=useRef(false);
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
  const valid=role==='user'||role==='organiser'||role==='gate'||role==='platform-admin';
  const allowed=me&&portals.includes(role==='platform-admin'?'platform_admin':role);
@@ -80,11 +99,12 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    const [b,g,support,report,refunds]=await Promise.all([api('organiser/payment-account'),api('gates'),api('support/cases'),api('platform/event-directory'),api('refunds')]);
    setEventReports(report.events||[]);setRefundCases(refunds.orders||[]);
    setCases(support.cases||[]);
-   setBankName(b.account?.bank_name||'');setAccountName(b.account?.account_name||'');setAccountNumber(b.account?.account_number||'');setPaymentSaved(b.account?{bank_name:b.account.bank_name,account_name:b.account.account_name,account_number:b.account.account_number}:null);setPaymentLoaded(true);
+   setBankAccounts(b.accounts||[]);
    setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
   }else if(role==='gate'){const g=await api('gates');setGates(g.gates||[]);}
   else if(role==='platform-admin'){
-   const [a,overview]=await Promise.all([api('platform/organisers'),api('platform/overview')]);
+   const [a,overview,banks]=await Promise.all([api('platform/organisers'),api('platform/overview'),api('organiser/payment-account')]);
+   setBankAccounts(banks.accounts||[]);
    setOrganisers(a.organisers||[]);setStats(overview.stats||{});
    const [reviews,people,support,configuration,report,refunds,audit]=await Promise.all([api('platform/events'),api('platform/users'),api('support/cases'),api('platform/settings'),api('platform/event-directory'),api('refunds'),api('platform/audit')]);
    setEventReports(report.events||[]);setRefundCases(refunds.orders||[]);setAuditHistory(audit.history||[]);
@@ -92,7 +112,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    setAllUsers(people.accounts||[]);setUsersCount(people.count||0);setCases(support.cases||[]);setPlatformSettings(configuration.settings||{});
   }
  }
- useEffect(()=>{setLoading(true);fetchAll().catch(e=>setMessage((e as Error).message)).finally(()=>setLoading(false));return ()=>{scanControls.current?.stop()}},[role]);
+ useEffect(()=>{setLoading(true);fetchAll().catch(e=>setMessage((e as Error).message)).finally(()=>setLoading(false));return ()=>{cameraGeneration.current++;scanControls.current?.stop()}},[role]);
  useEffect(()=>{if(role!=='user'||!me||me.account_status!=='active')return;
  const refresh=()=>{if(document.visibilityState==='visible')api('tickets').then(v=>setTickets(v.tickets||[])).catch(()=>{})};
  const id=setInterval(refresh,12000);return ()=>clearInterval(id);
@@ -105,7 +125,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  async function run(fn:()=>Promise<void>){setBusy(true);setMessage('');try{await fn()}catch(e){setMessage((e as Error).message)}finally{setBusy(false)}}
  async function createEvent(){await run(async()=>{
   const date=new Date(startsAt);if(!Number.isFinite(date.getTime()))throw Error('Choose an event date');
-  const result=await api('events','POST',{title:eventTitle,venue,description:eventDescription,category:eventCategory,ticketTheme,admissionLabel,posterTemplate,visibility:eventVisibility,startsAt:date.toISOString(),capacity:Number(capacity),priceNgn:Number(ticketPrice),qrKeyword:keyword});
+  const result=await api('events','POST',{title:eventTitle,venue,description:eventDescription,category:eventCategory,ticketTheme,admissionLabel,posterTemplate,visibility:eventVisibility,startsAt:date.toISOString(),capacity:Number(capacity),priceNgn:Number(ticketPrice),paymentAccountId:eventBankId,qrKeyword:keyword});
   setEventTitle('');setKeyword('');await fetchAll();setEventId(result.event.id);setMessage('Event created! Add promotional media and send your listing for Platform Admin verification.');
  })}
  async function addNewTicketTheme(){await run(async()=>{
@@ -141,10 +161,19 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   try{const v=await api('events/media?eventId='+encodeURIComponent(id));setEventMedia(v.media||[])}
   catch(e){setMessage(e instanceof Error?e.message:'Media unavailable')}
  }
- async function saveBank(){await run(async()=>{await api('organiser/payment-account','POST',{bankName,accountName,accountNumber});setMessage('Bank instructions saved. They are displayed on your published events.');await fetchAll()})}
+ async function saveBank(){await run(async()=>{
+  await api('organiser/payment-account','POST',{bankName,accountName,accountNumber});
+  setBankName('');setAccountName('');setAccountNumber('');
+  await fetchAll();setMessage('Bank account submitted for Platform Admin review');
+ })}
+ async function reviewBank(accountId:string,decision:string,note:string){await run(async()=>{
+  await api('organiser/payment-account','PATCH',{accountId,decision,note});
+  setBankAccounts((await api('organiser/payment-account')).accounts||[]);
+  setMessage(decision==='verified'?'Bank account verified':'Bank account rejected');
+ })}
  async function book(e:Event){await run(async()=>{
   if(!receipt&&e.price_ngn>0)throw Error('Upload payment receipt before submitting a paid order');
-  const o=await api('orders','POST',{eventId:e.id,quantity:Number(quantity),paymentReference:e.price_ngn>0?paymentRef:'FREE-TICKET'});
+  const o=await api('orders','POST',{eventId:e.id,quantity:Number(quantity),paymentAccountId:e.payment_account_id,paymentReference:e.price_ngn>0?paymentRef:'FREE-TICKET'});
   if(receipt){const form=new FormData();form.set('orderId',o.order.id);form.set('receipt',receipt);await api('orders/receipt','POST',form);}
   setSelectedEvent('');setPaymentRef('');setReceipt(null);setMessage('Order received. Organiser will verify funds and receipt before ticket issuance.');
   await fetchAll();
@@ -154,9 +183,10 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   const form=new FormData();form.set('orderId',orderId);form.set('receipt',file);
   await api('orders/receipt','POST',form);setMessage('Receipt delivered for organiser review.');await fetchAll();
  })}
- async function review(id:string,decision:'approved'|'rejected'){await run(async()=>{
-  await api('review','POST',{orderId:id,decision});setMessage('Payment review saved');
-  const r=await api('orders?eventId='+encodeURIComponent(eventId));setOrders(r.orders||[]);await fetchAll();
+ async function review(id:string,decision:'approved'|'rejected',collection?:{collectedAmountNgn:number;collectionReference:string}){await run(async()=>{
+  await api('review','POST',{orderId:id,decision,...collection});setMessage('Payment review saved');
+  if(eventId){const r=await api('orders?eventId='+encodeURIComponent(eventId));setOrders(r.orders||[])}
+  await Promise.all([refreshInbox(),fetchAll()]);
  })}
  async function inviteGate(){await run(async()=>{
   if(!eventId)throw Error('Select an event first');
@@ -179,13 +209,12 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  })}
  function chooseOrganiser(id:string){
   setAdminTab('organisers');setSelectedOrganiser(id);const org=organisers.find(x=>x.id===id);
-  setEditName(org?.full_name||'');setEditBank(org?.bank_name||'');
+  setEditName(org?.full_name||'');
   setCanCreate(org?.can_create_events!==false);setCanGates(org?.can_invite_gates!==false);setCanPayments(org?.can_verify_payments!==false);
-  setEditAccount(org?.account_name||'');setEditNumber(org?.account_number||'');
  }
  async function configureOrganiser(){await run(async()=>{
   if(!selectedOrganiser)throw Error('Select an organiser');
-  await api('platform/organisers','POST',{action:'configure',userId:selectedOrganiser,fullName:editName,bankName:editBank,accountName:editAccount,accountNumber:editNumber});
+  await api('platform/organisers','POST',{action:'configure',userId:selectedOrganiser,fullName:editName});
   const res=await api('platform/organisers');setOrganisers(res.organisers||[]);setMessage('Organiser profile updated');
  })}
  async function searchAdminUsers(page=1){await run(async()=>{const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(userFilter)+'&page='+page);setAllUsers(r.accounts||[]);setUsersCount(r.count||0);setUserPage(page)})}
@@ -206,19 +235,61 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  async function updateRefund(orderId:string,action:'review_required'|'initiated'|'settled'){await run(async()=>{
   await api('refunds','PATCH',{orderId,action,note:refundNote});const r=await api('refunds');setRefundCases(r.orders||[]);setRefundNote('');setMessage('Refund status updated. Confirm actual bank movement independently.');
  })}
- async function scan(value=scanCode){await run(async()=>{
-  if(!eventId||!value.trim())throw Error('Select your event and scan a QR');
-  const r=await api('scan','POST',{eventId,code:value.trim()});setScanOutcome(r.outcome);setMessage(r.message);setScanCode('');
-  const a=await api('gates/activity?eventId='+encodeURIComponent(eventId));setScans(a.scans||[]);
- })}
- async function startScan(){if(!eventId){setMessage('Choose an assigned event first');return}
-  try{if(!window.isSecureContext)throw Error('Camera access requires HTTPS');const {BrowserQRCodeReader}=await import('@zxing/browser');setMessage('');setScanning(true);
-    await new Promise(r=>setTimeout(r,100));const preview=document.getElementById('gate-video') as HTMLVideoElement|null;
-    if(!preview)throw Error('Camera preview unavailable');const reader=new BrowserQRCodeReader();
-    const controller=await reader.decodeFromVideoDevice(undefined,preview,(result,_,control)=>{
-      if(result){control.stop();scanControls.current=null;setScanning(false);void scan(result.getText())}
-    });scanControls.current=controller;
-  }catch(error){scanControls.current?.stop();scanControls.current=null;setScanning(false);setMessage(error instanceof Error&&error.message.includes('HTTPS')?error.message:'Camera unavailable. Grant camera permission in your browser, then retry. Use HTTPS and check that no other app is using the camera.')}
+ function stopScan(){
+  cameraGeneration.current++;
+  scanControls.current?.stop();
+  scanControls.current=null;
+  setScanning(false);
+ }
+ async function scan(value=scanCode){
+  if(verificationInFlight.current)return;
+  verificationInFlight.current=true;
+  setScanOutcome('');
+  try{
+   await run(async()=>{
+    if(!eventId||!value.trim())throw Error('Select your event and enter a ticket code');
+    let result;
+    try{result=await api('scan','POST',{eventId,code:value.trim()})}
+    catch(error){throw Error('Could not verify ticket. Do not admit. '+(error instanceof Error?error.message:''))}
+    setScanOutcome(result.outcome);setScanCode('');
+    const history=await api('gates/activity?eventId='+encodeURIComponent(eventId));
+    setScans(history.scans||[]);
+   });
+  }finally{verificationInFlight.current=false}
+ }
+ async function startScan(){
+  if(!eventId||scanning||verificationInFlight.current)return;
+  const generation=++cameraGeneration.current;
+  setMessage('');setScanOutcome('');setScanning(true);
+  try{
+   if(!window.isSecureContext)throw Error('Camera access requires HTTPS');
+   const {BrowserQRCodeReader}=await import('@zxing/browser');
+   if(generation!==cameraGeneration.current)return;
+   const preview=document.getElementById('gate-video') as HTMLVideoElement|null;
+   if(!preview)throw Error('Camera preview unavailable');
+   const reader=new BrowserQRCodeReader();
+   const controller=await reader.decodeFromVideoDevice(undefined,preview,(result,_,control)=>{
+    if(!result||generation!==cameraGeneration.current)return;
+    cameraGeneration.current++;
+    control.stop();scanControls.current=null;setScanning(false);void scan(result.getText());
+   });
+   if(generation===cameraGeneration.current)scanControls.current=controller;
+   else controller.stop();
+  }catch(error){
+   if(generation!==cameraGeneration.current)return;
+   stopScan();
+   setMessage(error instanceof Error&&error.message.includes('HTTPS')?error.message:
+    'Camera unavailable. Check camera permissions or enter the ticket code below.');
+  }
+ }
+ function resetPortalHome(){
+  setMessage('');
+  if(role==='platform-admin')setAdminTab('overview');
+  if(role==='organiser')setOrganiserTab('dashboard');
+  if(role==='gate'){
+   stopScan();setEventId('');setScanCode('');setScanOutcome('');setScans([]);
+  }
+  window.scrollTo({top:0,behavior:'instant'});
  }
  async function signout(){await api('auth/logout','POST');window.location.assign('/login/'+role)}
  const input=(label:string,value:string,onChange:(v:string)=>void,type='text')=><label className="rw-field">{label}<input value={value} onChange={e=>onChange(e.target.value)} type={type}/></label>;
@@ -230,11 +301,14 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   .sort((a,b)=>sortBy==='price'?a.price_ngn-b.price_ngn:sortBy==='latest'?new Date(b.starts_at).getTime()-new Date(a.starts_at).getTime():new Date(a.starts_at).getTime()-new Date(b.starts_at).getTime());
  const btn=(text:string,callback:()=>void,secondary=false)=><button className={secondary?'ghost':'primary'} disabled={busy} onClick={callback}>{text}</button>;
  if(!valid)return <main className="rw-shell"><h1>Unknown interface</h1><a href="/login/user">User login</a></main>;
- if(loading)return <main className="rw-shell"><p>Loading your EventPass account…</p></main>;
+ if(loading)return <EventPassLoading label={"Opening "+title+" workspace"}/>;
  if(!me)return <main className="rw-shell"><h1>{title}</h1><p>Sign in to continue.</p><a className="rw-primary-link" href={'/login/'+role}>Sign in to {title}</a></main>;
  if(role==='organiser'&&me.role==='user'&&me.requested_role==='organiser')return <main className="rw-shell"><h1>Organiser approval pending</h1><p>Your Google or email account is registered. The Platform Administrator must approve your organiser request before your management interface becomes active.</p><p>{me.email}</p><a className="google-auth-button" href="/api/auth/google?portal=organiser&intent=link"><span className="google-g" aria-hidden="true">G</span> Link Google account</a><button onClick={()=>{void signout()}}>Sign out</button></main>;
  if(!allowed)return <main className="rw-shell"><h1>{title} access inactive</h1><p>Your account does not have permission to access this interface.</p><p>Organisers require administrator approval. Gate operators require an invitation from an organiser and a Google-verified email.</p><a href="/login/user">Open User interface</a></main>;
- return <main className="rw-shell"><style>{`.rw-workspace-shell{display:grid;grid-template-columns:225px minmax(0,1fr);gap:16px;align-items:start}.rw-workspace-shell>.rw-layout{width:100%}@media(max-width:800px){.rw-workspace-shell{grid-template-columns:1fr}.rw-workspace-shell>aside,.rw-workspace-shell>nav{position:static!important}.rw-workspace-shell>nav{grid-template-columns:repeat(2,minmax(0,1fr));display:grid!important}.rw-workspace-shell>nav .eyebrow{grid-column:1/-1}}`}</style><div className="rw-top"><div><a href="/" className="rw-brand">◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title} · Nexx Future</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
+ return <main className="rw-shell" data-portal={role}><style>{`.rw-workspace-shell{display:grid;grid-template-columns:225px minmax(0,1fr);gap:16px;align-items:start}.rw-workspace-shell>.rw-layout{width:100%}@media(max-width:800px){.rw-workspace-shell{grid-template-columns:1fr}.rw-workspace-shell>aside,.rw-workspace-shell>nav{position:static!important}.rw-workspace-shell>nav{grid-template-columns:repeat(2,minmax(0,1fr));display:grid!important}.rw-workspace-shell>nav .eyebrow{grid-column:1/-1}}`}</style><div className="rw-top"><div><a href={portalHome[role]} className="rw-brand" aria-label={title+' home'} onClick={event=>{
+   if(role==='user'||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+   event.preventDefault();resetPortalHome();
+  }}>◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title} · Nexx Future</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
  <nav className="rw-portal-switch" aria-label={`${title} workspace navigation`}><span aria-current="page">{title} workspace</span></nav>
  {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
  {role==='platform-admin'&&<header className="rw-panel" style={{marginBottom:16}}><div className="eyebrow">NEXX EVENTPASS / CONTROL CENTER</div><h1>Platform administration</h1><p>Manage your platform from one focused workspace at a time.</p></header>}
@@ -251,7 +325,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     {selectedReport===e.id&&<div className="rw-profile" style={{width:'100%'}}>
      <h3>Event operations</h3><p>Venue: {e.venue}</p>
      <div className="rw-stats"><div className="rw-stat"><b>{e.capacity}</b><small>Capacity</small></div>
-      <div className="rw-stat"><b>{e.tickets_issued}</b><small>Issued</small></div>
+      <div className="rw-stat"><b>{e.tickets_issued}</b><small>Issued · {e.external_tickets_issued} external</small></div>
       <div className="rw-stat"><b>{e.reserved_seats}</b><small>Reservations</small></div>
       <div className="rw-stat"><b>{e.checked_in}</b><small>Check-ins</small></div>
       <div className="rw-stat"><b>{e.refund_cases}</b><small>Refund cases</small></div>
@@ -261,6 +335,27 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    </div>)}
    {!eventReports.length&&<p>No events match this search.</p>}
   </section>
+  {adminTab==='refunds'&&<><section className="rw-panel rw-wide">
+    <h2>Organiser bank account verification</h2>
+    <p>Confirm the bank, beneficiary and account number independently before verifying.</p>
+    {!bankAccounts.length&&<p>No accounts submitted.</p>}
+    {bankAccounts.map(account=><div className="rw-list-item" key={account.id}>
+      <div><strong>{account.organiser_name} · {account.status}</strong><p>{account.bank_name} · {account.account_name}</p><p>{account.account_number}</p>{account.review_note&&<p>{account.review_note}</p>}</div>
+      {account.status==='pending'&&<form className="rw-actions" onSubmit={event=>{
+       event.preventDefault();
+       const submitter=(event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement|null;
+       const note=String(new FormData(event.currentTarget).get('note')||'').trim();
+       const decision=submitter?.value;
+       if(!decision)return;
+       if(decision==='rejected'&&!note){setMessage('Enter a reason for rejection');return}
+       void reviewBank(account.id,decision,note);
+      }}>
+       <label className="rw-field">Review note<input name="note" maxLength={500}/></label>
+       <button type="submit" className="primary" value="verified" disabled={busy}>Verify account</button>
+       <button type="submit" className="ghost" value="rejected" disabled={busy}>Reject account</button>
+      </form>}
+    </div>)}
+  </section><FinanceLedger admin/></>}
   <section className="rw-panel rw-wide" style={{display:adminTab==='refunds'?'':'none'}}><div className="eyebrow">PAYMENT EXCEPTIONS</div><h2>Refund and reconciliation desk</h2>
    <p>Expired reservations with payment evidence and rejected paid orders require manual settlement checks. Mark refunded only after verifying the transfer back to the buyer.</p>
    {input('Refund note or bank settlement reference',refundNote,setRefundNote)}
@@ -289,7 +384,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   </section>
   <section className="rw-panel rw-wide" style={{display:adminTab==='support'?'':'none'}}><div className="eyebrow">ORGANISER SUCCESS</div><h2>Support cases and assistance</h2>
    <p>Support cases are tenant-scoped. Review organiser problems, assign case status and record the resolution.</p>
-   {cases.map(c=><div className="rw-list-item" key={c.id}><div><b>{c.subject}</b><p>{c.organiser_name} · {c.status} · {c.priority}</p><small>{c.description}</small>{c.resolution&&<p>Resolution: {c.resolution}</p>}</div>
+   {cases.map(c=><div className="rw-list-item" key={c.id}><div><b>{c.subject}</b><p>{c.organiser_name} · {c.status} · {c.priority}</p><small> {c.description}{c.payment_order_id&&<> · <a href={'/api/orders/receipt?orderId='+c.payment_order_id} target="_blank" rel="noreferrer">View payment evidence</a></>}</small>{c.resolution&&<p>Resolution: {c.resolution}</p>}</div>
      <div className="rw-actions">{btn('Investigate',()=>{void updateCase(c.id,'in_progress',c.priority)},true)}{btn('Resolve',()=>{void updateCase(c.id,'resolved',c.priority)})}</div></div>)}
    {!cases.length&&<p>No open support requests.</p>}
    <label className="rw-field">Support resolution / guidance<textarea rows={3} value={caseResolution} onChange={e=>setCaseResolution(e.target.value)}/></label>
@@ -330,10 +425,6 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
       {btn('Save tenant permissions',()=>{void saveCapabilities()})}
       <h3>Configure organiser profile</h3>
       {input('Display name',editName,setEditName)}
-      {input('Bank name',editBank,setEditBank)}
-      {input('Bank account holder',editAccount,setEditAccount)}
-      {input('Bank account number',editNumber,setEditNumber)}
-      <p>Changes to bank instructions are audited. Verify new bank details independently before saving.</p>
       {btn('Save organiser configuration',()=>{void configureOrganiser()})}
     </>:<p>This applicant is not approved. Approve before configuring the organiser profile.</p>}
    </div>)}
@@ -363,6 +454,10 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    </div>)}
    {!moderationEvents.length&&<p>No pending event or media submissions.</p>}
   </section></div></div>}
+ {role==='organiser'&&inbox.unread>0&&<div className="rw-message" role="status">
+  <span>{inbox.unread} new payment {inbox.unread===1?'receipt needs':'receipts need'} review.</span>
+  <button type="button" onClick={()=>setOrganiserTab('payments')}>Open pending payments</button>
+ </div>}
  {role==='organiser'&&<div className="rw-workspace-shell"><nav className="rw-panel" aria-label="Organiser navigation" style={{display:'grid',gap:8,alignContent:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:8}}>ORGANISER WORKSPACE</div>
    {(['dashboard','events','tickets','offline','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>setOrganiserTab(tab)} style={{textTransform:'capitalize',textAlign:'left',padding:12}}>{tab==='tickets'?'Ticket Studio':tab==='offline'?'Offline Ticketing':tab==='team'?'Gate Management':tab==='payments'?'Payments & Bank Details':tab==='dashboard'?'Overview':tab}</button>)}
   </nav><div className="rw-layout" style={{minWidth:0}}>
@@ -405,16 +500,41 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     <small>{money(e.confirmed_revenue_ngn)} confirmed revenue · Available {Math.max(0,e.capacity-e.tickets_issued-e.reserved_seats)} of {e.capacity}</small></div></div>)}
    {!eventReports.length&&<p>Event reporting will appear after you create an event.</p>}
   </section>
+  {organiserTab==='payments'&&<section className="rw-panel rw-wide" aria-label="Pending payments">
+   <h2>Pending payments ({inbox.pending})</h2>
+   <p>A buyer submitted a receipt for each payment below. Confirm that funds arrived before approving.</p>
+   <div className="rw-actions">
+    {btn('Refresh pending payments',()=>{void run(refreshInbox)},true)}
+    {inbox.unread>0&&btn('Mark notifications read',()=>{void run(async()=>{await api('organiser/payment-inbox','PATCH');await refreshInbox()})},true)}
+   </div>
+   {!inbox.payments.length&&<p>No receipts awaiting review.</p>}
+   {inbox.payments.map(payment=><article key={payment.id} className="rw-list-item">
+    <div><strong>{payment.event_title}</strong> {!payment.read_at&&<small>· New receipt</small>}
+     <p>{payment.buyer_name} · {money(payment.amount_ngn)} · {payment.payment_reference}</p>
+     <p>Review by {nice(payment.reservation_expires_at)}</p>
+     <a href={'/api/orders/receipt?orderId='+payment.id} target="_blank" rel="noreferrer">View submitted receipt</a>
+    </div>
+    <div className="rw-actions">
+     {btn('Approve verified payment',()=>{if(window.confirm('Have you confirmed that the funds reached the account?'))void review(payment.id,'approved')})}
+     {btn('Reject payment',()=>{if(window.confirm('Reject this payment and keep the receipt available for support?'))void review(payment.id,'rejected')},true)}
+    </div>
+   </article>)}
+  </section>}
+  {organiserTab==='payments'&&<FinanceLedger key={orders.filter(order=>order.status==='approved').length} admin={false}/>}
   <section className="rw-panel rw-wide" style={{display:organiserTab==='payments'?'':'none'}}><h2 id="admin-refunds">Payment exceptions and refunds</h2>
    {input('Settlement reference / notes',refundNote,setRefundNote)}
    {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title}</b><p>{money(r.amount_ngn)} · {r.refund_status}</p><small>{r.buyer_email} · {r.refund_note||'Check bank settlement before taking action'}</small></div>
     <div className="rw-actions">{btn('Review',()=>{void updateRefund(r.id,'review_required')},true)}{btn('Refund initiated',()=>{void updateRefund(r.id,'initiated')},true)}{btn('Settled',()=>{void updateRefund(r.id,'settled')})}</div></div>)}
   </section>
-  <section className="rw-panel" id="organiser-payments" style={{display:organiserTab==='payments'?'':'none'}}><div className="eyebrow">PAYMENTS / CONFIGURATION</div><h2>Payment details & configuration</h2><p>Configure or update the bank account shown to customers on published events. Confirm the account holder and bank details before saving.</p>
-    {input('Bank name',bankName,setBankName)}{input('Account holder name',accountName,setAccountName)}{input('Account number',accountNumber,setAccountNumber)}
-    <p role="status">{!paymentLoaded?'Loading saved payment details…':!paymentSaved?'No payment account configured':paymentSaved.bank_name===bankName&&paymentSaved.account_name===accountName&&paymentSaved.account_number===accountNumber?'Saved account details are up to date':'Unsaved changes — customers will continue to see the previously saved details.'}</p>
-    {btn(paymentSaved?'Update payment details':'Save payment details',()=>{void saveBank()})}
-    <p>Payments are verified manually. Saving bank details does not approve any order or issue a QR ticket.</p>
+  <section className="rw-panel rw-wide" id="organiser-payments" style={{display:organiserTab==='payments'?'':'none'}}>
+   <h2>Organiser bank accounts</h2>
+   <p>Submit each account for Platform Admin verification. Verified accounts can be reused across your paid events.</p>
+   {bankAccounts.map(account=><div className="rw-list-item" key={account.id}>
+    <div><strong>{account.bank_name} · {account.status}</strong><p>{account.account_name} · {account.account_number}</p>{account.review_note&&<p>{account.review_note}</p>}</div>
+   </div>)}
+   <h3>Add bank account</h3>
+   {input('Bank name',bankName,setBankName)}{input('Account holder name',accountName,setAccountName)}{input('Account number',accountNumber,setAccountNumber)}
+   {btn('Submit bank account for review',()=>{void saveBank()})}
   </section>
   <section className="rw-panel" style={{display:organiserTab==='events'?'':'none'}}><div className="eyebrow">EVENT STUDIO</div><h2>Create and design an event</h2><p>Create as many events as you need. Your listing is reviewed before it appears publicly.</p>
   <label className="rw-field">Event visibility
@@ -439,12 +559,51 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   <div className="masque-poster-gallery">{masqueradePosterTemplates.map(t=><button type="button" key={t.id} aria-pressed={posterTemplate===t.id} className={'masque-poster-choice '+(posterTemplate===t.id?'selected':'')} onClick={()=>setPosterTemplate(posterTemplate===t.id?'none':t.id)}>
    <EventPosterDesign compact posterId={t.id} title={eventTitle||'Masked Apartment Party'} venue={venue||'Your Event Venue'} startsAt={startsAt||'2026-11-29T23:00:00'} priceNgn={Number(ticketPrice)||0} organiser={me?.full_name||'Event Organiser'} description={eventDescription}/>
    <span>{t.name}{posterTemplate===t.id?' ✓':''}</span></button>)}</div>
-  </details>{btn('Create event for verification',()=>{void createEvent()})}
+  </details>
+  {Number(ticketPrice)>0&&<label className="rw-field">Verified bank account for this event
+   <select value={eventBankId} onChange={e=>setEventBankId(e.target.value)}><option value="">{verifiedBanks.length?'Choose an account':'No verified account available'}</option>
+    {verifiedBanks.map(account=><option key={account.id} value={account.id}>{account.bank_name} · {account.account_number}</option>)}
+   </select>
+  </label>}
+  {Number(ticketPrice)>0&&!verifiedBanks.length&&<button type="button" className="ghost" onClick={()=>setOrganiserTab('payments')}>Add a bank account</button>}
+  <button type="button" className="primary" disabled={busy||(Number(ticketPrice)>0&&!eventBankId)} onClick={()=>{void createEvent()}}>Create event for verification</button>
   </section>
   <section className="rw-panel rw-wide" style={{display:organiserTab==='payments'?'':'none'}}><h2>Events and payment approvals</h2><label className="rw-field">Choose an event<select value={eventId} onChange={e=>{const id=e.target.value;setEventId(id);const selected=events.find(ev=>ev.id===id);if(selected){setEventDescription(selected.description||'');setEventCategory(selected.category||'Other');setTicketTheme(selected.ticket_theme||'aurora');setAdmissionLabel(selected.admission_label||'ADMIT ONE');setPosterTemplate(selected.poster_template||'none')}setLatestInvite('')}}><option value="">Select event</option>
   {events.filter(e=>e.organiser_id===me.id).map(e=><option value={e.id} key={e.id}>{e.title}</option>)}</select></label>
-  {orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.buyer_name||o.buyer_email||'User'}</b><p>{o.quantity} tickets · {money(o.amount_ngn)} · {o.status}</p><small>Bank reference: {o.payment_reference}</small><p>{o.status==='pending'&&o.reservation_expires_at?('Reservation ends '+nice(o.reservation_expires_at)):''}{o.refund_status&&o.refund_status!=='not_required'?' · Refund: '+o.refund_status:''}</p><p>{o.receipt_uploaded_at?<a href={'/api/orders/receipt?orderId='+o.id} target="_blank" rel="noreferrer">View submitted receipt</a>:'Receipt not submitted'}</p></div><div className="rw-actions">
-  {o.status==='pending'&&<>{btn('Approve',()=>{void review(o.id,'approved')})}{btn('Reject',()=>{void review(o.id,'rejected')},true)}</>}</div></div>)}
+  {events.some(event=>event.id===eventId&&event.price_ngn>0)&&<label className="rw-field">Checkout bank account
+   <select value={events.find(event=>event.id===eventId)?.payment_account_id||''} disabled={busy} onChange={e=>{
+    const paymentAccountId=e.target.value;
+    if(paymentAccountId)void run(async()=>{
+     await api('events','PATCH',{action:'payment_account',eventId,paymentAccountId});
+     await fetchAll();setMessage('Checkout bank account updated');
+    });
+   }}>
+    <option value="" disabled>Choose a verified account</option>
+    {verifiedBanks.map(account=><option key={account.id} value={account.id}>{account.bank_name} · {account.account_number}</option>)}
+   </select>
+  </label>}
+  {eventId&&<label className="rw-field"><input type="checkbox" disabled={busy} checked={Boolean(events.find(event=>event.id===eventId)?.onsite_payments_enabled)}
+   onChange={e=>{const enabled=e.target.checked;void run(async()=>{
+    await api('finance','PATCH',{action:'onsite',eventId,enabled});
+    await fetchAll();
+   })}}/> Accept onsite payments for this event</label>}
+  {orders.map(o=><div className="rw-list-item" key={o.id}><div><b>{o.buyer_name||o.buyer_email||'User'}</b><p>{o.quantity} tickets · {money(o.amount_ngn)} · {o.status}</p>
+   <small>Order {o.id}</small>
+   <p>{o.payment_method==='onsite'?'Onsite payment':o.payment_method==='free'?'Free ticket':'Bank reference: '+o.payment_reference}</p>
+   <p>{o.status==='pending'&&o.reservation_expires_at?('Reservation ends '+nice(o.reservation_expires_at)):''}{o.refund_status&&o.refund_status!=='not_required'?' · Refund: '+o.refund_status:''}</p>
+   {o.receipt_uploaded_at&&<a href={'/api/orders/receipt?orderId='+o.id} target="_blank" rel="noreferrer">View submitted receipt</a>}</div>
+   {o.status==='pending'&&<div className="rw-actions">
+    {o.payment_method==='onsite'?<form onSubmit={e=>{
+     e.preventDefault();
+     const data=new FormData(e.currentTarget);
+     void review(o.id,'approved',{collectedAmountNgn:Number(data.get('amount')),collectionReference:String(data.get('reference'))});
+    }}>
+      <label className="rw-field">Amount collected onsite (₦)<input type="number" name="amount" min={1} step={1} required/></label>
+      <label className="rw-field">Collection reference<input name="reference" minLength={5} maxLength={120} required/></label>
+      <button className="primary" type="submit" disabled={busy}>Confirm collection and issue tickets</button>
+    </form>:btn('Approve',()=>{void review(o.id,'approved')})}
+    {btn('Reject',()=>{void review(o.id,'rejected')},true)}
+   </div>}</div>)}
   {!eventId&&<p>Select an event to review payments and assign gate staff.</p>}</section>
   {eventId&&<section className="rw-panel rw-wide" style={{display:organiserTab==='tickets'?'':'none'}}><div className="eyebrow">CREATIVE MANAGER</div><h2>Event media & ticket designs</h2>
     <p>Upload real event posters, image galleries, short videos, or your own ticket artwork. Media appears to Users only after platform review. Image limit 2 MB; video teasers up to 3.5 MB.</p>
@@ -529,15 +688,26 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   <h1>{eventId?'Ready for entry':'Choose your assigned event'}</h1>
   <p>Only events assigned by your organiser appear here. Select one, start scanning and immediately verify entry.</p>
   {gates.length?<>
-   <div className="rw-gate-event-list">{gates.map(g=><button className={'rw-gate-event '+(eventId===g.event_id?'selected':'')} key={g.event_id} onClick={()=>{setEventId(g.event_id);setScanOutcome('');scanControls.current?.stop();setScanning(false)}}>
+   <div className="rw-gate-event-list" aria-label="Assigned events">{gates.map(g=><button className={'rw-gate-event '+(eventId===g.event_id?'selected':'')} key={g.event_id} disabled={busy} aria-pressed={eventId===g.event_id} onClick={()=>{stopScan();setEventId(g.event_id);setScanOutcome('');setScanCode('');setScans([]);setMessage('')}}>
     <strong>{g.title}</strong><small>{g.gate_label}</small></button>)}</div>
-   {eventId&&<div className="rw-gate-stage">
-    {!scanning&&<button type="button" className="primary" onClick={()=>{void startScan()}} style={{fontSize:18,padding:"18px 24px",width:"100%"}}>📷 Open camera scanner</button>}
-    <div className="rw-camera rw-gate-camera" style={{display:scanning?'block':'none'}}><video id="gate-video" autoPlay muted playsInline style={{width:'100%'}}/></div>{scanning&&btn('Stop scanning',()=>{scanControls.current?.stop();scanControls.current=null;setScanning(false)},true)}
-    {!!scanOutcome&&<div role="status" className={'rw-result '+scanOutcome}>
+    {eventId&&<div className="rw-gate-stage">
+    <div className="rw-scan-context"><span>Scanning for</span><strong>{gates.find(gate=>gate.event_id===eventId)?.title}</strong></div>
+    {busy&&<p role="status" className="rw-scan-verifying">Verifying ticket…</p>}
+    {!scanning&&<button type="button" className="primary" disabled={busy} onClick={()=>{void startScan()}} style={{fontSize:18,padding:"18px 24px",width:"100%"}}>📷 Open camera scanner</button>}
+    <div className="rw-camera rw-gate-camera" style={{display:scanning?'block':'none'}}><video id="gate-video" autoPlay muted playsInline style={{width:'100%'}}/>
+    {scanning&&<div className="rw-scan-target" aria-hidden="true"><div className="rw-scan-sweep"/></div>}</div>{scanning&&btn('Stop scanning',stopScan,true)}
+    <form onSubmit={e=>{e.preventDefault();stopScan();void scan()}}>
+      <label className="rw-field">Ticket code<input value={scanCode} onChange={e=>setScanCode(e.target.value)}
+        autoComplete="off" spellCheck={false} maxLength={2048} placeholder="Paste a code or use a USB scanner"/></label>
+      <button type="submit" className="ghost" disabled={busy||!scanCode.trim()}>Verify ticket code</button>
+    </form>
+    {!!scanOutcome&&<div key={scanOutcome} role="status" className={'rw-result '+scanOutcome}>
       <b>{scanOutcome==='approved'?'✓ VALID — ADMIT':scanOutcome==='duplicate'?'ALREADY CHECKED IN':scanOutcome==='wrong_event'?'WRONG EVENT':scanOutcome==='revoked'?'REVOKED TICKET':'✕ ENTRY REJECTED'}</b>
       <p>{scanOutcome==='approved'?'This ticket is genuine and has been redeemed.':scanOutcome==='duplicate'?'The ticket has already been used. Do not admit again.':'Do not admit this ticket. Ask the holder to contact the organiser.'}</p>
     </div>}
+    <details><summary>Recent scan activity</summary>
+      {scans.length?<ul>{scans.slice(0,10).map(scan=><li key={scan.id}>{scan.outcome.replaceAll('_',' ')} · {nice(scan.scanned_at)}</li>)}</ul>:<p>No scans recorded yet.</p>}
+    </details>
    </div>}
   </>:<div className="rw-empty"><h3>No assigned event</h3><p>Ask an organiser to invite your Google email. Your assigned event will appear here after confirmation.</p></div>}
  </div>}

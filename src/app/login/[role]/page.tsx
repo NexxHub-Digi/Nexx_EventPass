@@ -2,6 +2,8 @@
 import {useEffect,useState} from 'react';
 import {useParams} from 'next/navigation';
 import Link from 'next/link';
+import {portalHome} from '@/lib/portal-home';
+import EventPassLoading from '@/components/EventPassLoading';
 
 const portals={
  user:{label:'User',title:'Your Next',accent:'Event Awaits',description:'Discover events, book tickets and get your secure QR pass.'},
@@ -27,6 +29,8 @@ export default function RoleLogin(){
  const params=useParams<{role:string}>();
  const role=params.role as Role;
  const [switchOpen,setSwitchOpen]=useState(false);
+ const [signingIn,setSigningIn]=useState(false);
+ useEffect(()=>{const reset=()=>setSigningIn(false);window.addEventListener('pageshow',reset);return()=>window.removeEventListener('pageshow',reset)},[]);
  const [error,setError]=useState('');
  useEffect(()=>{
   const code=new URLSearchParams(window.location.search).get('oauth_error');
@@ -36,13 +40,14 @@ export default function RoleLogin(){
  },[]);
  if(!Object.prototype.hasOwnProperty.call(portals,role))return <main className="ep-login"><Link href="/login/user">Open EventPass sign-in</Link></main>;
  const current=portals[role],oauthRole=role==='platform-admin'?'platform_admin':role;
+ if(signingIn)return <EventPassLoading label="Connecting to Google"/>;
  return <main className="ep-login">
   <div className="ep-ambient ep-ambient-one"/><div className="ep-ambient ep-ambient-two"/>
   <div className="ep-login-layout">
    <header className="ep-login-header">
-    <Link href="/" className="ep-logo" aria-label="Nexx EventPass home"><span className="ep-logo-icon">✓</span><span>Nexx <b>EventPass</b></span></Link>
+    <Link href={portalHome[role]} className="ep-logo" aria-label={current.label+' home'}><span className="ep-logo-icon">✓</span><span>Nexx <b>EventPass</b></span></Link>
     <div className="ep-switch-wrap">
-     <button type="button" className="ep-switch-button" aria-haspopup="menu" aria-expanded={switchOpen} onClick={()=>setSwitchOpen(!switchOpen)}><span aria-hidden="true">⇄</span> Switch <span aria-hidden="true">⌄</span></button>
+     <button type="button" className="ep-switch-button" aria-label="Switch portal" title="Switch portal" aria-expanded={switchOpen} onClick={()=>setSwitchOpen(!switchOpen)}><svg aria-hidden="true" width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h16m-4-4 4 4-4 4M21 17H5m4-4-4 4 4 4"/></svg></button>
      {switchOpen&&<><button type="button" className="ep-switch-dismiss" aria-label="Close portal menu" onClick={()=>setSwitchOpen(false)}/><nav className="ep-switch-menu" aria-label="Choose portal">{(Object.keys(portals) as Role[]).map(key=><Link key={key} href={'/login/'+key} aria-current={key===role?'page':undefined} onClick={()=>setSwitchOpen(false)}>{portals[key].label}{key===role&&<span>✓</span>}</Link>)}</nav></>}
     </div>
    </header>
@@ -60,7 +65,7 @@ export default function RoleLogin(){
       <h1>{current.title}<br/><span>{current.accent}</span></h1>
       <p className="ep-login-description">{current.description}</p>
       {error&&<div role="alert" className="ep-login-error">{error}</div>}
-      <a className="ep-google-button" href={'/api/auth/google?portal='+encodeURIComponent(oauthRole)}><svg aria-hidden="true" width="24" height="24" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6C44.4 38.04 46.98 31.9 46.98 24.55z"/><path fill="#FBBC05" d="M10.53 28.59A14.4 14.4 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.2A23.86 23.86 0 0 0 0 24c0 3.87.93 7.51 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.8l-7.73-6c-2.14 1.44-4.89 2.3-8.18 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.97 6.19C6.51 42.62 14.62 48 24 48z"/></svg>Continue with Google</a>
+      <a className="ep-google-button" onClick={event=>{if(!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey)setSigningIn(true)}} href={'/api/auth/google?portal='+encodeURIComponent(oauthRole)}><svg aria-hidden="true" width="24" height="24" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6C44.4 38.04 46.98 31.9 46.98 24.55z"/><path fill="#FBBC05" d="M10.53 28.59A14.4 14.4 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.2A23.86 23.86 0 0 0 0 24c0 3.87.93 7.51 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.8l-7.73-6c-2.14 1.44-4.89 2.3-8.18 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.97 6.19C6.51 42.62 14.62 48 24 48z"/></svg>Continue with Google</a>
       <p className="ep-login-note">{role==='user'?'One tap to discover your next experience.':role==='organiser'?'New organiser accounts require platform approval.':role==='gate'?'An accepted invitation is required to enter.':'Authorised administrators only.'}</p>
       <div className="ep-benefits"><div><span>▦</span><small>Discover<br/>Events</small></div><div><span>◇</span><small>Book<br/>Tickets</small></div><div><span>▣</span><small>Get QR<br/>Pass</small></div></div>
      </div>

@@ -2,7 +2,7 @@ import {currentUser} from '@/lib/security';
 import {db} from '@/lib/db';
 import type {CurrentUser} from '@/lib/security';
 
-export type OfflinePermission = 'view'|'generate'|'activate'|'export'|'distribute'|'sales'|'reports'|'reissue'|'staff';
+export type OfflinePermission = 'view'|'generate'|'activate'|'export'|'distribute'|'sales'|'reports'|'revoke'|'reissue'|'staff';
 export const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function offlineAccess(eventId:string,permission:OfflinePermission) {
  const u=await currentUser();

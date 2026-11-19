@@ -13,11 +13,20 @@
     "android": {
       "package": "com.nexx.eventpass.admin",
       "blockedPermissions": [
-        "android.permission.CAMERA"
-      ]
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-foreground.png",
+        "backgroundColor": "#132d54"
+      }
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "icon": "./assets/app-icon.png"
   }
 }

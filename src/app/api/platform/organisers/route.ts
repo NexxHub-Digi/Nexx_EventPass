@@ -5,7 +5,6 @@ export const runtime='nodejs';
 export async function GET(){
  try{const u=await currentUser();if(!u||u.role!=='platform_admin'||u.account_status!=='active')return fail('Platform admin only',403);
   const accounts=await db()`select u.id,u.email,u.full_name,u.role,u.account_status,u.requested_role,u.created_at,u.approved_at,u.approved_by,
-  pay.bank_name,pay.account_name,pay.account_number,pay.updated_at as payment_updated_at,
   coalesce(cap.can_create_events,true) as can_create_events,
   coalesce(cap.can_invite_gates,true) as can_invite_gates,
   coalesce(cap.can_verify_payments,true) as can_verify_payments,
@@ -13,7 +12,7 @@ export async function GET(){
   (select count(*)::int from ticket_orders o join events e on e.id=o.event_id where e.organiser_id=u.id and o.status='pending') as pending_orders,
   (select count(*)::int from tickets t join events e on e.id=t.event_id where e.organiser_id=u.id) as tickets_issued,
   (select count(distinct g.user_id)::int from gate_assignments g join events e on e.id=g.event_id where e.organiser_id=u.id) as gate_operators
-  from app_users u left join organiser_payment_accounts pay on pay.organiser_id=u.id
+  from app_users u
   left join organiser_capabilities cap on cap.organiser_id=u.id
   where u.requested_role='organiser' or u.role='organiser'
   order by case when u.requested_role='organiser' then 0 else 1 end,u.created_at desc limit 300`;
@@ -46,17 +45,12 @@ export async function POST(req:Request){
   if(!/^[0-9a-f-]{36}$/i.test(id)||id===admin.id)return fail('Invalid organiser account',400);
   const target=await db()`select id from app_users where id=${id} and role='organiser' limit 1`;
   if(!target[0])return fail('Only existing organisers may be configured',409);
-  const fullName=str(b.fullName,100),bankName=str(b.bankName,120),accountName=str(b.accountName,140),accountNumber=str(b.accountNumber,20);
+  const fullName=str(b.fullName,100);
   if(fullName.length<2)return fail('A valid organiser display name is required',400);
-  const hasBank=Boolean(bankName||accountName||accountNumber);
-  if(hasBank&&(!bankName||!accountName||!/^[0-9]{10,12}$/.test(accountNumber)))return fail('Valid bank name, account name and 10–12 digit number required',400);
   await db().begin(async tx=>{
    await tx`update app_users set full_name=${fullName} where id=${id} and role='organiser'`;
-   if(hasBank)await tx`insert into organiser_payment_accounts(organiser_id,bank_name,account_name,account_number)
-      values(${id},${bankName},${accountName},${accountNumber})
-      on conflict(organiser_id) do update set bank_name=excluded.bank_name,account_name=excluded.account_name,account_number=excluded.account_number,updated_at=now()`;
    await tx`insert into platform_admin_actions(admin_id,target_user_id,action,details)
-      values(${admin.id},${id},'configure_organiser',${JSON.stringify({fullName,bankUpdated:hasBank})}::jsonb)`;
+      values(${admin.id},${id},'configure_organiser',${JSON.stringify({fullName})}::jsonb)`;
   });
   return ok({success:true,action});
  }
