@@ -22,9 +22,9 @@ export function normaliseEntryCode(input:string):string|null {
 export function entryCodeForTicket(ticketId:string,eventId:string):string {
  const digest=createHmac('sha256',masterKey()).update('EventPass:manual-admission:v1:')
   .update(eventId.toLowerCase()).update(':').update(ticketId.toLowerCase()).digest();
- const sixty=(BigInt('0x'+digest.subarray(0,8).toString('hex'))>>4n);
+ const sixty=(BigInt('0x'+digest.subarray(0,8).toString('hex'))>>BigInt(4));
  let value=sixty,encoded='';
- for(let i=0;i<12;i++){encoded=alphabet[Number(value&31n)]+encoded;value>>=5n}
+ for(let i=0;i<12;i++){encoded=alphabet[Number(value&BigInt(31))]+encoded;value>>=BigInt(5)}
  return 'NX-'+encoded.slice(0,4)+'-'+encoded.slice(4,8)+'-'+encoded.slice(8,12);
 }
 export function entryCodeHash(input:string):string|null {
