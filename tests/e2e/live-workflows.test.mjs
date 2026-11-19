@@ -216,7 +216,8 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(approved.delivery,'in_app','user can retrieve ticket immediately');
   expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),409,'prevent double approval');
   const tickets=expect(await req('/api/tickets',{cookie:buyer.cookie}),200,'ticket wallet').tickets;
-  const ticket=tickets.find(t=>t.event_id===event.id);assert.ok(ticket?.qr?.startsWith('EVP2.'));
+  const ticket=tickets.find(t=>t.event_id===event.id);assert.ok(ticket?.qr?.startsWith('EVP3.'));
+  assert.match(ticket.admission_code,/^[2-9A-HJ-NP-Z]{12}$/,'issued online ticket has printable manual code');
   assert.ok(ticket?.delivered_at,'ticket is immediately delivered into User wallet');
   assert.equal(ticket?.ticket_theme,'stj-royal-gold','issued ticket retains the selected luxurious STJ design');
   assert.equal(ticket?.ticket_art_id,ticketArtwork.id,'approved custom artwork is attached to each issued QR pass');
@@ -301,7 +302,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const batch=expect(await post('/api/offline/batches',org.cookie,{eventId:privateEvent.id,quantity:2,category:'General',label:'Offline E2E',active:false,idempotencyKey:key}),201,'generate inactive offline batch').batch;
   assert.equal(expect(await post('/api/offline/batches',org.cookie,{eventId:privateEvent.id,quantity:2,active:false,idempotencyKey:key}),200,'idempotent offline batch').existing,true);
   const inventory=expect(await req('/api/offline/tickets?eventId='+privateEvent.id,{cookie:org.cookie}),200,'offline inventory').tickets;
-  assert.equal(inventory.length,2);assert.ok(inventory.every(t=>t.qr?.startsWith('EVP2.')&&t.active===false),'encrypted inactive tickets');
+  assert.equal(inventory.length,2);assert.ok(inventory.every(t=>t.qr?.startsWith('EVP3.')&&t.admission_code?.length===12&&t.active===false),'compact encrypted offline tickets include backup codes');
   const first=inventory[0];
   const offlinePath='/api/offline/tickets?eventId='+privateEvent.id;
   const searchPath=offlinePath+'&search='+first.id.slice(0,8);
@@ -337,7 +338,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const replacement=expect(await post('/api/offline/reissue',org.cookie,{eventId:privateEvent.id,ticketId:second.id,reason:'Lost printed ticket'}),200,'atomic replacement');
   assert.ok(replacement.replacement.id!==second.id);
   const [newPass]=expect(await req(offlinePath,{cookie:org.cookie}),200,'replacement credential').tickets.filter(t=>t.id===replacement.replacement.id);
-  assert.ok(newPass.qr?.startsWith('EVP2.'));
+  assert.ok(newPass.qr?.startsWith('EVP3.'));
   assert.notEqual(newPass.qr,second.qr,'replacement has a different QR');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:second.qr}),200,'revoked original').outcome,'revoked');
   const [externalReport] = expect(await req('/api/platform/event-directory?eventId='+privateEvent.id,{cookie:adminCookie}),200,'external inventory in admin report').events;
