@@ -1,0 +1,110 @@
+name: EventPass standalone Android preview APKs
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Select an app or build all four
+        type: choice
+        default: all
+        options:
+          - all
+          - user
+          - organiser
+          - gate
+          - platform-admin
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/native-android-preview-apks.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eventpass-preview-apk-${{ github.ref }}-${{ github.event.inputs.app || 'all' }}
+  cancel-in-progress: false
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.choose.outputs.apps }}
+    steps:
+      - id: choose
+        env:
+          APP: ${{ github.event.inputs.app || 'all' }}
+        run: |
+          case "$APP" in
+            all) echo 'apps=["user","organiser","gate","platform-admin"]' >> "$GITHUB_OUTPUT" ;;
+            user|organiser|gate|platform-admin) printf 'apps=["%s"]\n' "$APP" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Invalid app selection" >&2; exit 1 ;;
+          esac
+
+  android:
+    name: Standalone APK / ${{ matrix.app }}
+    needs: select
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        app: ${{ fromJSON(needs.select.outputs.apps) }}
+    env:
+      CI: '1'
+      EXPO_NO_GIT_STATUS: '1'
+      EAS_BUILD_PROFILE: preview
+      EXPO_PUBLIC_RELEASE_CHANNEL: preview
+      EXPO_PUBLIC_API_URL: https://nexx-eventpass-git-staging-nexxs-projects-903f5c1d.vercel.app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify preinstalled Android SDK
+        run: |
+          test -n "${ANDROID_HOME:-}"
+          test -d "$ANDROID_HOME"
+          test -x "$ANDROID_HOME/platform-tools/adb"
+          echo "Android SDK available on the hosted GitHub runner"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Confirm isolated Preview API
+        run: |
+          node - <<'NODE'
+          const origin = new URL(process.env.EXPO_PUBLIC_API_URL);
+          if (origin.protocol !== 'https:' || origin.hostname === 'nexx-eventpass.vercel.app' ||
+              !origin.hostname.startsWith('nexx-eventpass-git-staging-') || origin.pathname !== '/') {
+            throw new Error('Internal APKs must target isolated staging, not production');
+          }
+          NODE
+      - name: Install native app dependencies
+        working-directory: apps/${{ matrix.app }}
+        run: npm install --no-audit --no-fund
+      - name: Check native TypeScript
+        working-directory: apps/${{ matrix.app }}
+        run: npx tsc --noEmit
+      - name: Generate Android native project from Expo config
+        working-directory: apps/${{ matrix.app }}
+        run: npx expo prebuild --platform android --clean --no-install
+      - name: Build self-contained release variant for internal testing
+        working-directory: apps/${{ matrix.app }}/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+      - name: Verify installable test-signed APK
+        run: |
+          APK="apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          apksigner verify --print-certs "$APK" | grep -i "Android Debug"
+      - name: Upload Android internal test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: eventpass-${{ matrix.app }}-internal-apk-${{ github.sha }}
+          path: apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 7

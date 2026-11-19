@@ -21,7 +21,7 @@ export async function GET(){
 }
 export async function POST(req:Request){
  try{const admin=await currentUser();if(!admin||admin.role!=='platform_admin'||admin.account_status!=='active')return fail('Platform admin only',403);
- const b=await payload(req),action=str(b.action,30),id=str(b.userId,40),email=str(b.email,254).toLowerCase();
+ const b=await payload(req),action=str(b.action,30),id=str(b.userId,40),email=str(b.email,254).toLowerCase(),reason=str(b.reason,400);
  if(!['approve','reject','suspend','revoke','restore','create','configure','capabilities'].includes(action))return fail('Unknown approval action',400);
  if(action==='capabilities'){
   if(!/^[0-9a-f-]{36}$/i.test(id)||id===admin.id)return fail('Invalid organiser ID',400);
@@ -67,12 +67,21 @@ export async function POST(req:Request){
  if(!/^[0-9a-f-]{36}$/i.test(id)||id===admin.id)return fail('Invalid organiser account');
  const record=await db()`select id,role,account_status,requested_role from app_users where id=${id} limit 1`;
  if(!record[0]||record[0].role==='platform_admin')return fail('Cannot modify this account',403);
+ if(action==='reject'){
+  if(reason.length<10)return fail('Explain why this organiser application was rejected (at least 10 characters)',400);
+  const result=await db().begin(async tx=>{
+   const [pending]=await tx`select id from app_users where id=${id} and role='user' and requested_role='organiser' and account_status='active' for update`;
+   if(!pending)return {rejected:false};
+   await tx`update app_users set requested_role=null where id=${id}`;
+   await tx`insert into platform_admin_actions(admin_id,target_user_id,action,details)
+     values(${admin.id},${id},'reject',${tx.json({reason})})`;
+   return {rejected:true};
+  });
+  return result.rejected?ok({success:true,action}):fail('Organiser application is no longer pending',409);
+ }
  if(action==='approve'){
   if(record[0].requested_role!=='organiser'||record[0].role!=='user'||record[0].account_status!=='active')return fail('Not a pending organiser request',409);
   await db()`update app_users set role='organiser',requested_role=null,account_status='active',approved_by=${admin.id},approved_at=now() where id=${id}`;
- }else if(action==='reject'){
-  if(record[0].requested_role!=='organiser')return fail('Not an organiser application',409);
-  await db()`update app_users set requested_role=null,account_status='active' where id=${id}`;
  }else if(action==='suspend'||action==='revoke'){
   if(record[0].role!=='organiser')return fail('Not an organiser',409);
   await db()`update app_users set account_status='suspended' where id=${id}`;

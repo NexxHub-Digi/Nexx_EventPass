@@ -9,3 +9,8 @@ apps/mobile/node_modules/
 dist/
 build/
 .DS_Store
+
+# Generated Expo CNG roots (compiled only in Actions/device environments)
+apps/*/android/
+apps/*/ios/
+apps/*/.expo/
