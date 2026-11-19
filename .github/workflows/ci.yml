@@ -44,3 +44,17 @@ jobs:
         working-directory: apps/${{ matrix.app }}
         run: npx expo export --platform ios --output-dir /tmp/eventpass-ios-${{ matrix.app }}
 
+
+  legacy-web-ticket-security:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+      - run: npm run typecheck
