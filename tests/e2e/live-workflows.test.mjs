@@ -243,6 +243,12 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(ticket?.delivered_at,'ticket is immediately delivered into User wallet');
   assert.equal(ticket?.ticket_theme,'stj-royal-gold','issued ticket retains the selected luxurious STJ design');
   assert.equal(ticket?.ticket_art_id,ticketArtwork.id,'approved custom artwork is attached to each issued QR pass');
+  const postIssueDraft=expect(await post(designEndpoint,org.cookie,{...updatedDraft,fields:{...updatedDraft.fields,notes:'New draft after first issuance'}}),201,'new draft after ticket issue').draft;
+  assert.equal(postIssueDraft.version,3);
+  const issuedAfterDraft=expect(await req('/api/tickets',{cookie:buyer.cookie}),200,'issued wallet after design change').tickets.find(t=>t.id===ticket.id);
+  assert.equal(issuedAfterDraft.qr,ticket.qr,'draft changes cannot change existing signed QR');
+  assert.equal(issuedAfterDraft.ticket_theme,ticket.ticket_theme,'issued ticket theme snapshot remains unchanged');
+  assert.equal(issuedAfterDraft.ticket_art_id,ticket.ticket_art_id,'issued ticket artwork snapshot remains unchanged');
   expect(await req('/api/events/media',{cookie:org.cookie,method:'DELETE',body:{id:ticketArtwork.id}}),409,'issued artwork cannot be removed');
   assert.equal(ticket?.admission_label,'ADMIT ONE — MASK COMPULSORY','issued ticket preserves approved admission wording');
   expect(await req('/api/events/media?id='+artworkId),200,'verified poster publicly accessible');
