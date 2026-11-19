@@ -68,6 +68,10 @@ async function verify(v:string){if(scanLock.current)return;scanLock.current=true
   setHistory(h=>[{id:Date.now(),eventId,outcome:r.outcome,at:new Date().toLocaleTimeString()},...h].slice(0,100));
   setCounts(c=>({approved:c.approved+(r.outcome==='approved'?1:0),denied:c.denied+(r.outcome==='approved'?0:1)}));
   void refreshHistory(eventId);
+ } else if(r.entry_method==='manual'&&r.outcome==='invalid'){
+  // Invalid rehearsal code guesses are deliberately audited for rate-limiting.
+  // Refresh from the server instead of silently hiding those audit records.
+  void refreshHistory(eventId);
  }
  setCode('');
  })}finally{scanLock.current=false}}
