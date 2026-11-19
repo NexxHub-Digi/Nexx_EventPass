@@ -63,6 +63,18 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const setting=await req('/api/platform/settings',{cookie:adminCookie,method:'PATCH',body:{key:'help_text',value:'E2E help instructions'}});
   expect(setting,200,'admin saves platform config');
   assert.equal(expect(await req('/api/platform/settings',{cookie:adminCookie}),200,'platform settings').settings.help_text,'E2E help instructions');
+  const rejectedApplicant=await signUp('rejected-applicant','organiser');
+  expect(await post('/api/platform/organisers',wrong.cookie,{action:'reject',userId:rejectedApplicant.id,reason:'Incomplete organiser documentation'}),403,'User cannot reject organiser applications');
+  expect(await post('/api/platform/organisers',adminCookie,{action:'reject',userId:rejectedApplicant.id}),400,'admin rejection requires a reason');
+  expect(await post('/api/platform/organisers',adminCookie,{action:'reject',userId:rejectedApplicant.id,reason:'Too short'}),400,'reject short rationale');
+  assert.equal(expect(await req('/api/auth/me',{cookie:rejectedApplicant.cookie}),200,'rejection not yet submitted').user.requested_role,'organiser');
+  expect(await post('/api/platform/organisers',adminCookie,{action:'reject',userId:rejectedApplicant.id,reason:'Required organiser registration documents were not supplied'}),200,'audited rejection');
+  const rejectedProfile=expect(await req('/api/auth/me',{cookie:rejectedApplicant.cookie}),200,'rejected user remains signed in').user;
+  assert.equal(rejectedProfile.role,'user','rejection must not promote or suspend original User account');
+  assert.equal(rejectedProfile.requested_role,null,'organiser request removed only on successful decision');
+  expect(await post('/api/platform/organisers',adminCookie,{action:'reject',userId:rejectedApplicant.id,reason:'Second rejection should fail'}),409,'already rejected application cannot be rejected twice');
+  const rejectionAudit=expect(await req('/api/platform/audit',{cookie:adminCookie}),200,'admin sees rejection audit').history.find(item=>item.target_email===rejectedApplicant.email&&item.action==='reject');
+  assert.equal(rejectionAudit?.details?.reason,'Required organiser registration documents were not supplied');
   expect(await post('/api/platform/organisers',adminCookie,{action:'approve',userId:org.id}),200,'approve organiser');
   assert.equal(expect(await req('/api/auth/me',{cookie:org.cookie}),200,'approved role').user.role,'organiser');
   const opened=expect(await post('/api/support/cases',org.cookie,{subject:'Need verification assistance',description:'Please help review this test event and bank settings',priority:'high'}),201,'organiser opens support case').case;
