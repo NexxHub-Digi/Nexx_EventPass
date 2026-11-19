@@ -47,3 +47,16 @@ test('manual gate codes are one-way indexed and cannot bypass normal single-use 
  assert.match(migration,/primary key\(event_id,code_hash\)/);
  assert.doesNotMatch(migration,/code_plaintext/);
 });
+
+test('legacy entry-code backfill is opt-in, indexes offline and online tickets and never stores plaintext',()=>{
+ const migration=read('scripts/backfill-entry-codes.mjs');
+ assert.match(migration,/process\.argv\.includes\('--apply'\)/);
+ assert.match(migration,/ENTRY_CODE_BACKFILL_CONFIRM/);
+ assert.match(migration,/ENTRY_CODE_BACKFILL_ALLOW_PRODUCTION/);
+ assert.match(migration,/from tickets where status='issued'/);
+ assert.match(migration,/from offline_tickets where status='issued'/);
+ assert.match(migration,/on conflict do nothing returning code_hash/);
+ assert.match(migration,/createHmac\('sha256',key\)/);
+ assert.match(migration,/EventPass:entry-lookup:v1:/);
+ assert.doesNotMatch(migration,/insert into ticket_entry_codes\([^)]*plaintext/);
+});
