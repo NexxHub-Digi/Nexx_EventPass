@@ -52,6 +52,6 @@ export async function POST(req:Request){
     returning id,event_id,version,theme_id as theme,mode,fields,enabled,created_at`;
    return {draft:row};
   });
-  return 'error' in result?fail(result.error,result.status):ok(result,201);
+  return 'error' in result?fail(String(result.error),typeof result.status==='number'?result.status:400):ok(result,201);
  }catch(e){return handleError(e)}
 }
