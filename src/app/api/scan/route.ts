@@ -26,10 +26,20 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
   if(!decoded || decoded.eventId!==eventId){await db()`insert into entry_scans(event_id,scanner_id,outcome,gate_label) values(${eventId},${u.id},${decoded?'wrong_event':'invalid'},${gateLabel})`;return ok({outcome:decoded?'wrong_event':'invalid',message:'Entry denied'});}
   const result=await db().begin(async tx=>{
     const updated=await tx`update tickets set redeemed_at=now(),redeemed_by=${u.id} where id=${decoded.ticketId} and event_id=${eventId} and status='issued' and redeemed_at is null and exists(select 1 from events where id=${eventId} and status='published' and starts_at between now() - interval '24 hours' and now() + interval '2 hours' and coalesce(ends_at, starts_at + interval '24 hours') > now()) returning id,redeemed_at`;
+    // Offline tickets have no buyer account or payment order. Their security state is independent.
+    const offlineUpdated=updated[0]?[]:await tx`update offline_tickets set redeemed_at=now(),redeemed_by=${u.id}
+     where id=${decoded.ticketId} and event_id=${eventId} and status='issued' and active=true
+      and redeemed_at is null and exists(select 1 from events where id=${eventId}
+      and status='published' and verification_status='verified'
+      and starts_at between now() - interval '24 hours' and now() + interval '2 hours'
+      and coalesce(ends_at,starts_at+interval '24 hours') > now())
+     returning id,redeemed_at`;
     let outcome='approved';let prior=null;
-    if(!updated[0]){const old=await tx`select status,redeemed_at from tickets where id=${decoded.ticketId} and event_id=${eventId}`;outcome=!old[0]?'invalid':old[0].status==='revoked'?'revoked':old[0].redeemed_at?'duplicate':'invalid';prior=old[0]?.redeemed_at||null;}
+    if(!updated[0]&&!offlineUpdated[0]){const previous=await tx`select status,redeemed_at from tickets where id=${decoded.ticketId} and event_id=${eventId}
+      union all select status,redeemed_at from offline_tickets where id=${decoded.ticketId} and event_id=${eventId}`;
+      const old=previous[0];outcome=!old?'invalid':old.status==='revoked'?'revoked':old.redeemed_at?'duplicate':'inactive_or_unavailable';prior=old?.redeemed_at||null;}
     await tx`insert into entry_scans(event_id,ticket_id,scanner_id,outcome,gate_label) values(${eventId},${outcome==='invalid'?null:decoded.ticketId},${u.id},${outcome},${gateLabel})`;
-    return {outcome,prior,admittedAt:updated[0]?.redeemed_at||null};
+    return {outcome,prior,admittedAt:updated[0]?.redeemed_at||offlineUpdated[0]?.redeemed_at||null};
   });
   return ok({...result,message:result.outcome==='approved'?'Entry approved':'Entry denied'});
 }catch(e){return handleError(e);}}
