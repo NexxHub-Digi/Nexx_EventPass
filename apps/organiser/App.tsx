@@ -259,8 +259,8 @@ export default function App(){
   venue={events.find(e=>e.id===eventId)?.venue||''}
   startsAt={events.find(e=>e.id===eventId)?.starts_at||''}
   priceNgn={Number(events.find(e=>e.id===eventId)?.price_ngn||0)}
-  organiser={member.full_name} admissionLabel={admissionLabel} theme={theme}/>
- <Text style={s.hint}>Only the admission label, selected theme, description and category are saved by Save event design. Preview-only fields are not persisted.</Text>
+  organiser={member.full_name} admissionLabel={admissionLabel} theme={theme} token={token} apiBase={BASE}/>
+ <Text style={s.hint}>Save versioned design draft stores preview fields and visibility separately. Save event design updates the event theme, admission label, description and category; published ticket issuance remains unchanged.</Text>
 {input('Ticket admission label',admissionLabel,setAdmissionLabel)}<ScrollView horizontal contentContainerStyle={{gap:8}}>{themes.map(([id,name])=><Pressable key={id} onPress={()=>setTheme(id)} style={[s.card,{backgroundColor:theme===id?'#513c83':'#273351'}]}><Text style={s.buttonText}>{name}</Text></Pressable>)}</ScrollView>
  {input('Description',description,setDescription)}{input('Category',category,setCategory)}{button('Save event design',()=>{void saveDesign()})}
 <Text style={s.title}>Promotional poster collection</Text><Text style={s.hint}>The two portrait layouts promote your event and do not contain an admission QR.</Text>
