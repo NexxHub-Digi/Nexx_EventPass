@@ -14,6 +14,10 @@ type Gate={event_id:string;title:string;gate_label:string};
 type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
 type AdminAccount={id:string;email:string;full_name:string;role:string;account_status:string;google_verified:boolean;ticket_count:number;order_count:number;event_count:number;gate_event_count:number};
 type SupportCase={id:string;subject:string;description:string;organiser_name:string;status:string;priority:string;resolution:string};
+type ModerationEvent={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;owner_eligible:boolean;pending_media:number};
+type MediaReview={id:string;event_id:string;file_name:string;media_type:string};
+type RefundCase={id:string;event_title:string;buyer_email:string;status:string;refund_status:string;amount_ngn:number;refund_note?:string|null};
+type AuditEntry={id:string;action:string;created_at:string;performed_by:string;target_email?:string|null};
 async function api(p:string,t:string,method='GET',data?:unknown){const multi=data instanceof FormData;const r=await fetch(BASE+'/api/'+p,{method,headers:{...(multi?{}:{'Content-Type':'application/json'}),...(t?{Authorization:'Bearer '+t}:{})},body:multi?data: data?JSON.stringify(data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v}
 export default function App(){
  const scroll=useRef<ScrollView>(null);
@@ -25,7 +29,7 @@ export default function App(){
   return ()=>{mounted=false;listener.remove()};
  },[]);
  const [booting,setBooting]=useState(true);
- const [section,setSection]=useState<'organisers'|'accounts'|'support'|'settings'>('organisers');
+ const [section,setSection]=useState<'overview'|'organisers'|'events'|'accounts'|'finance'|'audit'|'support'|'settings'|'more'>('overview');
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [applicants,setApplicants]=useState<Applicant[]>([]),[organiserEmail,setOrganiserEmail]=useState('');
@@ -34,6 +38,10 @@ export default function App(){
  const [settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
  const [bankAccounts,setBankAccounts]=useState<{id:string;bank_name:string;account_name:string;account_number:string;status:string;organiser_name:string}[]>([]);
  const [bankReviewId,setBankReviewId]=useState(''),[bankReviewNote,setBankReviewNote]=useState('');
+ const [summary,setSummary]=useState<Record<string,number>>({});
+ const [moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<MediaReview[]>([]);
+ const [auditHistory,setAuditHistory]=useState<AuditEntry[]>([]),[refundCases,setRefundCases]=useState<RefundCase[]>([]);
+ const [refundNote,setRefundNote]=useState(''),[ownerFixEvent,setOwnerFixEvent]=useState(''),[ownerFixEmail,setOwnerFixEmail]=useState(''),[ownerFixReason,setOwnerFixReason]=useState('');
  async function load(t:string){
  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
  if(!(PORTAL==='organiser'&&me.user.account_status==='pending') && !(me.portals||[]).includes(PORTAL)){await SecureStore.deleteItemAsync('eventpass_token');setMember(null);setToken('');throw Error('This account is not authorised for this app')}
@@ -41,8 +49,12 @@ export default function App(){
  setBankAccounts((await api('organiser/payment-account',t)).accounts||[]);
  if(me.user.account_status==='pending')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
- const [a,people,support,configuration]=await Promise.all([api('platform/organisers',t),api('platform/users',t),api('support/cases',t),api('platform/settings',t)]);
+ const [a,people,support,configuration,overview,moderation,audit,refunds]=await Promise.all([
+  api('platform/organisers',t),api('platform/users',t),api('support/cases',t),api('platform/settings',t),
+  api('platform/overview',t),api('platform/events',t),api('platform/audit',t),api('refunds',t)]);
  setApplicants(a.organisers||[]);setAccounts(people.accounts||[]);setCases(support.cases||[]);setSettings(configuration.settings||{});
+ setSummary(overview.stats||{});setModerationEvents(moderation.events||[]);setModerationMedia(moderation.media||[]);
+ setAuditHistory(audit.history||[]);setRefundCases(refunds.orders||[]);
  }
  useEffect(()=>{
   let mounted=true;
@@ -77,6 +89,23 @@ export default function App(){
   setCases((await api('support/cases',token)).cases||[]);Alert.alert('Support case',status);
  })}
  async function saveSetting(){await exec(async()=>{await api('platform/settings',token,'PATCH',{key:settingKey,value:settingValue});setSettings({...settings,[settingKey]:settingValue});Alert.alert('Configuration saved')})}
+ async function moderate(eventId:string,action:'verify'|'reject'|'approve_media'|'reject_media',mediaId?:string){await exec(async()=>{
+  await api('platform/events',token,'POST',{eventId,action,...(mediaId?{mediaId}:{})});
+  await load(token);Alert.alert('Review saved','The moderated record has been updated.');
+ })}
+ async function correctEventOwner(eventId:string,expectedOwnerId:string){await exec(async()=>{
+  if(ownerFixReason.trim().length<12)throw Error('Explain and verify the ownership correction (12+ characters).');
+  if(!ownerFixEmail.trim())throw Error('Enter the confirmed active organiser email.');
+  await api('platform/events',token,'POST',{eventId,expectedOwnerId,organiserEmail:ownerFixEmail.trim(),reason:ownerFixReason.trim(),ownershipConfirmed:true,action:'correct_owner'});
+  setOwnerFixEvent('');setOwnerFixEmail('');setOwnerFixReason('');await load(token);
+  Alert.alert('Ownership corrected','The listing returned to draft for a new review.');
+ })}
+ async function updateRefund(orderId:string,action:'review_required'|'initiated'|'settled'){await exec(async()=>{
+  if(action==='settled'&&refundNote.trim().length<10)throw Error('Add a verified settlement reference or explanation (10+ characters).');
+  await api('refunds',token,'PATCH',{orderId,action,note:refundNote.trim()});
+  setRefundCases((await api('refunds',token)).orders||[]);setRefundNote('');
+  Alert.alert('Refund case updated','The action has been recorded in the payment audit.');
+ })}
  async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null)}}
  const input=(hint:string,value:string,update:(x:string)=>void,secret=false)=><TextInput style={s.input} placeholder={hint} placeholderTextColor="#94a3b8" value={value} onChangeText={update} autoCapitalize="none" secureTextEntry={secret}/>;
  const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&(reduceMotion?s.pressedStill:s.pressed),busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
@@ -123,14 +152,83 @@ export default function App(){
   </View>:<>
  <Text style={s.title}>Welcome, {member.full_name}</Text><Text style={s.hint}>{member.email}</Text>
  {member.account_status==='pending'?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
+ {section==='overview'&&<><Text style={s.title}>Platform overview</Text>
+ <Text style={s.hint}>Live totals across online and offline tickets and gate admissions.</Text>
+ {Object.entries(summary).map(([key,value])=><View key={key} style={s.card}>
+  <Text style={{color:'#fff',fontSize:21,fontWeight:'900'}}>{Number(value).toLocaleString('en-NG')}</Text>
+  <Text style={s.hint}>{key.replace(/_/g,' ')}</Text>
+ </View>)}
+ {button('Moderate events',()=>setSection('events'))}
+ {button('Payment exceptions',()=>setSection('finance'),true)}
+ </>}
+ {section==='more'&&<><Text style={s.title}>More tools</Text>
+ {button('Users & access',()=>setSection('accounts'))}
+ {button('Payments & refunds',()=>setSection('finance'),true)}
+ {button('Audit logs',()=>setSection('audit'),true)}
+ {button('Support cases',()=>setSection('support'),true)}
+ {button('Platform settings',()=>setSection('settings'),true)}
+ </>}
+ {section==='events'&&<><Text style={s.title}>Event moderation</Text>
+ <Text style={s.hint}>Review listing ownership, eligibility and pending media.</Text>
+ {!moderationEvents.length&&<Text style={s.hint}>No events require moderation.</Text>}
+ {moderationEvents.map(event=><View key={event.id} style={s.card}>
+  <Text style={s.title}>{event.title}</Text><Text style={s.hint}>{event.venue} · {event.status} / {event.verification_status}</Text>
+  <Text style={s.hint}>Organiser: {event.organiser_name} ({event.organiser_email})</Text>
+  {!event.owner_eligible?<><Text style={s.error}>Ineligible owner. Confirm the rightful organiser before reassignment.</Text>
+    {ownerFixEvent===event.id?<>{input('Confirmed organiser email',ownerFixEmail,setOwnerFixEmail)}
+    {input('Ownership correction reason',ownerFixReason,setOwnerFixReason)}
+    {button('Confirm audited correction',()=>Alert.alert('Change event owner?','Only proceed after confirming the intended organiser. Payment settings will be cleared and the listing returned to draft.',[
+       {text:'Cancel',style:'cancel'},{text:'Correct owner',style:'destructive',onPress:()=>void correctEventOwner(event.id,event.organiser_id)}]))}
+    {button('Cancel',()=>{setOwnerFixEvent('');setOwnerFixEmail('');setOwnerFixReason('')},true)}</>
+    :button('Review ownership correction',()=>{setOwnerFixEvent(event.id);setOwnerFixEmail('');setOwnerFixReason('')},true)}
+  </>:event.verification_status!=='verified'?<>
+   {button('Approve and publish',()=>void moderate(event.id,'verify'))}
+   {button('Reject event',()=>Alert.alert('Reject event?','The event will return to draft if there are no issued tickets or active reservations.',[
+    {text:'Cancel',style:'cancel'},{text:'Reject',style:'destructive',onPress:()=>void moderate(event.id,'reject')}]),true)}
+  </>:null}
+ </View>)}
+ <Text style={s.title}>Pending media ({moderationMedia.length})</Text>
+ {moderationMedia.map(media=><View key={media.id} style={s.card}>
+  <Text style={s.hint}>{media.file_name} · {media.media_type}</Text>
+  {button('Approve media',()=>void moderate(media.event_id,'approve_media',media.id))}
+  {button('Reject media',()=>Alert.alert('Reject media?','This pending asset will be removed.',[
+   {text:'Cancel',style:'cancel'},{text:'Reject',style:'destructive',onPress:()=>void moderate(media.event_id,'reject_media',media.id)}]),true)}
+ </View>)}
+ </>}
+ {section==='finance'&&<><Text style={s.title}>Payments and refunds</Text>
+ <Text style={s.hint}>Verify settlement evidence before marking refunds completed.</Text>
+ {input('Refund note / settlement reference',refundNote,setRefundNote)}
+ {!refundCases.length&&<Text style={s.hint}>No payment exceptions awaiting review.</Text>}
+ {refundCases.map(refund=><View key={refund.id} style={s.card}>
+  <Text style={s.title}>{refund.event_title}</Text>
+  <Text style={s.hint}>{refund.buyer_email} · ₦{Number(refund.amount_ngn).toLocaleString('en-NG')}</Text>
+  <Text style={s.hint}>{refund.status} · {refund.refund_status}</Text>
+  {!!refund.refund_note&&<Text style={s.hint}>Previous note: {refund.refund_note}</Text>}
+  {button('Open review',()=>void updateRefund(refund.id,'review_required'),true)}
+  {button('Refund initiated',()=>void updateRefund(refund.id,'initiated'),true)}
+  {button('Mark settled with evidence',()=>Alert.alert('Confirm refund settlement?','Only mark settled after independently verifying the transfer to the buyer.',[
+   {text:'Cancel',style:'cancel'},{text:'Confirm settlement',onPress:()=>void updateRefund(refund.id,'settled')}]))}
+ </View>)}
+ </>}
+ {section==='audit'&&<><Text style={s.title}>Administrative audit trail</Text>
+ <Text style={s.hint}>The most recent 100 administrator actions.</Text>
+ {!auditHistory.length&&<Text style={s.hint}>No administrator actions recorded.</Text>}
+ {auditHistory.map(item=><View key={item.id} style={s.card}>
+  <Text style={{color:'#fff',fontWeight:'800'}}>{item.action.replace(/_/g,' ')}</Text>
+  <Text style={s.hint}>{item.performed_by} · {new Date(item.created_at).toLocaleString('en-NG')}</Text>
+  {!!item.target_email&&<Text style={s.hint}>{item.target_email}</Text>}
+ </View>)}
+ </>}
  {section==='organisers'&&<><Text style={s.title}>Organiser management</Text>{input('Existing Google-verified User email',organiserEmail,setOrganiserEmail)}{button('Create organiser',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'create',email:organiserEmail});await load(token)})})}
 <Text style={s.title}>Organiser bank account verification</Text>
 <Text style={s.hint}>Independently confirm the beneficiary and account number before verifying.</Text>
 {bankAccounts.filter(account=>account.status==='pending').map(account=><View key={account.id} style={s.card}>
  <Text style={s.title}>{account.organiser_name}</Text><Text selectable style={s.hint}>{account.bank_name} · {account.account_name} · {account.account_number}</Text>
- {button('Verify account',()=>{void exec(async()=>{
-  await api('organiser/payment-account',token,'PATCH',{accountId:account.id,decision:'verified'});await load(token);
- })})}
+ {button('Verify account',()=>Alert.alert('Confirm verified beneficiary?','Only approve after independently confirming the bank, account number and beneficiary.',[
+   {text:'Cancel',style:'cancel'},{text:'Approve verified account',onPress:()=>void exec(async()=>{
+     await api('organiser/payment-account',token,'PATCH',{accountId:account.id,decision:'verified'});await load(token);
+   })}
+ ]))}
  {bankReviewId===account.id?<><TextInput accessibilityLabel="Reason for rejection" placeholder="Reason for rejection" placeholderTextColor="#a4b1c8" style={s.input} value={bankReviewNote} onChangeText={setBankReviewNote}/>
  {button('Confirm rejection',()=>{void exec(async()=>{
   await api('organiser/payment-account',token,'PATCH',{accountId:account.id,decision:'rejected',note:bankReviewNote});setBankReviewId('');await load(token);
@@ -173,8 +271,11 @@ export default function App(){
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
  </ScrollView>
   </Animated.View>
- {member&&<View style={s.navigation}>{([['organisers', 'Organisers'], ['accounts', 'Users'], ['support', 'Support'], ['settings', 'Settings']] as const).map(([key,label])=><Pressable key={key} accessibilityRole="tab" accessibilityState={{selected:section===key}} disabled={busy}
-  style={({pressed})=>[s.navLink,section===key&&s.navCurrent,pressed&&(reduceMotion?s.pressedStill:s.pressed)]} onPress={()=>setSection(key)}><Text style={[s.navText,section===key&&s.navTextCurrent]}>{label}</Text></Pressable>)}</View>}
+ {member&&<View style={s.navigation}>{([['overview','Overview'],['organisers','Organisers'],['events','Events'],['more','More']] as const).map(([key,label])=>{
+  const selected=section===key||(key==='more'&&(['accounts','finance','audit','support','settings'] as string[]).includes(section));
+  return <Pressable key={key} accessibilityRole="tab" accessibilityState={{selected}} disabled={busy}
+  style={({pressed})=>[s.navLink,selected&&s.navCurrent,pressed&&(reduceMotion?s.pressedStill:s.pressed)]} onPress={()=>setSection(key)}>
+  <Text style={[s.navText,selected&&s.navTextCurrent]}>{label}</Text></Pressable>})}</View>}
  </View>
 }
 const s=StyleSheet.create({

@@ -344,6 +344,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(externalReport.external_tickets_issued,2);
   assert.equal(externalReport.checked_in,1);
   assert.equal(Number(externalReport.confirmed_revenue_ngn),0);
+  const platformSummary=expect(await req('/api/platform/overview',{cookie:adminCookie}),200,'platform totals include offline tickets').stats;
+  assert.ok(platformSummary.offline_tickets>=2,'issued external passes counted in totals');
+  assert.ok(platformSummary.offline_checkins>=1,'external admissions counted in totals');
+  assert.equal(platformSummary.tickets,platformSummary.online_tickets+platformSummary.offline_tickets);
+  assert.equal(platformSummary.checkins,platformSummary.online_checkins+platformSummary.offline_checkins);
   expect(await post('/api/offline/exports',org.cookie,{eventId:privateEvent.id,ticketIds:[replacement.replacement.id],format:'jpeg'}),200,'authorise JPEG export');
   expect(await post('/api/offline/exports',org.cookie,{eventId:privateEvent.id,ticketIds:[replacement.replacement.id],format:'print'}),200,'authorise a print sheet');
   assert.equal(expect(await req(offlinePath,{cookie:org.cookie}),200,'refresh after exports').tickets.find(t=>t.id===newPass.id).qr,newPass.qr);
