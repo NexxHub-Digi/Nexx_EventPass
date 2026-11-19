@@ -1,5 +1,5 @@
-import React,{useEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,Animated,AppState,Linking,Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
+import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
+import {AccessibilityInfo,Animated,Easing,AppState,Linking,Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
@@ -40,6 +40,17 @@ export default function App(){
   const listener=AppState.addEventListener('change',next=>{if(next!=='active'){setScanning(false);setCameraReady(false)}});
   return ()=>listener.remove();
  },[]);
+ const scanSweep=useRef(new Animated.Value(0)).current;
+ useEffect(()=>{
+  scanSweep.setValue(0);
+  if(!scanning||!cameraReady||reduceMotion)return;
+  const animation=Animated.loop(Animated.sequence([
+   Animated.timing(scanSweep,{toValue:1,duration:1450,easing:Easing.inOut(Easing.sin),useNativeDriver:true}),
+   Animated.timing(scanSweep,{toValue:0,duration:1450,easing:Easing.inOut(Easing.sin),useNativeDriver:true}),
+  ]));
+  animation.start();
+  return ()=>animation.stop();
+ },[scanning,cameraReady,reduceMotion,scanSweep]);
  const [tab,setTab]=useState<'home'|'scan'|'history'|'profile'>('home');
  const [history,setHistory]=useState<{id:string|number;eventId:string;outcome:string;at:string}[]>([]);
  const [counts,setCounts]=useState({approved:0,denied:0});
@@ -84,13 +95,29 @@ async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');
  })}
  async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null)}}
  const input=(hint:string,value:string,update:(x:string)=>void,secret=false)=><TextInput style={s.input} placeholder={hint} placeholderTextColor="#94a3b8" value={value} onChangeText={update} autoCapitalize="none" secureTextEntry={secret}/>;
- const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&s.pressed,busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
- if(booting||(busy&&!member))return <View style={{flex:1,backgroundColor:'#0b1020',justifyContent:'center',alignItems:'center',gap:14}} accessibilityLiveRegion="polite">
+ const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&(reduceMotion?s.pressedStill:s.pressed),busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
+ const surfaceMotion=useRef(new Animated.Value(1)).current;
+ const opening=booting||(busy&&!member);
+ const surface=opening?'opening':member?tab:'signin';
+ useLayoutEffect(()=>{
+  if(reduceMotion){surfaceMotion.setValue(1);return}
+  surfaceMotion.setValue(0);
+  const animation=Animated.timing(surfaceMotion,{toValue:1,duration:240,easing:Easing.out(Easing.cubic),useNativeDriver:true});
+  animation.start();
+  return ()=>animation.stop();
+ },[surface,reduceMotion,surfaceMotion]);
+ const surfaceStyle={
+  opacity:surfaceMotion.interpolate({inputRange:[0,1],outputRange:[.76,1]}),
+  transform:[{translateY:surfaceMotion.interpolate({inputRange:[0,1],outputRange:[7,0]})}],
+ };
+ if(opening)return <Animated.View style={[s.loading,surfaceStyle]} accessibilityLiveRegion="polite">
   <Image accessible={false} source={require('./assets/app-icon.png')} style={{width:72,height:72,borderRadius:18}}/>
   <Text style={{color:'#f8faff',fontWeight:'800',fontSize:22}}>Nexx EventPass</Text>
   <Text style={{color:'#ced8f0'}}>{booting?'Opening EventPass…':'Connecting to Google…'}</Text>
-  <ActivityIndicator color="#a98cff"/>
- </View>;
+  <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={s.loadingTrack}>
+   {!reduceMotion?<ActivityIndicator color={'#c5acff'}/>:<View style={s.loadingDot}/>}
+  </View>
+ </Animated.View>;
  return <View style={s.root}>
   <StatusBar barStyle="light-content"/>
   <View style={s.head}>
@@ -102,8 +129,10 @@ async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');
    </View></Pressable>
    {member&&<Pressable accessibilityRole="button" accessibilityLabel="Sign out" disabled={busy} onPress={()=>void logout()} style={s.accountBadge}><Text style={s.headLabel}>Sign out</Text></Pressable>}
   </View>
+  <Animated.View style={[{flex:1},surfaceStyle]}>
   <ScrollView ref={scroll} key={member?tab:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
  {!member?<View style={s.welcome}>
+   <View pointerEvents="none" style={s.welcomeGlow} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"/>
    <Text style={s.welcomeLabel}>Gate operations</Text><Text style={s.welcomeTitle}>Ready for entry.</Text>
    <Text style={s.welcomeText}>Select an assigned event, scan a ticket and see the admission decision.</Text>
    {button('Continue with Google',()=>{void login()})}
@@ -119,7 +148,10 @@ async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');
  {!eventId?<>{button('Choose an event',()=>setTab('home'))}</>:<View style={s.scanCard}>
  {scanning?<View style={s.camera}><CameraView facing="back" style={{flex:1}} onCameraReady={()=>setCameraReady(true)} onMountError={()=>{
   setCameraReady(false);setScanning(false);setCameraError('Camera could not start. Check permissions or enter the ticket code.');
- }} barcodeScannerSettings={{barcodeTypes:['qr']}} onBarcodeScanned={cameraReady?({data})=>{if(scanning&&!scanLock.current){setScanning(false);void verify(data)}}:undefined}/><View pointerEvents="none" style={s.scanFrame}/></View>:<View style={s.scanPlaceholder}><Text style={s.scanIcon}>▣</Text><Text style={s.eventTitle}>Ready to verify</Text><Text style={s.hint}>Position the attendee's QR code inside the camera frame.</Text></View>}
+ }} barcodeScannerSettings={{barcodeTypes:['qr']}} onBarcodeScanned={cameraReady?({data})=>{if(scanning&&!scanLock.current){setScanning(false);void verify(data)}}:undefined}/><View pointerEvents="none" style={s.scanFrame} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+  {cameraReady&&<Animated.View style={{position:'absolute',left:12,right:12,top:12,height:2,backgroundColor:'#aaeedb',opacity:.85,
+   transform:[{translateY:reduceMotion?105:scanSweep.interpolate({inputRange:[0,1],outputRange:[0,208]})}]}}/>}
+ </View></View>:<View style={s.scanPlaceholder}><Text style={s.scanIcon}>▣</Text><Text style={s.eventTitle}>Ready to verify</Text><Text style={s.hint}>Position the attendee's QR code inside the camera frame.</Text></View>}
  {scanning&&!cameraReady&&<Text accessibilityLiveRegion="polite" style={s.hint}>Starting camera…</Text>}
  {!!cameraError&&<><Text accessibilityRole="alert" style={s.error}>{cameraError}</Text>
  {permission?.canAskAgain===false&&Platform.OS!=='web'&&button('Open device settings',()=>{void Linking.openSettings().catch(()=>setCameraError('Open Settings and allow camera access for EventPass.'))},true)}</>}
@@ -132,7 +164,8 @@ async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');
  </>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#A78BFA"/>}
  </ScrollView>
- {member&&<View style={s.nav}>{([['home','⌂','Home'],['scan','▣','Scan'],['history','◷','History'],['profile','◉','Profile']] as const).map(([id,icon,label])=><Pressable key={id} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{selected:tab===id}} disabled={busy} onPress={()=>{setScanning(false);setTab(id)}} style={s.navItem}><Text style={[s.navIcon,tab===id&&s.navActive]}>{icon}</Text><Text style={[s.navLabel,tab===id&&s.navActive]}>{label}</Text></Pressable>)}</View>}
+  </Animated.View>
+ {member&&<View style={s.nav}>{([['home','⌂','Home'],['scan','▣','Scan'],['history','◷','History'],['profile','◉','Profile']] as const).map(([id,icon,label])=><Pressable key={id} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{selected:tab===id}} disabled={busy} onPress={()=>{setScanning(false);setTab(id)}} style={({pressed})=>[s.navItem,tab===id&&s.navCurrent,pressed&&(reduceMotion?s.pressedStill:s.pressed)]}><Text style={[s.navIcon,tab===id&&s.navActive]}>{icon}</Text><Text style={[s.navLabel,tab===id&&s.navActive]}>{label}</Text></Pressable>)}</View>}
  </View>
 }
 const s: Record<string,any>=StyleSheet.create({
@@ -152,7 +185,11 @@ const s: Record<string,any>=StyleSheet.create({
  pressed:{opacity:.8,transform:[{scale:.985}]},disabled:{opacity:.55},
  card:{backgroundColor:'#16213a',padding:16,borderRadius:17,borderWidth:1,borderColor:'#374b6f',marginVertical:7},
  error:{color:'#ffd1da',backgroundColor:'#492738',padding:13,borderRadius:11,marginVertical:10},
- welcome:{backgroundColor:'#1e2350',borderRadius:24,borderWidth:1,borderColor:'#634994',padding:24,marginTop:22,gap:13},
+ loading:{flex:1,backgroundColor:'#0b1020',justifyContent:'center',alignItems:'center',gap:14},
+ loadingTrack:{minHeight:24,justifyContent:'center'},loadingDot:{width:9,height:9,borderRadius:5,backgroundColor:'#c5acff'},
+ pressedStill:{opacity:.76},
+ welcomeGlow:{position:'absolute',width:212,height:212,borderRadius:106,borderWidth:26,borderColor:'#c5acff22',right:-68,top:-107},
+ welcome:{overflow:'hidden',backgroundColor:'#1e2350',borderRadius:24,borderWidth:1,borderColor:'#634994',padding:24,marginTop:22,gap:13},
  welcomeLabel:{color:'#c5acff',fontSize:13,fontWeight:'800',letterSpacing:1.2},
  welcomeTitle:{color:'#fff',fontSize:36,lineHeight:40,fontWeight:'900',letterSpacing:-1.5},
  welcomeText:{color:'#d0d9f2',fontSize:16,lineHeight:24,marginBottom:6},

@@ -1,5 +1,5 @@
-import React,{useEffect,useRef,useState} from 'react';
-import {AppState,Alert,Share,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
+import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
+import {AccessibilityInfo,Animated,Easing,AppState,Alert,Share,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
@@ -17,6 +17,13 @@ type Applicant={id:string;email:string;full_name:string;role:string;account_stat
 async function api(p:string,t:string,method='GET',data?:unknown){const multi=data instanceof FormData;const r=await fetch(BASE+'/api/'+p,{method,headers:{...(multi?{}:{'Content-Type':'application/json'}),...(t?{Authorization:'Bearer '+t}:{})},body:multi?data: data?JSON.stringify(data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v}
 export default function App(){
  const scroll=useRef<ScrollView>(null);
+ const [reduceMotion,setReduceMotion]=useState(true);
+ useEffect(()=>{
+  let mounted=true;
+  void AccessibilityInfo.isReduceMotionEnabled().then(enabled=>{if(mounted)setReduceMotion(enabled)}).catch(()=>{});
+  const listener=AccessibilityInfo.addEventListener('reduceMotionChanged',setReduceMotion);
+  return ()=>{mounted=false;listener.remove()};
+ },[]);
  const [booting,setBooting]=useState(true);
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
@@ -98,13 +105,29 @@ export default function App(){
  })}
  async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null)}}
  const input=(hint:string,value:string,update:(x:string)=>void,secret=false)=><TextInput style={s.input} placeholder={hint} placeholderTextColor="#94a3b8" value={value} onChangeText={update} autoCapitalize="none" secureTextEntry={secret}/>;
- const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&s.pressed,busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
- if(booting||(busy&&!member))return <View style={{flex:1,backgroundColor:'#0b1020',justifyContent:'center',alignItems:'center',gap:14}} accessibilityLiveRegion="polite">
+ const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&(reduceMotion?s.pressedStill:s.pressed),busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
+ const surfaceMotion=useRef(new Animated.Value(1)).current;
+ const opening=booting||(busy&&!member);
+ const surface=opening?'opening':member?tab:'signin';
+ useLayoutEffect(()=>{
+  if(reduceMotion){surfaceMotion.setValue(1);return}
+  surfaceMotion.setValue(0);
+  const animation=Animated.timing(surfaceMotion,{toValue:1,duration:240,easing:Easing.out(Easing.cubic),useNativeDriver:true});
+  animation.start();
+  return ()=>animation.stop();
+ },[surface,reduceMotion,surfaceMotion]);
+ const surfaceStyle={
+  opacity:surfaceMotion.interpolate({inputRange:[0,1],outputRange:[.76,1]}),
+  transform:[{translateY:surfaceMotion.interpolate({inputRange:[0,1],outputRange:[7,0]})}],
+ };
+ if(opening)return <Animated.View style={[s.loading,surfaceStyle]} accessibilityLiveRegion="polite">
   <Image accessible={false} source={require('./assets/app-icon.png')} style={{width:72,height:72,borderRadius:18}}/>
   <Text style={{color:'#f8faff',fontWeight:'800',fontSize:22}}>Nexx EventPass</Text>
   <Text style={{color:'#ced8f0'}}>{booting?'Opening EventPass…':'Connecting to Google…'}</Text>
-  <ActivityIndicator color="#a98cff"/>
- </View>;
+  <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={s.loadingTrack}>
+   {!reduceMotion?<ActivityIndicator color={'#8ff0d5'}/>:<View style={s.loadingDot}/>}
+  </View>
+ </Animated.View>;
  return <View style={s.root}>
   <StatusBar barStyle="light-content"/>
   <View style={s.head}>
@@ -116,8 +139,10 @@ export default function App(){
    </View></Pressable>
    {member&&<Pressable accessibilityRole="button" accessibilityLabel="Sign out" disabled={busy} onPress={()=>void logout()} style={s.accountBadge}><Text style={s.headLabel}>Sign out</Text></Pressable>}
   </View>
+  <Animated.View style={[{flex:1},surfaceStyle]}>
   <ScrollView ref={scroll} key={member?tab:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
  {!member?<View style={s.welcome}>
+   <View pointerEvents="none" style={s.welcomeGlow} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"/>
    <Text style={s.welcomeLabel}>Event studio</Text><Text style={s.welcomeTitle}>Run your events.</Text>
    <Text style={s.welcomeText}>Manage listings, issue tickets and confirm payments.</Text>
    {button('Continue with Google',()=>{void login()})}
@@ -251,10 +276,11 @@ export default function App(){
  {button('Sign out',()=>{void logout()},true)}</>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
  </ScrollView>
+  </Animated.View>
  {member?.role==='organiser'&&<View style={s.navigation}>
   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7,paddingHorizontal:5}}>
    {([['dashboard','Overview'],['events','Events'],['tickets','Ticket Studio'],['payments','Payments'],['team','Gate Team'],['profile','Profile']] as const).map(([id,label])=>
-    <Pressable key={id} accessibilityRole="tab" accessibilityState={{selected:tab===id}} disabled={busy} style={[s.navChip,tab===id&&s.navSelected]} onPress={()=>setTab(id)}>
+    <Pressable key={id} accessibilityRole="tab" accessibilityState={{selected:tab===id}} disabled={busy} style={({pressed})=>[s.navChip,tab===id&&s.navSelected,pressed&&(reduceMotion?s.pressedStill:s.pressed)]} onPress={()=>setTab(id)}>
      <Text style={[s.navText,tab===id&&s.navTextCurrent]}>{label}</Text>
     </Pressable>)}
   </ScrollView>
@@ -278,7 +304,11 @@ const s=StyleSheet.create({
  pressed:{opacity:.8,transform:[{scale:.985}]},disabled:{opacity:.55},
  card:{backgroundColor:'#16213a',padding:16,borderRadius:17,borderWidth:1,borderColor:'#374b6f',marginVertical:7},
  error:{color:'#ffd1da',backgroundColor:'#492738',padding:13,borderRadius:11,marginVertical:10},
- welcome:{backgroundColor:'#1e2350',borderRadius:24,borderWidth:1,borderColor:'#634994',padding:24,marginTop:22,gap:13},
+ loading:{flex:1,backgroundColor:'#0b1020',justifyContent:'center',alignItems:'center',gap:14},
+ loadingTrack:{minHeight:24,justifyContent:'center'},loadingDot:{width:9,height:9,borderRadius:5,backgroundColor:'#8ff0d5'},
+ pressedStill:{opacity:.76},
+ welcomeGlow:{position:'absolute',width:212,height:212,borderRadius:106,borderWidth:26,borderColor:'#8ff0d522',right:-68,top:-107},
+ welcome:{overflow:'hidden',backgroundColor:'#1e2350',borderRadius:24,borderWidth:1,borderColor:'#634994',padding:24,marginTop:22,gap:13},
  welcomeLabel:{color:'#8ff0d5',fontSize:13,fontWeight:'800',letterSpacing:1.2},
  welcomeTitle:{color:'#fff',fontSize:36,lineHeight:40,fontWeight:'900',letterSpacing:-1.5},
  welcomeText:{color:'#d0d9f2',fontSize:16,lineHeight:24,marginBottom:6},
