@@ -23,11 +23,12 @@ export async function POST(req: Request) {
        from events e join app_users a on a.id=e.organiser_id
        left join organiser_payment_accounts p on p.organiser_id=e.organiser_id
        where e.id=${eventId} and e.status='published' and e.verification_status='verified'
-        and e.starts_at>now() and a.role='organiser' and a.account_status='active' for update of e`;
+        and e.visibility='public' and e.starts_at>now() and a.role='organiser' and a.account_status='active' for update of e`;
       const e=rows[0];if(!e)return {error:'Event is not available',status:400};
       if(Number(e.price_ngn)>0&&(!e.bank_name||!e.account_number))return {error:'Organiser has not configured payment instructions',status:409};
       const used=await tx`select
-       (select count(*)::int from tickets where event_id=${eventId}) as issued,
+       (select count(*)::int from tickets where event_id=${eventId} and status='issued') +
+       (select count(*)::int from offline_tickets where event_id=${eventId} and status='issued') as issued,
        (select coalesce(sum(quantity),0)::int from ticket_orders where event_id=${eventId}
          and status='pending' and reservation_expires_at>now()) as reserved`;
       const available=Number(e.capacity)-Number(used[0].issued)-Number(used[0].reserved);
