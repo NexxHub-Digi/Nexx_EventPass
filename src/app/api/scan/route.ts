@@ -38,7 +38,8 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
     (source?{eventId,ticketId:String(codeMatch[0].ticket_id||codeMatch[0].offline_ticket_id)}:null):
     (encrypted ? decodeEncryptedQr(code,eventId,String(encrypted)) : decodeQR(code));
   if(!decoded || decoded.eventId!==eventId){
-    if(!testOnly)await db()`insert into entry_scans(event_id,scanner_id,outcome,gate_label,entry_method)
+    // Even in rehearsal, log incorrect manual guesses so rate-limits cannot be bypassed.
+    if(!testOnly||entryMethod==='manual')await db()`insert into entry_scans(event_id,scanner_id,outcome,gate_label,entry_method)
       values(${eventId},${u.id},${decoded?'wrong_event':'invalid'},${gateLabel},${entryMethod})`;
     return ok({outcome:decoded?'wrong_event':'invalid',message:'Entry denied',entry_method:entryMethod,testOnly});
   }

@@ -15,7 +15,7 @@ type Member={id:string;email:string;full_name:string;role:string;account_status:
 type Event={payment_account_id?:string|null;onsite_payments_enabled?:boolean;id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;verification_status?:string;organiser?:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;cover_media_id?:string|null;video_media_id?:string|null;ticket_art_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type BankAccount={id:string;bank_name:string;account_name:string;account_number:string;status:'pending'|'verified'|'rejected';organiser_name?:string;review_note?:string};
 type Order={payment_method?:'manual'|'onsite'|'free';id:string;event_id:string;event_title:string;reservation_expires_at?:string;refund_status?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
-type Ticket={id:string;event_id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;redeemed_at?:string|null;ticket_theme?:string;admission_label?:string;ticket_art_id?:string|null};
+type Ticket={id:string;event_id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;entry_code?:string|null;redeemed_at?:string|null;ticket_theme?:string;admission_label?:string;ticket_art_id?:string|null};
 type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string};
 type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null;can_create_events?:boolean;can_invite_gates?:boolean;can_verify_payments?:boolean};
 type GateOperator={event_id:string;user_id:string;gate_label:string;email:string;full_name:string;account_status:string;scan_count:number;admitted_count:number;last_scan_at:string|null};
@@ -63,7 +63,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [eventVisibility,setEventVisibility]=useState('public');
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
- const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string}|null>(null);
+ const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string;entryCode?:string|null}|null>(null);
  const [adminTab,setAdminTab]=useState('overview');
  const [showEventDesign,setShowEventDesign]=useState(false);
  const [organiserTab,setOrganiserTab]=useState<'dashboard'|'events'|'tickets'|'offline'|'payments'|'team'|'profile'|'settings'>('dashboard');
@@ -84,6 +84,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const lastDecoded=useRef({value:'',at:0});
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
  const [rehearsal,setRehearsal]=useState(false);
+ const rehearsalRef=useRef(false);
  const valid=role==='user'||role==='organiser'||role==='gate'||role==='platform-admin';
  const allowed=me&&portals.includes(role==='platform-admin'?'platform_admin':role);
  useEffect(()=>{if(role==='gate'&&gates.length===1&&!eventId)setEventId(gates[0].event_id)},[role,gates,eventId]);
@@ -258,11 +259,12 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    await run(async()=>{
     if(!eventId||!value.trim())throw Error('Select your event and enter a ticket code');
     let result;
-    try{result=await api('scan','POST',{eventId,code:value.trim(),testOnly:rehearsal})}
+    const testOnly=rehearsalRef.current;
+    try{result=await api('scan','POST',{eventId,code:value.trim(),testOnly})}
     catch(error){throw Error('Could not verify ticket. Do not admit. '+(error instanceof Error?error.message:''))}
     setScanOutcome(result.outcome);setScanCode('');
     // The admission result is authoritative. History refresh must not stall the next QR.
-    if(!rehearsal&&!scanning)void api('gates/activity?eventId='+encodeURIComponent(eventId))
+    if(!testOnly&&!scanning)void api('gates/activity?eventId='+encodeURIComponent(eventId))
       .then(history=>setScans(history.scans||[])).catch(()=>{});
    });
   }finally{verificationInFlight.current=false}
@@ -691,17 +693,19 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
       {new Date(o.reservation_expires_at).getTime()<=Date.now()?'Reservation expired. Contact organiser if you transferred funds.':'Reserved until '+nice(o.reservation_expires_at)}</p>}
       {o.refund_status&&o.refund_status!=='not_required'&&<p>Refund status: {o.refund_status.replaceAll('_',' ')}</p>}
       {!o.receipt_uploaded_at&&o.status==='pending'&&(!o.reservation_expires_at||new Date(o.reservation_expires_at).getTime()>Date.now())&&o.amount_ngn>0&&<label className="rw-field">Upload missing receipt<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={e=>setReceiptUploads({...receiptUploads,[o.id]:e.target.files?.[0]||null})}/>{btn('Send receipt',()=>{void upload(o.id)})}</label>}</div></div>)}{!orders.length&&<p>Your event orders will appear here.</p>}</section>
-  <section className="rw-panel"><h2>My ticket wallet</h2>{tickets.map(t=>isMasqueradeTemplate(t.ticket_theme||'')?<div key={t.id} className="rw-wallet-masquerade"><TicketDesign themeId={t.ticket_theme} title={t.title} venue={t.venue} startsAt={t.starts_at} priceNgn={events.find(e=>e.id===t.event_id)?.price_ngn||0} organiser={events.find(e=>e.id===t.event_id)?.organiser||'Event Organiser'} qr={t.qr} ticketCode={t.id} customArtwork={t.ticket_art_id?'/api/events/media?id='+t.ticket_art_id:null} admissionLabel={t.admission_label||'ADMIT ONE'} status={t.redeemed_at?'redeemed':t.status}/><small>{t.redeemed_at?'Already checked in':'Approved ticket · Unique entry QR'} · {t.id.slice(0,12).toUpperCase()}</small>{t.qr&&btn('Enlarge secure entry QR',()=>setExpandedQr({value:t.qr!,eventName:t.title}),true)}</div>:<div key={t.id} className="rw-ticket rw-designed-ticket" style={{background:themeFor(t.ticket_theme||'aurora').gradient}}>
+  <section className="rw-panel"><h2>My ticket wallet</h2>{tickets.map(t=>isMasqueradeTemplate(t.ticket_theme||'')?<div key={t.id} className="rw-wallet-masquerade"><TicketDesign themeId={t.ticket_theme} title={t.title} venue={t.venue} startsAt={t.starts_at} priceNgn={events.find(e=>e.id===t.event_id)?.price_ngn||0} organiser={events.find(e=>e.id===t.event_id)?.organiser||'Event Organiser'} qr={t.qr} ticketCode={t.entry_code||undefined} customArtwork={t.ticket_art_id?'/api/events/media?id='+t.ticket_art_id:null} admissionLabel={t.admission_label||'ADMIT ONE'} status={t.redeemed_at?'redeemed':t.status}/><small>{t.redeemed_at?'Already checked in':'Approved ticket · Unique entry QR'} · {t.entry_code||'Backup code pending'}</small>{t.qr&&btn('Enlarge secure entry QR',()=>setExpandedQr({value:t.qr!,eventName:t.title,entryCode:t.entry_code}),true)}</div>:<div key={t.id} className="rw-ticket rw-designed-ticket" style={{background:themeFor(t.ticket_theme||'aurora').gradient}}>
     {t.ticket_art_id&&<img className="rw-ticket-art" src={'/api/events/media?id='+t.ticket_art_id} alt="Custom event ticket design"/>}
     <div className="rw-ticket-details"><small>NEXX EVENTPASS • OFFICIAL ENTRY</small><h3>{t.title}</h3><p>{t.venue} · {nice(t.starts_at)}</p>
-      {t.qr&&<div className="rw-qr"><QRCodeSVG value={t.qr} size={182} level="H" includeMargin/></div>}
+      {t.qr&&<div className="rw-qr"><QRCodeSVG value={t.qr} size={220} level="M" includeMargin/></div>}
+      {t.entry_code&&<p><strong>Backup code: {t.entry_code}</strong></p>}
       <b>{t.redeemed_at?'ALREADY CHECKED IN':t.status.toUpperCase()}</b></div>
     </div>)}{!tickets.length&&<p>Approved event passes will appear here with a unique encrypted QR code.</p>}</section>
  </div>}
  {role==='user'&&expandedQr&&<div className="masque-qr-modal-backdrop" role="presentation" onClick={()=>setExpandedQr(null)}>
   <div className="masque-qr-modal" role="dialog" aria-modal="true" aria-label="Enlarged ticket QR" onClick={e=>e.stopPropagation()}>
    <h3>{expandedQr.eventName}</h3><p>Show this secure QR to the assigned Gate Operator.</p>
-   <div className="masque-expanded-code"><QRCodeSVG value={expandedQr.value} size={288} level="H" includeMargin/></div>
+   <div className="masque-expanded-code"><QRCodeSVG value={expandedQr.value} size={288} level="M" includeMargin/></div>
+   {expandedQr.entryCode&&<p><strong>Manual backup code: {expandedQr.entryCode}</strong></p>}
    {btn('Close',()=>setExpandedQr(null))}
   </div>
  </div>}
@@ -715,14 +719,14 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     <div className="rw-scan-context"><span>Scanning for</span><strong>{gates.find(gate=>gate.event_id===eventId)?.title}</strong></div>
     {busy&&<p role="status" className="rw-scan-verifying">Verifying ticket…</p>}
     <button type="button" className={rehearsal?'primary':'ghost'} aria-pressed={rehearsal}
-      onClick={()=>{setRehearsal(v=>!v);setScanOutcome('')}} style={{width:'100%',padding:14,marginBottom:10}}>
+      onClick={()=>{rehearsalRef.current=!rehearsalRef.current;setRehearsal(rehearsalRef.current);setScanOutcome('')}} style={{width:'100%',padding:14,marginBottom:10}}>
         {rehearsal?'⚠ TEST ONLY ACTIVE — No admission will be recorded':'Enable non-consuming test mode'}
      </button>
      {!scanning&&<button type="button" className="primary" disabled={busy} onClick={()=>{void startScan()}} style={{fontSize:18,padding:"18px 24px",width:"100%"}}>📷 Start fast continuous scanner</button>}
     <div className="rw-camera rw-gate-camera" style={{display:scanning?'block':'none'}}><video id="gate-video" autoPlay muted playsInline style={{width:'100%'}}/>
     {scanning&&<div className="rw-scan-target" aria-hidden="true"><div className="rw-scan-sweep"/></div>}</div>{scanning&&btn('Stop scanning',stopScan,true)}
     <p id="gate-backup-help" style={{fontSize:13,opacity:.88}}>QR not detected? Enter the backup code printed below the QR on the ticket. Entry still works only once.</p>
-     <form onSubmit={e=>{e.preventDefault();stopScan();void scan()}}>
+     <form onSubmit={e=>{e.preventDefault();void scan()}}>
       <label className="rw-field">Ticket code<input value={scanCode} onChange={e=>setScanCode(e.target.value)}
         autoComplete="off" spellCheck={false} maxLength={2048} placeholder="NX-XXXX-XXXX-XXXX or QR" aria-describedby="gate-backup-help"/></label>
       <button type="submit" className="ghost" disabled={busy||!scanCode.trim()}>Verify ticket code</button>
