@@ -82,6 +82,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const cameraGeneration=useRef(0);
  const verificationInFlight=useRef(false);
  const lastDecoded=useRef({value:'',at:0});
+ const testScanRef=useRef(false);
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scanMessage,setScanMessage]=useState(''),[testScan,setTestScan]=useState(false),[scans,setScans]=useState<Scan[]>([]);
  const valid=role==='user'||role==='organiser'||role==='gate'||role==='platform-admin';
  const allowed=me&&portals.includes(role==='platform-admin'?'platform_admin':role);
@@ -257,11 +258,12 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    await run(async()=>{
     if(!eventId||!value.trim())throw Error('Select your event and enter a ticket code');
     let result;
-    try{result=await api('scan','POST',{eventId,code:value.trim(),testOnly:testScan})}
+    const rehearsal=testScanRef.current;
+    try{result=await api('scan','POST',{eventId,code:value.trim(),testOnly:rehearsal})}
     catch(error){throw Error('Could not verify ticket. Do not admit. '+(error instanceof Error?error.message:''))}
     setScanOutcome(result.outcome);setScanMessage(result.message||'');setScanCode('');
     // The admission result is authoritative. History refresh must not stall the next QR.
-    if(!testScan&&!scanning)void api('gates/activity?eventId='+encodeURIComponent(eventId))
+    if(!rehearsal&&!scanning)void api('gates/activity?eventId='+encodeURIComponent(eventId))
       .then(history=>setScans(history.scans||[])).catch(()=>{});
    });
   }finally{verificationInFlight.current=false}
@@ -712,7 +714,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     <strong>{g.title}</strong><small>{g.gate_label}</small></button>)}</div>
     {eventId&&<div className="rw-gate-stage">
     <div className="rw-scan-context"><span>Scanning for</span><strong>{gates.find(gate=>gate.event_id===eventId)?.title}</strong></div>
-    <label className="rw-field"><input type="checkbox" checked={testScan} onChange={e=>{setTestScan(e.target.checked);setScanOutcome('');setScanMessage('')}}/> Test ticket (no admission recorded)</label>
+    <label className="rw-field"><input type="checkbox" checked={testScan} onChange={e=>{testScanRef.current=e.target.checked;setTestScan(e.target.checked);setScanOutcome('');setScanMessage('')}}/> Test ticket (no admission recorded)</label>
     <p>{testScan?'TEST ONLY — never admit someone on this result. Switch off to begin real entry.':'LIVE ADMISSION — approved tickets are consumed once.'}</p>
     {busy&&<p role="status" className="rw-scan-verifying">Verifying ticket…</p>}
     {!scanning&&<button type="button" className="primary" disabled={busy} onClick={()=>{void startScan()}} style={{fontSize:18,padding:"18px 24px",width:"100%"}}>📷 Start fast continuous scanner</button>}
