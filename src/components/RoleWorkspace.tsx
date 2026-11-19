@@ -53,6 +53,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [platformSettings,setPlatformSettings]=useState<Record<string,string>>({}),[settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
  const [bankName,setBankName]=useState(''),[accountName,setAccountName]=useState(''),[accountNumber,setAccountNumber]=useState('');
  const [paymentSaved,setPaymentSaved]=useState<{bank_name:string;account_name:string;account_number:string}|null>(null),[paymentLoaded,setPaymentLoaded]=useState(false);
+ const [eventVisibility,setEventVisibility]=useState('public');
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
  const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string}|null>(null);
@@ -104,7 +105,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  async function run(fn:()=>Promise<void>){setBusy(true);setMessage('');try{await fn()}catch(e){setMessage((e as Error).message)}finally{setBusy(false)}}
  async function createEvent(){await run(async()=>{
   const date=new Date(startsAt);if(!Number.isFinite(date.getTime()))throw Error('Choose an event date');
-  const result=await api('events','POST',{title:eventTitle,venue,description:eventDescription,category:eventCategory,ticketTheme,admissionLabel,posterTemplate,startsAt:date.toISOString(),capacity:Number(capacity),priceNgn:Number(ticketPrice),qrKeyword:keyword});
+  const result=await api('events','POST',{title:eventTitle,venue,description:eventDescription,category:eventCategory,ticketTheme,admissionLabel,posterTemplate,visibility:eventVisibility,startsAt:date.toISOString(),capacity:Number(capacity),priceNgn:Number(ticketPrice),qrKeyword:keyword});
   setEventTitle('');setKeyword('');await fetchAll();setEventId(result.event.id);setMessage('Event created! Add promotional media and send your listing for Platform Admin verification.');
  })}
  async function addNewTicketTheme(){await run(async()=>{
@@ -416,6 +417,13 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     <p>Payments are verified manually. Saving bank details does not approve any order or issue a QR ticket.</p>
   </section>
   <section className="rw-panel" style={{display:organiserTab==='events'?'':'none'}}><div className="eyebrow">EVENT STUDIO</div><h2>Create and design an event</h2><p>Create as many events as you need. Your listing is reviewed before it appears publicly.</p>
+  <label className="rw-field">Event visibility
+  <select value={eventVisibility} onChange={e=>setEventVisibility(e.target.value)}>
+   <option value="public">Public — EventPass marketplace</option>
+   <option value="unlisted">Unlisted — not public discovery</option>
+   <option value="private">Private external — offline tickets only</option>
+  </select></label>
+  <p>{eventVisibility==='private'?'Private events are managed by their organiser and do not appear in public discovery.':eventVisibility==='unlisted'?'Unlisted events are hidden from discovery.':'Public events require platform verification before discovery.'}</p>
   {input('Event name',eventTitle,setEventTitle)}{input('Venue',venue,setVenue)}
   <label className="rw-field">Event description<textarea rows={4} maxLength={2500} value={eventDescription} onChange={e=>setEventDescription(e.target.value)} placeholder="Describe the experience, performers, attractions and ticket benefits"/></label>
   <label className="rw-field">Event category<select value={eventCategory} onChange={e=>setEventCategory(e.target.value)}>{['Music','Nightlife','Festival','Business','Food','Sports','Arts','Education','Community','Other'].map(c=><option key={c}>{c}</option>)}</select></label>
