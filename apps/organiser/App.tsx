@@ -83,7 +83,7 @@ export default function App(){
  if(me.user.account_status==='pending'||me.user.requested_role==='organiser')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
  const [b,themeList]=await Promise.all([api('organiser/payment-account',t),api('ticket-themes',t)]);
- await Promise.all([refreshInbox(t),refreshFinances(t)]);
+ await Promise.all([refreshInbox(t).catch(()=>{}),refreshFinances(t)]);
  if(themeList.themes?.length)setThemes(themeList.themes.map((x:{id:string;name:string})=>[x.id,x.name]));
  setBankAccounts(b.accounts||[]);
  }
