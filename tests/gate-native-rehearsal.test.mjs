@@ -21,5 +21,5 @@ test('rehearsal never counts valid tickets as admitted in native app',()=>{
  assert.match(native,/if\(!r\.testOnly\)/);
  assert.match(native,/approved:c\.approved\+\(r\.outcome==='approved'\?1:0\)/);
  assert.match(scan,/if\(testOnly\)/);
- assert.match(scan,/outcome:'valid_test'/);
+ assert.match(scan,/ticket\.status==='issued'&&ticket\.active\?'valid_test'/);
 });
