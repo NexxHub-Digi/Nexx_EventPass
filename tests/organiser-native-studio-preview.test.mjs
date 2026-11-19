@@ -44,7 +44,7 @@ test('ticket studio restores and saves drafts with authentication while preservi
  assert.match(preview,/Existing issued tickets are unchanged/);
  const api=readFileSync(new URL('../src/app/api/organiser/ticket-designs/route.ts',import.meta.url),'utf8');
  assert.match(api,/where d\.event_id=\$\{eventId\} and e\.organiser_id=\$\{u\.id\}/);
- assert.match(api,/event_id=\$\{eventId\} and organiser_id=\$\{u\.id\} for update/);
+ assert.match(api,/where id=\$\{eventId\} and organiser_id=\$\{u\.id\} for update/);
  assert.match(api,/coalesce\(max\(version\),0\)\+1/);
  assert.doesNotMatch(api,/update tickets|update ticket_deliveries|update offline_tickets/i);
 });
