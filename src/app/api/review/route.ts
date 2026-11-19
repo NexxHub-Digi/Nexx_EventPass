@@ -1,6 +1,7 @@
 import { currentUser } from '@/lib/security';
 import { db } from '@/lib/db';
 import { issueTicketCredential } from '@/lib/ticket-credentials';
+import {createAdmissionCode} from '@/lib/admission-code';
 import { fail, handleError, ok, payload, str } from '@/lib/http';
 export const runtime='nodejs';
 export async function POST(req: Request) {
@@ -53,8 +54,8 @@ export async function POST(req: Request) {
         for(let i=0;i<Number(order.quantity);i++){
           const ticketId=crypto.randomUUID();
           const credential=issueTicketCredential(ticketId,order.event_id,design[0].qr_keyword_ciphertext);
-          const ticket=await tx`insert into tickets(id,event_id,order_id,owner_id,qr_credential)
-           values(${ticketId},${order.event_id},${id},${order.buyer_id},${credential}) returning id,event_id,status,created_at`;
+          const ticket=await tx`insert into tickets(id,event_id,order_id,owner_id,qr_credential,admission_code)
+           values(${ticketId},${order.event_id},${id},${order.buyer_id},${credential},${createAdmissionCode(ticketId,order.event_id)}) returning id,event_id,status,created_at`;
           await tx`insert into ticket_deliveries(ticket_id,order_id,recipient_id,event_id,ticket_theme,ticket_art_id,admission_label)
            values(${ticket[0].id},${id},${order.buyer_id},${order.event_id},${design[0].ticket_theme},${design[0].ticket_art_id},${design[0].admission_label})`;
           issued.push({id:ticket[0].id});
