@@ -428,12 +428,13 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const pools=expect(await req(categoryPath+'?eventId='+lastSeatEvent.id),200,'discover published ticket categories');
   assert.equal(pools.generalCapacity,1);
   assert.equal(pools.categories[0].id,balcony.id);
-  const freeWithoutReference=expect(await post('/api/orders',buyer.cookie,{
+  const freeBuyer=await signUp('free-checkout-buyer');
+  const freeWithoutReference=expect(await post('/api/orders',freeBuyer.cookie,{
     eventId:lastSeatEvent.id,quantity:1
   }),201,'free General checkout does not require a bank transfer reference').order;
   assert.equal(freeWithoutReference.payment_method,'free');
   assert.equal(freeWithoutReference.payment_reference,'FREE');
-  expect(await req('/api/orders',{cookie:buyer.cookie,method:'PATCH',
+  expect(await req('/api/orders',{cookie:freeBuyer.cookie,method:'PATCH',
     body:{action:'cancel',orderId:freeWithoutReference.id}}),200,'cancel unpaid free hold to release seat');
 
   const contenders=await Promise.all([
