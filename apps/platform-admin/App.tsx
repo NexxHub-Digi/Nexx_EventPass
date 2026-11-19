@@ -17,7 +17,7 @@ type SupportCase={id:string;subject:string;description:string;organiser_name:str
 type ModerationEvent={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;owner_eligible:boolean;pending_media:number};
 type MediaReview={id:string;event_id:string;file_name:string;media_type:string};
 type RefundCase={id:string;event_title:string;buyer_email:string;status:string;refund_status:string;amount_ngn:number;refund_note?:string|null};
-type AuditEntry={id:string;action:string;created_at:string;performed_by:string;target_email?:string|null};
+type AuditEntry={id:string;action:string;created_at:string;performed_by:string;target_email?:string|null;details?:{reason?:string}|null};
 type Theme={id:string;name:string;label:string;color_a:string;color_b:string;accent:string};
 type EventMetrics={id:string;title:string;organiser_name:string;status:string;verification_status:string;tickets_issued:number;external_tickets_issued:number;checked_in:number;pending_orders:number;reserved_seats:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number;capacity:number};
 async function api(p:string,t:string,method='GET',data?:unknown){const multi=data instanceof FormData;const r=await fetch(BASE+'/api/'+p,{method,headers:{...(multi?{}:{'Content-Type':'application/json'}),...(t?{Authorization:'Bearer '+t}:{})},body:multi?data: data?JSON.stringify(data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v}
@@ -36,6 +36,7 @@ export default function App(){
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [applicants,setApplicants]=useState<Applicant[]>([]),[organiserEmail,setOrganiserEmail]=useState('');
  const [selectedOrganiser,setSelectedOrganiser]=useState(''),[organiserName,setOrganiserName]=useState('');
+ const [rejectApplicant,setRejectApplicant]=useState(''),[rejectReason,setRejectReason]=useState('');
  const [accounts,setAccounts]=useState<AdminAccount[]>([]),[userSearch,setUserSearch]=useState(''),[selectedAccount,setSelectedAccount]=useState(''),[userName,setUserName]=useState(''),[deactivateReason,setDeactivateReason]=useState('');
  const [cases,setCases]=useState<SupportCase[]>([]),[resolution,setResolution]=useState(''),[settings,setSettings]=useState<Record<string,string>>({});
  const [settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
@@ -85,6 +86,12 @@ export default function App(){
  })}
  async function searchUsers(page=1,role=accountRole){await exec(async()=>{const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(role)+'&page='+page,token);setAccounts(r.accounts||[]);setAccountPage(r.page||page);setAccountCount(r.count||0)})}
  async function searchEvents(){await exec(async()=>{const data=await api('platform/event-directory?q='+encodeURIComponent(eventQuery),token);setEventMetrics(data.events||[])})}
+ async function rejectOrganiser(id:string){await exec(async()=>{
+  if(rejectApplicant!==id||rejectReason.trim().length<10)throw Error('Provide a rejection reason of at least 10 characters');
+  await api('platform/organisers',token,'POST',{action:'reject',userId:id,reason:rejectReason.trim()});
+  setRejectApplicant('');setRejectReason('');await load(token);
+  Alert.alert('Application rejected','Decision and reason recorded in the platform audit.');
+ })}
  async function updateOrganiserName(id:string){await exec(async()=>{await api('platform/organisers',token,'POST',{action:'configure',userId:id,fullName:organiserName.trim()});await load(token);Alert.alert('Organiser updated','Profile change was saved and audited.')})}
  async function toggleOrganiserCapability(a:Applicant,key:'can_create_events'|'can_invite_gates'|'can_verify_payments'){
   await exec(async()=>{
@@ -278,6 +285,7 @@ export default function App(){
   <Text style={{color:'#fff',fontWeight:'800'}}>{item.action.replace(/_/g,' ')}</Text>
   <Text style={s.hint}>{item.performed_by} · {new Date(item.created_at).toLocaleString('en-NG')}</Text>
   {!!item.target_email&&<Text style={s.hint}>{item.target_email}</Text>}
+  {!!item.details?.reason&&<Text style={s.hint}>Reason: {item.details.reason}</Text>}
  </View>)}
  </>}
  {section==='organisers'&&<><Text style={s.title}>Organiser management</Text>{input('Existing Google-verified User email',organiserEmail,setOrganiserEmail)}{button('Create organiser',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'create',email:organiserEmail});await load(token)})})}
@@ -308,7 +316,19 @@ export default function App(){
    ])}><Text style={s.buttonText}>{a[key]!==false?'✓ ':'○ '}{label}</Text></Pressable>)}
   </>}
  </View>}
-{a.role==='user'&&a.requested_role==='organiser'&&button('Approve organiser',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'approve',userId:a.id});await load(token)})})}
+{a.role==='user'&&a.requested_role==='organiser'&&<>
+  {button('Approve organiser',()=>Alert.alert('Approve organiser?','Approve this existing organiser application?',[
+   {text:'Cancel',style:'cancel'},{text:'Approve',onPress:()=>void exec(async()=>{await api('platform/organisers',token,'POST',{action:'approve',userId:a.id});await load(token);Alert.alert('Approved','Organiser access activated.')})}
+  ]))}
+  {rejectApplicant===a.id?<View style={s.card}>
+   <Text style={s.hint}>Rejection reason (minimum 10 characters). This will be saved in the platform audit.</Text>
+   <TextInput accessibilityLabel="Organiser rejection reason" placeholder="Explain the rejection" placeholderTextColor="#a4b1c8" style={s.input} multiline maxLength={400} value={rejectReason} onChangeText={setRejectReason}/>
+   {button('Confirm rejection',()=>Alert.alert('Reject organiser application?','The request will be declined and the reason recorded. The account remains a User.',[
+    {text:'Cancel',style:'cancel'},{text:'Reject application',style:'destructive',onPress:()=>void rejectOrganiser(a.id)}
+   ]))}
+   {button('Cancel rejection',()=>{setRejectApplicant('');setRejectReason('')},true)}
+  </View>:button('Reject application',()=>{setRejectApplicant(a.id);setRejectReason('')},true)}
+ </>}
 {a.role==='organiser'&&a.account_status==='active'&&button('Suspend',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'suspend',userId:a.id});await load(token)})},true)}
 {a.role==='organiser'&&a.account_status==='suspended'&&button('Restore',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'restore',userId:a.id});await load(token)})})}</View>)}
  </>}
