@@ -13,6 +13,7 @@ test('organiser keyword is encrypted at rest and not exposed in ticket',()=>{
   assert.ok(!qr.includes(ticketId));
   assert.ok(!qr.includes('sunset-private'));
   assert.deepEqual(decodeEncryptedQr(qr,eventId,cipher),{ticketId,eventId});
+  assert.ok(qr.length<140,'new encrypted credentials use compact 16-byte ticket identifiers');
 });
 test('AES-GCM uses fresh random nonces',()=>{
   assert.notEqual(createEncryptedQr(ticketId,eventId,cipher),createEncryptedQr(ticketId,eventId,cipher));

@@ -1,6 +1,7 @@
 import {db} from '@/lib/db';
 import {offlineAccess,uuid} from '@/lib/offline-access';
 import {fillMissingTicketCredentials} from '@/lib/ticket-credentials';
+import {ensureEntryCodes} from '@/lib/ticket-entry-code';
 import {fail,ok,handleError,payload,str} from '@/lib/http';
 export const runtime='nodejs';
 
@@ -21,7 +22,9 @@ export async function GET(req:Request){
   const backfilled=await fillMissingTicketCredentials('offline_tickets', canExport ? rows
    .filter(t=>t.status==='issued' && !t.qr_credential)
    .map(t=>({id:t.id,eventId:t.event_id,keyword:access.event.qr_keyword_ciphertext})) : []);
+  const backupCodes=canExport?await ensureEntryCodes('offline',rows.filter(t=>t.status==='issued').map(t=>({id:t.id,eventId:t.event_id}))):new Map<string,string>();
   return ok({tickets:rows.map(({qr_credential,...t})=>({...t,
+   entry_code:canExport&&t.status==='issued'?(backupCodes.get(t.id)||null):null,
    qr:canExport&&t.status==='issued'?(qr_credential ?? backfilled.get(t.id) ?? null):null}))});
  }catch(e){return handleError(e)}
 }
