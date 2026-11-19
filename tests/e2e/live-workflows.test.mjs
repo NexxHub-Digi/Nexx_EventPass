@@ -317,7 +317,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   await sql`update offline_tickets set qr_credential=null where id=${first.id}`;
   const legacyReads=await Promise.all([req(offlinePath,{cookie:org.cookie}),req(offlinePath,{cookie:org.cookie})]);
   const [legacyQr1,legacyQr2]=legacyReads.map(r=>expect(r,200,'concurrent first read of pre-migration ticket').tickets.find(t=>t.id===first.id).qr);
-  assert.ok(legacyQr1?.startsWith('EVP2.'));
+  assert.ok(legacyQr1?.startsWith('EVP3.'),'backfilled ticket gets compact QR while pre-existing printed EVP2 remains decodable');
   assert.equal(legacyQr1,legacyQr2,'concurrent legacy reads agree on one persisted QR');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'inactive ticket scan').outcome,'inactive_or_unavailable');
   const patch=await req('/api/offline/tickets',{cookie:org.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[first.id],action:'activate'}});
