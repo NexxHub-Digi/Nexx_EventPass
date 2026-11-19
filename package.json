@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:qr": "node --experimental-strip-types --test tests/qr-encryption.test.mjs",
-    "test:workflow": "node --test tests/workflow-guards.test.mjs"
+    "test:workflow": "node --test tests/workflow-guards.test.mjs",
+    "test:paystack": "node --experimental-strip-types --test tests/paystack-gateway.test.mjs"
   },
   "dependencies": {
     "next": "15.5.29",
