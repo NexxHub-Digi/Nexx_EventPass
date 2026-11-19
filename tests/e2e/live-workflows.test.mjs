@@ -264,6 +264,13 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(operatorGates.length,1);
   assert.ok(expect(await req('/api/gates',{cookie:org.cookie}),200,'organiser gate workspace').gates.length);
   assert.ok(expect(await req('/api/auth/me',{cookie:operator.cookie}),200,'gate portal').portals.includes('gate'));
+  const rehearsalQr=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr,testOnly:true}),200,'non-consuming QR rehearsal');
+  const rehearsalManual=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.entry_code,testOnly:true}),200,'non-consuming manual rehearsal');
+  assert.equal(rehearsalQr.outcome,'valid_test');
+  assert.equal(rehearsalManual.outcome,'valid_test');
+  const [beforeLive]=await sql`select redeemed_at from tickets where id=${ticket.id}`;
+  assert.equal(beforeLive.redeemed_at,null,'rehearsal must not use ticket');
+  assert.equal(expect(await req('/api/gate-history?eventId='+event.id,{cookie:operator.cookie}),200,'rehearsal does not create admissions').scans.length,0);
   const scans=await Promise.all([post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr})]);
   assert.deepEqual(scans.map((r,i)=>expect(r,200,'concurrent scan '+i).outcome).sort(),['approved','duplicate']);
   const duplicateManual=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.entry_code.toLowerCase().replaceAll('-',' ')}),200,'manual backup reuse');
