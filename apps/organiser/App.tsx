@@ -11,6 +11,7 @@ type Member={id:string;email:string;full_name:string;role:string;account_status:
 type Event={payment_account_id?:string|null;onsite_payments_enabled?:boolean;id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;verification_status?:string;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type Ticket={id:string;title:string;qr:string|null;status:string;redeemed_at:string|null};
 type BankAccount={id:string;bank_name:string;account_name:string;account_number:string;status:string;review_note?:string};
+type FinanceTotals={gross_ngn:number|string;commission_ngn:number|string;organiser_net_ngn:number|string;outstanding_ngn:number|string};
 type Order={payment_method?:'manual'|'onsite'|'free';id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number};
 type Gate={event_id:string;title:string;gate_label:string};
 type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
@@ -31,6 +32,8 @@ export default function App(){
  const [description,setDescription]=useState(''),[category,setCategory]=useState('Music'),[theme,setTheme]=useState('aurora'),[admissionLabel,setAdmissionLabel]=useState('ADMIT ONE'),[posterTemplate,setPosterTemplate]=useState('none'),[media,setMedia]=useState<{id:string;media_type:string;url:string;approved:boolean}[]>([]);
  const [previewOrder,setPreviewOrder]=useState('');
  const [inbox,setInbox]=useState<{pending:number;unread:number;payments:{id:string;event_title:string;buyer_name:string;amount_ngn:number;payment_reference:string;receipt_mime:string}[]}>({pending:0,unread:0,payments:[]});
+ const [finances,setFinances]=useState<FinanceTotals|null>(null),[financeError,setFinanceError]=useState('');
+ async function refreshFinances(t=token){try{const data=await api('finance',t);setFinances(data.totals||null);setFinanceError('')}catch(error){setFinances(null);setFinanceError('Financial totals unavailable. Retry refresh.')}}
  async function refreshInbox(t=token){setInbox(await api('organiser/payment-inbox',t))}
  useEffect(()=>{
   if(!token||member?.role!=='organiser'||member.account_status!=='active')return;
@@ -80,6 +83,7 @@ export default function App(){
  if(me.user.account_status==='pending'||me.user.requested_role==='organiser')return;
  const ev=await api('events',t);setEvents(ev.events||[]);
  const [b,themeList]=await Promise.all([api('organiser/payment-account',t),api('ticket-themes',t)]);
+ await Promise.all([refreshInbox(t).catch(()=>{}),refreshFinances(t)]);
  if(themeList.themes?.length)setThemes(themeList.themes.map((x:{id:string;name:string})=>[x.id,x.name]));
  setBankAccounts(b.accounts||[]);
  }
@@ -152,9 +156,17 @@ export default function App(){
  {(member.account_status==='pending'||member.requested_role==='organiser')?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
 
  {tab==='dashboard'&&<View style={s.card}><Text style={s.title}>Organiser dashboard</Text>
-  <Text style={s.hint}>Events: {events.filter(e=>e.organiser_id===member.id).length} · Published: {events.filter(e=>e.organiser_id===member.id&&e.status==='published').length}</Text>
+  <Text style={s.hint}>Your events: {events.filter(e=>e.organiser_id===member.id).length} · Published: {events.filter(e=>e.organiser_id===member.id&&e.status==='published').length}</Text>
   <Text style={s.hint}>Selected event: {events.find(e=>e.id===eventId)?.title||'None'}</Text>
-  <Text style={s.hint}>Pending event payment reviews: {orders.filter(o=>o.status==='pending').length}</Text>
+  <Text style={s.hint}>Pending payment reviews across your events: {inbox.pending}</Text>
+  <Text style={s.hint}>New payment notifications: {inbox.unread}</Text>
+  {finances?<View accessibilityLabel="Verified organiser financial totals" style={[s.card,{backgroundColor:'#1d2a49'}]}>
+   <Text style={s.hint}>Confirmed collections: ₦{Number(finances.gross_ngn).toLocaleString('en-NG')}</Text>
+   <Text style={s.hint}>Platform commissions: ₦{Number(finances.commission_ngn).toLocaleString('en-NG')}</Text>
+   <Text style={s.hint}>Organiser net: ₦{Number(finances.organiser_net_ngn).toLocaleString('en-NG')}</Text>
+   <Text style={s.hint}>Outstanding commission remittance: ₦{Number(finances.outstanding_ngn).toLocaleString('en-NG')}</Text>
+  </View>:<Text accessibilityRole="alert" style={s.hint}>{financeError||'Loading verified financial totals…'}</Text>}
+  {button('Refresh dashboard',()=>void exec(async()=>{await Promise.all([refreshInbox(),refreshFinances()])}),true)}
   {button('Manage events',()=>setTab('events'))}{button('Review payments',()=>setTab('payments'),true)}
  </View>}
  {tab==='profile'&&<View style={s.card}><Text style={s.title}>My organiser profile</Text><Text style={s.hint}>Name: {member.full_name}</Text><Text style={s.hint}>Email: {member.email}</Text><Text style={s.hint}>Status: {member.account_status}</Text></View>}
