@@ -46,7 +46,7 @@ export async function PATCH(req:Request){
     await tx`insert into offline_ticket_audit(organiser_id,event_id,batch_id,ticket_id,actor_id,operation_id,action,details)
      select organiser_id,event_id,batch_id,id,${access.user.id},${operationId},${action},
       ${JSON.stringify({distribution:label,amountNgn:label==='sold'?amount:null,note})}::jsonb ||
-      jsonb_build_object('previousActive',${Boolean(t.active)},'previousDistribution',${String(t.distribution)},'previousAmountNgn',${t.sale_amount_ngn})
+      jsonb_build_object('previousActive',${Boolean(t.active)}::boolean,'previousDistribution',${String(t.distribution)}::text,'previousAmountNgn',${t.sale_amount_ngn}::integer)
      from offline_tickets where id=${t.id}`;
    }
    return {updated:locked.length};
