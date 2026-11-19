@@ -16,6 +16,7 @@ jobs:
       - run: npm run test:qr
       - run: npm run test:entry-codes
       - run: npm run test:workflow
+      - run: node --test tests/admin-native-control-centre.test.mjs
       - run: node --test tests/organiser-native-media-parity.test.mjs
       - run: node --test tests/organiser-native-studio-preview.test.mjs
       - run: node --test tests/ticket-studio-persistence.test.mjs
