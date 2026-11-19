@@ -26,7 +26,10 @@ test('media moderation status returned from API supports honest native review la
 });
 test('design previews use the event being created or the actual selected existing event',()=>{
  assert.match(native,/eventTitle\|\|'Your Masquerade Event'/);
- assert.match(native,/events\.find\(e=>e\.id===eventId\)\?\.title\|\|'Your Masquerade Event'/);
- assert.match(native,/events\.find\(e=>e\.id===eventId\)\?\.venue\|\|'Your event venue'/);
+ assert.match(native,/<TicketStudioPreview key=\{eventId\} eventId=\{eventId\}/);
+ assert.match(native,/title=\{events\.find\(e=>e\.id===eventId\)\?\.title\|\|''\}/);
+ assert.match(native,/venue=\{events\.find\(e=>e\.id===eventId\)\?\.venue\|\|''\}/);
+ const preview=readFileSync(new URL('../apps/organiser/TicketStudioPreview.tsx',import.meta.url),'utf8');
+ assert.match(preview,/NO REUSABLE OR DEMO ADMISSION CODE/);
  assert.match(native,/QR GENERATED ON APPROVAL/);
 });
