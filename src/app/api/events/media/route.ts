@@ -22,7 +22,7 @@ export async function GET(req:Request){
    }});
   }
   if(!uuid(eventId))return fail('Event ID required',400);
-  const data=await db()`select m.id,m.event_id,m.media_type,m.mime_type,m.file_name,m.created_at
+  const data=await db()`select m.id,m.event_id,m.media_type,m.mime_type,m.file_name,m.approved,m.created_at
   from event_media m join events e on e.id=m.event_id join app_users owner on owner.id=e.organiser_id
   where e.id=${eventId} and ((e.status='published' and e.verification_status='verified' and e.visibility='public' and m.approved and owner.account_status='active' and owner.role='organiser')
     or (e.organiser_id=${u?.id||null} and ${u?.role==='organiser'&&u?.account_status==='active'})
