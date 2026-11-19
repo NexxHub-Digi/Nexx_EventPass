@@ -81,6 +81,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  },[role,me?.id,me?.role,me?.account_status]);
  const cameraGeneration=useRef(0);
  const verificationInFlight=useRef(false);
+ const lastDecoded=useRef({value:'',at:0});
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
  const valid=role==='user'||role==='organiser'||role==='gate'||role==='platform-admin';
  const allowed=me&&portals.includes(role==='platform-admin'?'platform_admin':role);
@@ -259,8 +260,9 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     try{result=await api('scan','POST',{eventId,code:value.trim()})}
     catch(error){throw Error('Could not verify ticket. Do not admit. '+(error instanceof Error?error.message:''))}
     setScanOutcome(result.outcome);setScanCode('');
-    const history=await api('gates/activity?eventId='+encodeURIComponent(eventId));
-    setScans(history.scans||[]);
+    // The admission result is authoritative. History refresh must not stall the next QR.
+    if(!scanning)void api('gates/activity?eventId='+encodeURIComponent(eventId))
+      .then(history=>setScans(history.scans||[])).catch(()=>{});
    });
   }finally{verificationInFlight.current=false}
  }
@@ -275,10 +277,13 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    const preview=document.getElementById('gate-video') as HTMLVideoElement|null;
    if(!preview)throw Error('Camera preview unavailable');
    const reader=new BrowserQRCodeReader();
-   const controller=await reader.decodeFromVideoDevice(undefined,preview,(result,_,control)=>{
-    if(!result||generation!==cameraGeneration.current)return;
-    cameraGeneration.current++;
-    control.stop();scanControls.current=null;setScanning(false);void scan(result.getText());
+   const controller=await reader.decodeFromVideoDevice(undefined,preview,(result)=>{
+    if(!result||generation!==cameraGeneration.current||verificationInFlight.current)return;
+    const value=result.getText(),now=Date.now();
+    if(value===lastDecoded.current.value&&now-lastDecoded.current.at<2500)return;
+    lastDecoded.current={value,at:now};
+    // Continuous decode: keep the camera mounted between admissions.
+    void scan(value);
    });
    if(generation===cameraGeneration.current)scanControls.current=controller;
    else controller.stop();
@@ -708,12 +713,13 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     {eventId&&<div className="rw-gate-stage">
     <div className="rw-scan-context"><span>Scanning for</span><strong>{gates.find(gate=>gate.event_id===eventId)?.title}</strong></div>
     {busy&&<p role="status" className="rw-scan-verifying">Verifying ticket…</p>}
-    {!scanning&&<button type="button" className="primary" disabled={busy} onClick={()=>{void startScan()}} style={{fontSize:18,padding:"18px 24px",width:"100%"}}>📷 Open camera scanner</button>}
+    {!scanning&&<button type="button" className="primary" disabled={busy} onClick={()=>{void startScan()}} style={{fontSize:18,padding:"18px 24px",width:"100%"}}>📷 Start fast continuous scanner</button>}
     <div className="rw-camera rw-gate-camera" style={{display:scanning?'block':'none'}}><video id="gate-video" autoPlay muted playsInline style={{width:'100%'}}/>
     {scanning&&<div className="rw-scan-target" aria-hidden="true"><div className="rw-scan-sweep"/></div>}</div>{scanning&&btn('Stop scanning',stopScan,true)}
-    <form onSubmit={e=>{e.preventDefault();stopScan();void scan()}}>
+    <p id="gate-backup-help" style={{fontSize:13,opacity:.88}}>QR not detected? Enter the backup code printed below the QR on the ticket. Entry still works only once.</p>
+     <form onSubmit={e=>{e.preventDefault();stopScan();void scan()}}>
       <label className="rw-field">Ticket code<input value={scanCode} onChange={e=>setScanCode(e.target.value)}
-        autoComplete="off" spellCheck={false} maxLength={2048} placeholder="Paste a code or use a USB scanner"/></label>
+        autoComplete="off" spellCheck={false} maxLength={2048} placeholder="NX-XXXX-XXXX-XXXX or QR" aria-describedby="gate-backup-help"/></label>
       <button type="submit" className="ghost" disabled={busy||!scanCode.trim()}>Verify ticket code</button>
     </form>
     {!!scanOutcome&&<div key={scanOutcome} role="status" className={'rw-result '+scanOutcome}>
