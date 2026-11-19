@@ -82,7 +82,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const cameraGeneration=useRef(0);
  const verificationInFlight=useRef(false);
  const lastDecoded=useRef({value:'',at:0});
- const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
+ const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[testScan,setTestScan]=useState(false),[scanNotice,setScanNotice]=useState(''),[scans,setScans]=useState<Scan[]>([]);
  const valid=role==='user'||role==='organiser'||role==='gate'||role==='platform-admin';
  const allowed=me&&portals.includes(role==='platform-admin'?'platform_admin':role);
  useEffect(()=>{if(role==='gate'&&gates.length===1&&!eventId)setEventId(gates[0].event_id)},[role,gates,eventId]);
@@ -257,11 +257,11 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    await run(async()=>{
     if(!eventId||!value.trim())throw Error('Select your event and enter a ticket code');
     let result;
-    try{result=await api('scan','POST',{eventId,code:value.trim()})}
+    try{result=await api('scan','POST',{eventId,code:value.trim(),testOnly:testScan})}
     catch(error){throw Error('Could not verify ticket. Do not admit. '+(error instanceof Error?error.message:''))}
-    setScanOutcome(result.outcome);setScanCode('');
+    setScanOutcome(result.outcome);setScanNotice(result.message||'');setScanCode('');
     // The admission result is authoritative. History refresh must not stall the next QR.
-    if(!scanning)void api('gates/activity?eventId='+encodeURIComponent(eventId))
+    if(!testScan&&!scanning)void api('gates/activity?eventId='+encodeURIComponent(eventId))
       .then(history=>setScans(history.scans||[])).catch(()=>{});
    });
   }finally{verificationInFlight.current=false}
@@ -712,6 +712,11 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     <strong>{g.title}</strong><small>{g.gate_label}</small></button>)}</div>
     {eventId&&<div className="rw-gate-stage">
     <div className="rw-scan-context"><span>Scanning for</span><strong>{gates.find(gate=>gate.event_id===eventId)?.title}</strong></div>
+    <label className="rw-field" style={{background:testScan?'#292044':'transparent',padding:10,borderRadius:10}}>
+     <input type="checkbox" checked={testScan} onChange={e=>{stopScan();setTestScan(e.target.checked);setScanOutcome('');setScanNotice('')}}/>
+     <strong> {testScan?'TEST MODE — do not admit guests':'LIVE ADMISSION — switch to rehearsal'}</strong>
+    </label>
+    <p role="status" style={{fontWeight:700}}>{testScan?'Rehearsal validates tickets without recording an entry.':'Live mode redeems each valid ticket once. Scan only at the live gate.'}</p>
     {busy&&<p role="status" className="rw-scan-verifying">Verifying ticket…</p>}
     {!scanning&&<button type="button" className="primary" disabled={busy} onClick={()=>{void startScan()}} style={{fontSize:18,padding:"18px 24px",width:"100%"}}>📷 Start fast continuous scanner</button>}
     <div className="rw-camera rw-gate-camera" style={{display:scanning?'block':'none'}}><video id="gate-video" autoPlay muted playsInline style={{width:'100%'}}/>
@@ -720,11 +725,11 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
      <form onSubmit={e=>{e.preventDefault();stopScan();void scan()}}>
       <label className="rw-field">Ticket code<input value={scanCode} onChange={e=>setScanCode(e.target.value)}
         autoComplete="off" spellCheck={false} maxLength={2048} placeholder="NX-XXXX-XXXX-XXXX or QR" aria-describedby="gate-backup-help"/></label>
-      <button type="submit" className="ghost" disabled={busy||!scanCode.trim()}>Verify ticket code</button>
+      <button type="submit" className="ghost" disabled={busy||!scanCode.trim()}>{testScan?'Test ticket code (no admission)':'Verify and admit by code'}</button>
     </form>
     {!!scanOutcome&&<div key={scanOutcome} role="status" className={'rw-result '+scanOutcome}>
-      <b>{scanOutcome==='approved'?'✓ VALID — ADMIT':scanOutcome==='duplicate'?'ALREADY CHECKED IN':scanOutcome==='wrong_event'?'WRONG EVENT':scanOutcome==='revoked'?'REVOKED TICKET':'✕ ENTRY REJECTED'}</b>
-      <p>{scanOutcome==='approved'?'This ticket is genuine and has been redeemed.':scanOutcome==='duplicate'?'The ticket has already been used. Do not admit again.':'Do not admit this ticket. Ask the holder to contact the organiser.'}</p>
+      <b>{scanOutcome==='valid_test'?'TEST ONLY — VALID, NOT ADMITTED':scanOutcome==='approved'?'✓ VALID — ADMIT':scanOutcome==='duplicate'?'ALREADY CHECKED IN':scanOutcome==='wrong_event'?'WRONG EVENT':scanOutcome==='revoked'?'REVOKED TICKET':'✕ ENTRY REJECTED'}</b>
+      <p>{scanNotice||'Do not admit; ask the organiser for assistance.'}</p>
     </div>}
     <details><summary>Recent scan activity</summary>
       {scans.length?<ul>{scans.slice(0,10).map(scan=><li key={scan.id}>{scan.outcome.replaceAll('_',' ')} · {nice(scan.scanned_at)}</li>)}</ul>:<p>No scans recorded yet.</p>}
