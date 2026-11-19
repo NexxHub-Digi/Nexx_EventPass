@@ -52,7 +52,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [rejectOrganiserId,setRejectOrganiserId]=useState(''),[rejectOrganiserReason,setRejectOrganiserReason]=useState('');
  const [canCreate,setCanCreate]=useState(true),[canGates,setCanGates]=useState(true),[canPayments,setCanPayments]=useState(true);
  const [eventReports,setEventReports]=useState<EventReport[]>([]),[reportSearch,setReportSearch]=useState(''),[selectedReport,setSelectedReport]=useState(''),[auditHistory,setAuditHistory]=useState<AuditRecord[]>([]);
- const [refundCases,setRefundCases]=useState<RefundCase[]>([]),[refundNote,setRefundNote]=useState('');
+ const [refundCases,setRefundCases]=useState<RefundCase[]>([]),[refundNotes,setRefundNotes]=useState<Record<string,string>>({});
  const [allUsers,setAllUsers]=useState<AdminAccount[]>([]),[userSearch,setUserSearch]=useState(''),[userFilter,setUserFilter]=useState(''),[userPage,setUserPage]=useState(1),[usersCount,setUsersCount]=useState(0),[selectedUser,setSelectedUser]=useState(''),[userEditName,setUserEditName]=useState(''),[accountReason,setAccountReason]=useState('');
  const [cases,setCases]=useState<SupportCase[]>([]),[caseSubject,setCaseSubject]=useState(''),[caseDescription,setCaseDescription]=useState(''),[casePriority,setCasePriority]=useState('normal'),[caseResolution,setCaseResolution]=useState('');
  const [platformSettings,setPlatformSettings]=useState<Record<string,string>>({}),[settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
@@ -251,7 +251,10 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  })}
  async function refreshReports(){await run(async()=>{const r=await api('platform/event-directory?q='+encodeURIComponent(reportSearch));setEventReports(r.events||[]);setMessage('Reports updated')})}
  async function updateRefund(orderId:string,action:'review_required'|'initiated'|'settled'){await run(async()=>{
-  await api('refunds','PATCH',{orderId,action,note:refundNote});const r=await api('refunds');setRefundCases(r.orders||[]);setRefundNote('');setMessage('Refund status updated. Confirm actual bank movement independently.');
+  const note=(refundNotes[orderId]||'').trim();
+  if(action==='settled'&&note.length<10)throw Error('Enter settlement evidence for this specific order (minimum 10 characters).');
+  await api('refunds','PATCH',{orderId,action,note});const r=await api('refunds');setRefundCases(r.orders||[]);
+  setRefundNotes(p=>({...p,[orderId]:''}));setMessage('Refund status updated in the payment audit.');
  })}
  function stopScan(){
   cameraGeneration.current++;
@@ -381,12 +384,18 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   </section><FinanceLedger admin/></>}
   <section className="rw-panel rw-wide" style={{display:adminTab==='refunds'?'':'none'}}><div className="eyebrow">PAYMENT EXCEPTIONS</div><h2>Refund and reconciliation desk</h2>
    <p>Expired reservations with payment evidence and rejected paid orders require manual settlement checks. Mark refunded only after verifying the transfer back to the buyer.</p>
-   {input('Refund note or bank settlement reference',refundNote,setRefundNote)}
+   <p>Use each order’s own settlement reference; review, initiate and verify settlement in sequence.</p>
    {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title} — {money(r.amount_ngn)}</b>
     <p>{r.buyer_email} · {r.refund_status} · {r.status}</p><small>{r.organiser_name||''} · {r.refund_note||'Not yet reconciled'}</small></div>
-    <div className="rw-actions">{btn('Review',()=>{void updateRefund(r.id,'review_required')},true)}
-     {btn('Refund initiated',()=>{void updateRefund(r.id,'initiated')},true)}
-     {btn('Mark settled',()=>{void updateRefund(r.id,'settled')})}</div></div>)}
+    <div className="rw-actions">
+     {r.refund_status==='not_required'&&btn('Open review',()=>{void updateRefund(r.id,'review_required')},true)}
+     {r.refund_status==='review_required'&&btn('Refund initiated',()=>{if(window.confirm('Record that repayment has been initiated for '+r.buyer_email+'?'))void updateRefund(r.id,'initiated')},true)}
+     {r.refund_status==='initiated'&&<>
+      <label className="rw-field">Verified settlement reference for {r.buyer_email}<input maxLength={500} value={refundNotes[r.id]||''} onChange={e=>setRefundNotes(p=>({...p,[r.id]:e.target.value}))}/></label>
+      {btn('Mark settled',()=>{if((refundNotes[r.id]||'').trim().length<10){setMessage('Add a verified transfer reference for this order (10+ characters)');return}if(window.confirm('Confirm you independently verified refund settlement for '+r.buyer_email+'?'))void updateRefund(r.id,'settled')})}
+     </>}
+     {r.refund_status==='settled'&&<span>Settlement recorded — read only</span>}
+    </div></div>)}
    {!refundCases.length&&<p>No payment exceptions are currently recorded.</p>}
   </section>
   <section className="rw-panel rw-wide" style={{display:adminTab==='users'?'':'none'}}><div className="eyebrow">MULTI-TENANT CRM</div><h2>User and operator directory</h2>
@@ -556,9 +565,15 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   </section>}
   {organiserTab==='payments'&&<FinanceLedger key={orders.filter(order=>order.status==='approved').length} admin={false}/>}
   <section className="rw-panel rw-wide" style={{display:organiserTab==='payments'?'':'none'}}><h2 id="admin-refunds">Payment exceptions and refunds</h2>
-   {input('Settlement reference / notes',refundNote,setRefundNote)}
+   <p>Enter settlement evidence separately for each order before confirming a transfer.</p>
    {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title}</b><p>{money(r.amount_ngn)} · {r.refund_status}</p><small>{r.buyer_email} · {r.refund_note||'Check bank settlement before taking action'}</small></div>
-    <div className="rw-actions">{btn('Review',()=>{void updateRefund(r.id,'review_required')},true)}{btn('Refund initiated',()=>{void updateRefund(r.id,'initiated')},true)}{btn('Settled',()=>{void updateRefund(r.id,'settled')})}</div></div>)}
+    <div className="rw-actions">
+     {r.refund_status==='not_required'&&btn('Open review',()=>void updateRefund(r.id,'review_required'),true)}
+     {r.refund_status==='review_required'&&btn('Refund initiated',()=>{if(window.confirm('Record initiation of repayment for '+r.buyer_email+'?'))void updateRefund(r.id,'initiated')},true)}
+     {r.refund_status==='initiated'&&<><label className="rw-field">Verified settlement reference for {r.buyer_email}<input maxLength={500} value={refundNotes[r.id]||''} onChange={e=>setRefundNotes(p=>({...p,[r.id]:e.target.value}))}/></label>
+     {btn('Mark settled',()=>{if((refundNotes[r.id]||'').trim().length<10){setMessage('Provide this order’s verified settlement reference (10+ characters)');return}if(window.confirm('Confirm independently verified refund settlement for '+r.buyer_email+'?'))void updateRefund(r.id,'settled')})}</>}
+     {r.refund_status==='settled'&&<span>Settlement recorded — read only</span>}
+    </div></div>)}
   </section>
   <section className="rw-panel rw-wide" id="organiser-payments" style={{display:organiserTab==='payments'?'':'none'}}>
    <h2>Organiser bank accounts</h2>
