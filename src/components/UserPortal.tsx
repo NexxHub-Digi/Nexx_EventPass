@@ -4,7 +4,7 @@ import Link from 'next/link';
 import EventPassLoading from '@/components/EventPassLoading';
 import {QRCodeSVG} from 'qrcode.react';
 type TicketItem={id:string;title:string;venue:string;status:string;redeemed_at?:string|null;qr?:string|null};
-type OrderItem={payment_method?:'manual'|'onsite'|'free';id:string;event_title:string;status:string;quantity:number;amount_ngn:number;reservation_expires_at?:string|null;receipt_uploaded_at?:string|null;refund_status?:string|null};
+type OrderItem={payment_method?:'manual'|'onsite'|'free'|'paystack';id:string;event_title:string;status:string;quantity:number;amount_ngn:number;reservation_expires_at?:string|null;receipt_uploaded_at?:string|null;refund_status?:string|null};
 type AccountItem={full_name:string;email:string};
 type EventItem={onsite_payments_enabled?:boolean;id:string;title:string;category:string;venue:string;date:string;price:number;gradient:string;icon:string;bank_name?:string;bank_account_name?:string;bank_account_number?:string;cover_media_id?:string|null;video_media_id?:string|null};
 const eventStyles=[{gradient:'linear-gradient(135deg,#7c2cff,#251043 65%,#0b6475)',icon:'♫'},{gradient:'linear-gradient(135deg,#0b8795,#1a1b52 55%,#9b2f8e)',icon:'✦'},{gradient:'linear-gradient(135deg,#dd4d85,#52278b 55%,#15345b)',icon:'◈'}];
@@ -84,7 +84,17 @@ export default function UserPortal(){
  const sendReceipt=async(orderId:string,file:File)=>{const form=new FormData();form.set('orderId',orderId);form.set('receipt',file);const res=await fetch('/api/orders/receipt',{method:'POST',body:form});const data=await res.json();if(!res.ok)throw Error(data.error||'Receipt upload failed')};
  const [paymentDetails,setPaymentDetails]=useState<{payment_account_id:string|null;bank_name:string;bank_account_name:string;bank_account_number:string;onsite_payments_enabled:boolean}|null>(null);
  const [paymentError,setPaymentError]=useState('');
+ const [paystackEnabled,setPaystackEnabled]=useState(false);
  const [copyStatus,setCopyStatus]=useState('');
+ useEffect(()=>{
+  if(!selected)return;
+  const controller=new AbortController();
+  void fetch('/api/payments/paystack/config?eventId='+encodeURIComponent(selected.id),{signal:controller.signal,cache:'no-store'})
+   .then(async response=>{if(!response.ok)throw Error('Paystack unavailable');return response.json()})
+   .then(data=>{if(!controller.signal.aborted)setPaystackEnabled(data.enabled===true)})
+   .catch(()=>{if(!controller.signal.aborted)setPaystackEnabled(false)});
+  return ()=>controller.abort();
+ },[selected]);
  useEffect(()=>{
   if(!selected)return;
   const controller=new AbortController();
@@ -101,17 +111,55 @@ export default function UserPortal(){
   try{await navigator.clipboard.writeText(paymentDetails.bank_account_number);setCopyStatus('Account number copied')}
   catch{setCopyStatus('Select the account number to copy it manually')}
  }
- const [paymentMethod,setPaymentMethod]=useState<'manual'|'onsite'>('manual');
+ const [paymentMethod,setPaymentMethod]=useState<'manual'|'onsite'|'paystack'>('manual');
  const unitPrice=ticketCategories.find(category=>category.id===ticketCategoryId)?.price_ngn??selected?.price??0;
- const reserve=async()=>{if(!selected||busy||!paymentDetails)return;if(!account){window.location.assign('/login/user');return}setBusy(true);setNotice('');try{
+ const reserve=async()=>{if(!selected||busy)return;if(!account){window.location.assign('/login/user');return}setBusy(true);setNotice('');try{
  if(unitPrice>0&&paymentMethod==='manual'&&!reference.trim())throw Error('Enter your payment reference');
+ if(unitPrice>0&&paymentMethod==='manual'&&!paymentDetails)throw Error(paymentError||'Verified bank unavailable');
+ if(unitPrice>0&&paymentMethod==='onsite'&&!paymentDetails?.onsite_payments_enabled)throw Error('Onsite payment unavailable');
+ if(unitPrice>0&&paymentMethod==='paystack'&&!paystackEnabled)throw Error('Paystack test checkout unavailable');
  reservationKey.current ||= crypto.randomUUID();
- const res=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({eventId:selected.id,quantity,ticketCategoryId,unitPriceNgn:unitPrice,reservationKey:reservationKey.current,paymentMethod,paymentAccountId:paymentDetails.payment_account_id,paymentReference:unitPrice>0?reference.trim():'FREE-TICKET'})});
+ const res=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({eventId:selected.id,quantity,ticketCategoryId,unitPriceNgn:unitPrice,reservationKey:reservationKey.current,paymentMethod,paymentAccountId:paymentDetails?.payment_account_id||null,paymentReference:paymentMethod==='paystack'?'PAYSTACK-TEST':unitPrice>0?reference.trim():'FREE-TICKET'})});
  const data=await res.json();if(!res.ok)throw Error(data.error||'Reservation failed');
+ if(unitPrice>0&&paymentMethod==='paystack'){
+  await refreshAccount();
+  const initiated=await fetch('/api/payments/paystack/initialize',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:data.order.id})});
+  const gateway=await initiated.json();
+  if(!initiated.ok)throw Error(gateway.error||'Payment setup failed; resume from My Tickets');
+  if(typeof gateway.authorization_url!=='string'||!gateway.authorization_url.startsWith('https://checkout.paystack.com/'))
+   throw Error('Unexpected checkout destination');
+  window.location.assign(gateway.authorization_url);return;
+ }
  let evidenceUploaded=false;
  if(unitPrice>0&&receipt&&paymentMethod==='manual'){try{await sendReceipt(data.order.id,receipt);evidenceUploaded=true}catch(e){setNotice('Reservation created, but receipt upload failed: '+(e instanceof Error?e.message:'Upload error')+'. Upload evidence from My Tickets before expiry.')}}
  setSelected(null);setReceipt(null);setReference('');setTab('Tickets');if(unitPrice===0||!receipt||paymentMethod==='onsite'||evidenceUploaded)setNotice(evidenceUploaded?'Reservation and payment evidence submitted for organiser review.':data.message);await refreshAccount();
  }catch(e){setNotice(e instanceof Error?e.message:'Unable to reserve tickets')}finally{setBusy(false)}};
+ async function resumePaystack(orderId:string){
+  setBusy(true);setNotice('');
+  try{
+   const response=await fetch('/api/payments/paystack/initialize',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId})});
+   const data=await response.json();
+   if(!response.ok)throw Error(data.error||'Unable to resume gateway payment');
+   if(typeof data.authorization_url!=='string'||!data.authorization_url.startsWith('https://checkout.paystack.com/'))throw Error('Invalid checkout URL');
+   window.location.assign(data.authorization_url);
+  }catch(error){setNotice(error instanceof Error?error.message:'Paystack checkout unavailable');setBusy(false)}
+ }
+ useEffect(()=>{
+  if(!account)return;
+  const url=new URL(window.location.href),reference=url.searchParams.get('paystack_reference');
+  if(!reference)return;
+  url.searchParams.delete('paystack_reference');
+  window.history.replaceState(null,'',url.pathname+url.search+url.hash);
+  setTab('Tickets');setNotice('Verifying your Paystack test transaction…');
+  void fetch('/api/payments/paystack/verify?reference='+encodeURIComponent(reference),{cache:'no-store'})
+   .then(async response=>{const result=await response.json();if(!response.ok)throw Error(result.error||'Verification unavailable');return result})
+   .then(async result=>{await refreshAccount();setNotice(result.status==='issued'||result.status==='already_issued'?
+     'Paystack test payment verified. Your QR tickets are available.':result.status==='reconciliation_required'?
+     'Payment requires reconciliation; contact support.':'Payment is not confirmed yet. Check your tickets later.')})
+   .catch(error=>setNotice(error instanceof Error?error.message:'Gateway verification pending'));
+ },[account?.email]);
  async function cancelReservation(orderId:string){
   if(!window.confirm('Cancel this unpaid reservation? If you have already paid, contact the organiser instead.'))return;
   setBusy(true);setNotice('');
@@ -125,7 +173,7 @@ export default function UserPortal(){
   finally{setBusy(false)}
  }
  const uploadReceipt=async(orderId:string,file:File)=>{setBusy(true);setNotice('');try{await sendReceipt(orderId,file);await refreshAccount();setNotice('Payment evidence submitted for organiser review.')}catch(e){setNotice(e instanceof Error?e.message:'Upload failed')}finally{setBusy(false)}};
- const open=(e:EventItem)=>{reservationKey.current='';setPaymentDetails(null);setPaymentError('');setCopyStatus('');setPaymentMethod('manual');setTicketCategoryId('');setTicketCategories([]);setGeneralCapacity(null);setCategoryError('');setNotice('');setQuantity(1);setReference('');setReceipt(null);setSelected(e)};
+ const open=(e:EventItem)=>{reservationKey.current='';setPaystackEnabled(false);setPaymentDetails(null);setPaymentError('');setCopyStatus('');setPaymentMethod('manual');setTicketCategoryId('');setTicketCategories([]);setGeneralCapacity(null);setCategoryError('');setNotice('');setQuantity(1);setReference('');setReceipt(null);setSelected(e)};
  const toggle=(id:string)=>setSaved(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
  const tabs=[['Discover','◎'],['Tickets','▣'],['Saved','♡'],['Profile','◯']];
  const events=tab==='Saved'?filtered.filter(e=>saved.includes(e.id)):filtered;
@@ -150,8 +198,10 @@ export default function UserPortal(){
  </div>}
  </section>}
  {(tab==='Discover'||tab==='Saved')&&<><div className="sectionhead"><h2>{tab==='Saved'?'Saved events':'Discover events'}</h2><span className="meta">{events.length} events</span></div><input className="search" aria-label="Search events" placeholder="Search events, venues or cities..." value={search} onChange={e=>setSearch(e.target.value)}/><div className="filters">{['All',...new Set(liveEvents.map(e=>e.category))].map(c=><button key={c} className={'chip '+(category===c?'active':'')} onClick={()=>setCategory(c)}>{c}</button>)}<select className="chip" aria-label="Sort events" value={sortBy} onChange={e=>setSortBy(e.target.value)}><option value="name">Event name</option><option value="price">Lowest price</option></select></div>{loadingEvents?<EventPassLoading label="Loading events" compact/>:liveError?<div role="alert" className="empty">{liveError}</div>:events.length?<div className="cards">{events.map(e=><article className="card" key={e.id}><div className="art" style={{background:e.gradient}}>{e.cover_media_id?<img src={'/api/events/media?id='+encodeURIComponent(e.cover_media_id)} alt="" style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>:null}<span className="pill" style={{position:'relative'}}>{e.category}</span><span className="symbol" style={{position:'relative'}}>{e.cover_media_id?'':e.icon}</span><button className="heart" aria-label={saved.includes(e.id)?'Remove from saved':'Save event'} onClick={()=>toggle(e.id)}>{saved.includes(e.id)?'♥':'♡'}</button></div><div className="cardbody"><div className="meta">{e.date} · {e.venue}</div><h3>{e.title}</h3><div className="cardfoot"><span className="price">From {money(e.price)}</span><button className="cta" onClick={()=>open(e)}>View event →</button></div></div></article>)}</div>:<div className="empty">No events match your filters.</div>}</>}
- {tab==='Tickets'&&<><h1>My Tickets</h1><p>Live reservations, payment reviews and secure event entry passes.</p>{accountLoading?<EventPassLoading label="Loading your tickets" compact/>:!account?<div className="empty"><p>Sign in with Google to see your tickets.</p><Link href="/login/user" className="cta">Google sign-in</Link></div>:<><div className="filters">{['All','Pending','Confirmed','Used'].map(t=><button className={'chip '+(ticketFilter===t?'active':'')} key={t} onClick={()=>setTicketFilter(t)}>{t}</button>)}</div>{accountError&&<p role="alert">{accountError}</p>}{notice&&<p role="status">{notice}</p>}{orders.filter(o=>ticketFilter==='All'||(ticketFilter==='Pending'&&['pending','reserved'].includes(o.status))).map(o=><div className="step" key={o.id}><strong>{o.event_title}</strong><p>{o.quantity} ticket(s) · {money(o.amount_ngn)} · {o.status}</p>{o.reservation_expires_at&&<p>Reservation expiry: {new Date(o.reservation_expires_at).toLocaleString('en-NG')}</p>}{o.status==='pending'&&o.payment_method==='onsite'&&<p>Pay onsite before expiry. Show the organiser this order: {o.id}</p>}{o.status==='pending'&&o.amount_ngn>0&&o.payment_method!=='onsite'&&!o.receipt_uploaded_at&&<label className="file">Upload payment evidence (PNG, JPG, WebP or PDF, max 2 MB)<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadReceipt(o.id,file)}}/></label>}{o.receipt_uploaded_at&&<p>Payment evidence submitted</p>}{o.refund_status&&o.refund_status!=='not_required'&&<p>Refund status: {o.refund_status}</p>}
-  {o.status==='pending'&&!o.receipt_uploaded_at&&o.reservation_expires_at&&new Date(o.reservation_expires_at).getTime()>Date.now()&&
+ {tab==='Tickets'&&<><h1>My Tickets</h1><p>Live reservations, payment reviews and secure event entry passes.</p>{accountLoading?<EventPassLoading label="Loading your tickets" compact/>:!account?<div className="empty"><p>Sign in with Google to see your tickets.</p><Link href="/login/user" className="cta">Google sign-in</Link></div>:<><div className="filters">{['All','Pending','Confirmed','Used'].map(t=><button className={'chip '+(ticketFilter===t?'active':'')} key={t} onClick={()=>setTicketFilter(t)}>{t}</button>)}</div>{accountError&&<p role="alert">{accountError}</p>}{notice&&<p role="status">{notice}</p>}{orders.filter(o=>ticketFilter==='All'||(ticketFilter==='Pending'&&['pending','reserved'].includes(o.status))).map(o=><div className="step" key={o.id}><strong>{o.event_title}</strong><p>{o.quantity} ticket(s) · {money(o.amount_ngn)} · {o.status}</p>{o.reservation_expires_at&&<p>Reservation expiry: {new Date(o.reservation_expires_at).toLocaleString('en-NG')}</p>}{o.status==='pending'&&o.payment_method==='onsite'&&<p>Pay onsite before expiry. Show the organiser this order: {o.id}</p>}{o.status==='pending'&&o.amount_ngn>0&&o.payment_method==='manual'&&!o.receipt_uploaded_at&&<label className="file">Upload payment evidence (PNG, JPG, WebP or PDF, max 2 MB)<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadReceipt(o.id,file)}}/></label>}{o.receipt_uploaded_at&&<p>Payment evidence submitted</p>}
+ {o.status==='pending'&&o.payment_method==='paystack'&&<button type="button" className="outline" disabled={busy}
+  onClick={()=>void resumePaystack(o.id)}>Resume Paystack test checkout</button>}{o.refund_status&&o.refund_status!=='not_required'&&<p>Refund status: {o.refund_status}</p>}
+  {o.status==='pending'&&o.payment_method!=='paystack'&&!o.receipt_uploaded_at&&o.reservation_expires_at&&new Date(o.reservation_expires_at).getTime()>Date.now()&&
  <button type="button" className="outline" disabled={busy} onClick={()=>void cancelReservation(o.id)}>Cancel unpaid reservation</button>}
 {o.status==='rejected'&&o.receipt_uploaded_at&&(()=>{
   const request=supportCases.find(item=>item.payment_order_id===o.id);
@@ -165,9 +215,10 @@ export default function UserPortal(){
  })()}</div>)}{tickets.filter(t=>ticketFilter==='All'||(ticketFilter==='Used'?!!t.redeemed_at:ticketFilter==='Confirmed'?!t.redeemed_at: false)).map(t=><div className="step" key={t.id}><strong>{t.title}</strong><p>{t.venue} · {t.redeemed_at?'Used':'Issued'}</p>{t.qr&&!t.redeemed_at&&<div style={{background:'white',padding:12,display:'inline-block',borderRadius:12}}><QRCodeSVG value={t.qr} size={190} level="H" includeMargin/></div>}</div>)}{!orders.length&&!tickets.length&&<div className="empty">No reservations or tickets yet. Discover an event to begin.</div>}</>}</>}
  {tab==='Profile'&&<><h1>Your account</h1><p>Personal details, preferences, notifications and security.</p><div className="step"><strong>◯ User Profile</strong><p>{account?account.full_name+' · '+account.email:'Sign in with Google to view your account.'}</p><Link href="/login/user" className="cta" style={{display:"inline-block",textDecoration:"none"}}>Google account sign-in →</Link></div>{account&&<div className="step"><strong>Account security</strong><p>End your EventPass session on this device.</p><Link href="/ticket-staff" className="outline" style={{display:"inline-block",textDecoration:"none",marginRight:8}}>Ticket Staff workspace</Link><button className="outline" disabled={busy} onClick={async()=>{setBusy(true);try{const r=await fetch('/api/auth/logout',{method:'POST'});if(!r.ok)throw Error('Sign out failed');window.location.assign('/login/user')}catch(e){setNotice(e instanceof Error?e.message:'Sign out failed');setBusy(false)}}}>Sign out</button></div>}<div className="step"><strong>Notification preferences</strong><p>Ticket confirmations, payment review updates and event reminders.</p></div><div className="step"><strong>Security & privacy</strong><p>Session controls and personal account settings remain in the existing authentication flow.</p></div></>}
  </div>
- {selected&&<div className="modalbg" role="presentation"><section ref={checkoutDialog} className="modal" role="dialog" aria-modal="true" aria-label="Reserve event tickets"><div className="modalhead"><h2>{selected.title}</h2><button onClick={()=>setSelected(null)}>Close</button></div><p>{selected.venue} · {selected.date}</p><div className="step"><strong>Reservation</strong>{categoryError&&<p role="alert">{categoryError}</p>}{ticketCategories.length>0&&<label>Ticket category <select value={ticketCategoryId} onChange={e=>{setTicketCategoryId(e.target.value);setReceipt(null);setReference('');setPaymentMethod('manual')}}>{generalCapacity!==0&&<option value="">General</option>}{ticketCategories.map(category=><option key={category.id} value={category.id}>{category.name} · {money(category.price_ngn)}</option>)}</select></label>}<p>Ticket price: {money(unitPrice)}</p><label>Quantity <input type="number" min="1" max="10" value={quantity} onChange={e=>setQuantity(Math.max(1,Math.min(10,Number(e.target.value)||1)))}/></label><p>Total: {money(unitPrice*quantity)}</p></div>{unitPrice>0&&<div className="step"><label>Payment method <select value={paymentMethod} onChange={event=>setPaymentMethod(event.target.value==='onsite'?'onsite':'manual')}>
- <option value="manual">Bank transfer</option>{paymentDetails?.onsite_payments_enabled&&<option value="onsite">Pay onsite</option>}<option value="paystack" disabled>Paystack · setup pending</option></select></label>
- {paymentMethod==='onsite'&&<p>Show your order at the venue and pay before the reservation expires. Tickets appear after the organiser confirms collection.</p>}</div>}{unitPrice>0&&paymentMethod==='manual'&&<div className="step"><strong>Transfer to the organiser’s verified account</strong>
+ {selected&&<div className="modalbg" role="presentation"><section ref={checkoutDialog} className="modal" role="dialog" aria-modal="true" aria-label="Reserve event tickets"><div className="modalhead"><h2>{selected.title}</h2><button onClick={()=>setSelected(null)}>Close</button></div><p>{selected.venue} · {selected.date}</p><div className="step"><strong>Reservation</strong>{categoryError&&<p role="alert">{categoryError}</p>}{ticketCategories.length>0&&<label>Ticket category <select value={ticketCategoryId} onChange={e=>{setTicketCategoryId(e.target.value);setReceipt(null);setReference('');setPaymentMethod('manual')}}>{generalCapacity!==0&&<option value="">General</option>}{ticketCategories.map(category=><option key={category.id} value={category.id}>{category.name} · {money(category.price_ngn)}</option>)}</select></label>}<p>Ticket price: {money(unitPrice)}</p><label>Quantity <input type="number" min="1" max="10" value={quantity} onChange={e=>setQuantity(Math.max(1,Math.min(10,Number(e.target.value)||1)))}/></label><p>Total: {money(unitPrice*quantity)}</p></div>{unitPrice>0&&<div className="step"><label>Payment method <select value={paymentMethod} onChange={event=>setPaymentMethod(event.target.value==='paystack'?'paystack':event.target.value==='onsite'?'onsite':'manual')}>
+ <option value="manual">Bank transfer</option>{paymentDetails?.onsite_payments_enabled&&<option value="onsite">Pay onsite</option>}<option value="paystack" disabled={!paystackEnabled}>Paystack test checkout {paystackEnabled?'':'· setup pending'}</option></select></label>
+ {paymentMethod==='onsite'&&<p>Show your order at the venue and pay before the reservation expires. Tickets appear after the organiser confirms collection.</p>}
+ {paymentMethod==='paystack'&&<p>Paystack test checkout uses a verified organiser subaccount. Tickets issue only after confirmed provider payment.</p>}</div>}{unitPrice>0&&paymentMethod==='manual'&&<div className="step"><strong>Transfer to the organiser’s verified account</strong>
  {paymentError?<p role="alert">{paymentError}</p>:!paymentDetails?<p role="status">Loading verified bank details…</p>:<>
  <dl className="checkout-bank-details">
   <div><dt>Bank</dt><dd>{paymentDetails.bank_name}</dd></div>
@@ -176,7 +227,7 @@ export default function UserPortal(){
  </dl>
  {copyStatus&&<p role="status">{copyStatus}</p>}
  <p>Confirm the account holder and transfer the total shown above, then attach your receipt.</p>
- <label>Payment reference <input className="search" value={reference} onChange={e=>setReference(e.target.value)} placeholder="Bank transfer reference"/></label><label className="file">Payment evidence (optional at reservation; upload before expiry)<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={e=>setReceipt(e.target.files?.[0]||null)}/></label></>}</div>}{unitPrice===0&&paymentError&&<p role="alert">{paymentError}</p>}{notice&&<p role="alert">{notice}</p>}<button className="cta" disabled={busy||generalCapacity===null||!paymentDetails} onClick={()=>void reserve()}>{busy?'Processing…':account?'Reserve tickets':'Sign in with Google to reserve'}</button></section></div>}
+ <label>Payment reference <input className="search" value={reference} onChange={e=>setReference(e.target.value)} placeholder="Bank transfer reference"/></label><label className="file">Payment evidence (optional at reservation; upload before expiry)<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={e=>setReceipt(e.target.files?.[0]||null)}/></label></>}</div>}{unitPrice===0&&paymentError&&<p role="alert">{paymentError}</p>}{notice&&<p role="alert">{notice}</p>}<button className="cta" disabled={busy||generalCapacity===null||(unitPrice>0&&paymentMethod==='manual'&&!paymentDetails)||(unitPrice>0&&paymentMethod==='paystack'&&!paystackEnabled)} onClick={()=>void reserve()}>{busy?'Processing…':account?'Reserve tickets':'Sign in with Google to reserve'}</button></section></div>}
  </main><div className="bottom">{tabs.map(([name,icon])=><button key={name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>{setTab(name);window.scrollTo(0,0)}}><i aria-hidden="true">{icon}</i>{name}</button>)}</div>
 
  </div>;
