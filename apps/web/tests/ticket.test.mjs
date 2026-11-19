@@ -26,7 +26,7 @@ test("already-issued ep1 signed tickets still verify",()=>{
   const claims={v:1,id,event_id:event,nonce:"legacy-ticket-nonce"},body=Buffer.from(JSON.stringify(claims)).toString("base64url");
   const sig=createHmac("sha256",process.env.EVENTPASS_SIGNING_SECRET).update(body).digest("base64url");
   assert.deepEqual(verifyTicket("ep1."+body+"."+sig),claims);
-  assert.equal(verifyTicket("ep1."+body+"."+sig.slice(0,-1)+"A"),null);
+  assert.equal(verifyTicket("ep1."+body+"."+(sig[0]==="A"?"B":"A")+sig.slice(1)),null);
 });
 test("missing signing key fails closed",()=>{
   const old=process.env.EVENTPASS_SIGNING_SECRET;
