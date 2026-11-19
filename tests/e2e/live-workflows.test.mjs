@@ -223,8 +223,12 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const pendingRefunds=expect(await req('/api/refunds',{cookie:org.cookie}),200,'organiser sees refund cases').orders;
   assert.ok(pendingRefunds.some(x=>x.id===held.id&&x.refund_status==='review_required'));
   expect(await req('/api/refunds',{cookie:buyer.cookie}),403,'buyer cannot access organiser refund desk');
+  expect(await req('/api/refunds',{cookie:org.cookie,method:'PATCH',body:{orderId:held.id,action:'settled',note:'Premature refund settlement reference'}}),409,'cannot bypass refund initiation');
   expect(await req('/api/refunds',{cookie:org.cookie,method:'PATCH',body:{orderId:held.id,action:'initiated',note:'E2E refund initiated'}}),200,'record refund initiation');
   expect(await req('/api/refunds',{cookie:org.cookie,method:'PATCH',body:{orderId:held.id,action:'settled',note:'E2E bank transfer reference test-123'}}),200,'record manual settlement evidence');
+  expect(await req('/api/refunds',{cookie:org.cookie,method:'PATCH',body:{orderId:held.id,action:'settled',note:'E2E second transfer attempt'}}),409,'cannot settle an already settled refund twice');
+  expect(await req('/api/refunds',{cookie:org.cookie,method:'PATCH',body:{orderId:held.id,action:'review_required',note:'Attempt to reopen settled refund'}}),409,'settled refunds are immutable');
+
 
   expect(await post('/api/orders',wrong.cookie,{eventId:event.id,quantity:1,paymentAccountId:bank.id,paymentReference:'E2E-SEAT-003'}),201,'released seat is available again');
 

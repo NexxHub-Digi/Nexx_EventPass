@@ -37,7 +37,10 @@ export async function PATCH(req:Request){
    if(u.role!=='platform_admin'&&order.organiser_id!==u.id)return {error:'Not your event',status:403};
    if(order.status==='approved')return {error:'Issued ticket requires supervised cancellation first',status:409};
    if(!order.receipt_data||Number(order.amount_ngn)<=0)return {error:'No paid receipt to reconcile',status:409};
-   if(action==='settled'&&!['initiated','review_required'].includes(order.refund_status))return {error:'Refund review must begin before settlement',status:409};
+   if(order.refund_status==='settled')return {error:'Refund already settled. No further status changes are allowed',status:409};
+   if(action==='initiated'&&!['review_required','initiated'].includes(order.refund_status))return {error:'Open refund review before initiating repayment',status:409};
+   if(action==='review_required'&&!['not_required','review_required'].includes(order.refund_status))return {error:'Cannot return an initiated or settled refund to review',status:409};
+   if(action==='settled'&&order.refund_status!=='initiated')return {error:'Record refund initiation before verifying settlement',status:409};
    await tx`update ticket_orders set refund_status=${action},refund_note=${note},refund_updated_at=now(),refund_updated_by=${u.id}
      where id=${orderId}`;
    await tx`insert into ticket_payment_audit(order_id,actor_id,action,details)
