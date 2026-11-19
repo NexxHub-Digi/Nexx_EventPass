@@ -11,7 +11,7 @@ type Event={id:string;title:string;venue:string;organiser_id:string;starts_at:st
 type Ticket={id:string;title:string;qr:string|null;status:string;redeemed_at:string|null};
 type Order={id:string;event_id:string;event_title?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;payment_reference:string;receipt_uploaded_at?:string|null;amount_ngn:number};
 type Gate={event_id:string;title:string;gate_label:string};
-type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
+type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null;event_count?:number;pending_orders?:number;tickets_issued?:number;gate_operators?:number;can_create_events?:boolean;can_invite_gates?:boolean;can_verify_payments?:boolean};
 type AdminAccount={id:string;email:string;full_name:string;role:string;account_status:string;google_verified:boolean;ticket_count:number;order_count:number;event_count:number;gate_event_count:number};
 type SupportCase={id:string;subject:string;description:string;organiser_name:string;status:string;priority:string;resolution:string};
 type ModerationEvent={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;owner_eligible:boolean;pending_media:number};
@@ -35,6 +35,7 @@ export default function App(){
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [applicants,setApplicants]=useState<Applicant[]>([]),[organiserEmail,setOrganiserEmail]=useState('');
+ const [selectedOrganiser,setSelectedOrganiser]=useState(''),[organiserName,setOrganiserName]=useState('');
  const [accounts,setAccounts]=useState<AdminAccount[]>([]),[userSearch,setUserSearch]=useState(''),[selectedAccount,setSelectedAccount]=useState(''),[userName,setUserName]=useState(''),[deactivateReason,setDeactivateReason]=useState('');
  const [cases,setCases]=useState<SupportCase[]>([]),[resolution,setResolution]=useState(''),[settings,setSettings]=useState<Record<string,string>>({});
  const [settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
@@ -84,6 +85,15 @@ export default function App(){
  })}
  async function searchUsers(page=1,role=accountRole){await exec(async()=>{const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(role)+'&page='+page,token);setAccounts(r.accounts||[]);setAccountPage(r.page||page);setAccountCount(r.count||0)})}
  async function searchEvents(){await exec(async()=>{const data=await api('platform/event-directory?q='+encodeURIComponent(eventQuery),token);setEventMetrics(data.events||[])})}
+ async function updateOrganiserName(id:string){await exec(async()=>{await api('platform/organisers',token,'POST',{action:'configure',userId:id,fullName:organiserName.trim()});await load(token);Alert.alert('Organiser updated','Profile change was saved and audited.')})}
+ async function toggleOrganiserCapability(a:Applicant,key:'can_create_events'|'can_invite_gates'|'can_verify_payments'){
+  await exec(async()=>{
+   const values={can_create_events:a.can_create_events!==false,can_invite_gates:a.can_invite_gates!==false,can_verify_payments:a.can_verify_payments!==false};
+   values[key]=!values[key];
+   await api('platform/organisers',token,'POST',{action:'capabilities',userId:a.id,canCreateEvents:values.can_create_events,canInviteGates:values.can_invite_gates,canVerifyPayments:values.can_verify_payments});
+   await load(token);Alert.alert('Permissions updated','The organiser capability change is saved in the platform audit.');
+  });
+ }
  async function createTheme(){await exec(async()=>{
   const result=await api('ticket-themes',token,'POST',{name:themeName.trim(),label:themeLabel.trim(),colorA:themeA,colorB:themeB,accent:themeAccent});
   const updated=await api('ticket-themes',token);setThemes(updated.themes||[]);
@@ -286,6 +296,18 @@ export default function App(){
  })},true)}</>:button('Reject account',()=>{setBankReviewId(account.id);setBankReviewNote('')},true)}
 </View>)}
 {applicants.map(a=><View key={a.id} style={s.card}><Text style={s.title}>{a.full_name}</Text><Text style={s.hint}>{a.email} · {a.role} · {a.account_status}</Text>
+ {button(selectedOrganiser===a.id?'Close organiser profile':'View organiser profile',()=>{setSelectedOrganiser(previous=>previous===a.id?'':a.id);setOrganiserName(a.full_name)},true)}
+ {selectedOrganiser===a.id&&<View style={s.card}>
+  <Text style={s.hint}>Events: {a.event_count??0} · Issued tickets: {a.tickets_issued??0} · Pending orders: {a.pending_orders??0} · Assigned gate operators: {a.gate_operators??0}</Text>
+  <Text style={s.hint}>Google verification is required for organiser creation. Open Users & access to review the linked identity and verification record.</Text>
+  {a.role==='organiser'&&<>
+   {input('Organiser display name',organiserName,setOrganiserName)}
+   {button('Save organiser profile',()=>void updateOrganiserName(a.id))}
+   {([['can_create_events','Create events'],['can_invite_gates','Invite gate operators'],['can_verify_payments','Verify payments']] as const).map(([key,label])=><Pressable key={key} accessibilityRole="switch" accessibilityState={{checked:a[key]!==false,disabled:busy}} disabled={busy} style={[s.button,s.subButton]} onPress={()=>Alert.alert('Change organiser permission?',label+' will be '+(a[key]!==false?'disabled':'enabled')+' for this organiser.',[
+    {text:'Cancel',style:'cancel'},{text:'Confirm',onPress:()=>void toggleOrganiserCapability(a,key)}
+   ])}><Text style={s.buttonText}>{a[key]!==false?'✓ ':'○ '}{label}</Text></Pressable>)}
+  </>}
+ </View>}
 {a.role==='user'&&a.requested_role==='organiser'&&button('Approve organiser',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'approve',userId:a.id});await load(token)})})}
 {a.role==='organiser'&&a.account_status==='active'&&button('Suspend',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'suspend',userId:a.id});await load(token)})},true)}
 {a.role==='organiser'&&a.account_status==='suspended'&&button('Restore',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'restore',userId:a.id});await load(token)})})}</View>)}
