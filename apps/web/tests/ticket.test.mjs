@@ -13,7 +13,7 @@ test("new QR credentials use authenticated encryption and hide ticket/event iden
 test("encrypted QR payload tampering fails closed",()=>{
   const code=signTicket(id,event),body=code.slice(4);
   assert.equal(verifyTicket("totally-invalid"),null);
-  assert.equal(verifyTicket("ep2."+body.slice(0,-1)+(body.at(-1)==="A"?"B":"A")),null);
+  assert.equal(verifyTicket("ep2."+(body[0]==="A"?"B":"A")+body.slice(1)),null);
   assert.equal(verifyTicket("ep2.bad"),null);
   assert.equal(verifyTicket("ep2."+body+".extra"),null);
   assert.equal(verifyTicket("ep1.bad.bad"),null);
