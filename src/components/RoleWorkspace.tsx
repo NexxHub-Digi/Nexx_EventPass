@@ -83,6 +83,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const verificationInFlight=useRef(false);
  const lastDecoded=useRef({value:'',at:0});
  const [scanCode,setScanCode]=useState(''),[scanning,setScanning]=useState(false),[scanOutcome,setScanOutcome]=useState(''),[scans,setScans]=useState<Scan[]>([]);
+ const [rehearsal,setRehearsal]=useState(false);
  const valid=role==='user'||role==='organiser'||role==='gate'||role==='platform-admin';
  const allowed=me&&portals.includes(role==='platform-admin'?'platform_admin':role);
  useEffect(()=>{if(role==='gate'&&gates.length===1&&!eventId)setEventId(gates[0].event_id)},[role,gates,eventId]);
@@ -257,11 +258,11 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    await run(async()=>{
     if(!eventId||!value.trim())throw Error('Select your event and enter a ticket code');
     let result;
-    try{result=await api('scan','POST',{eventId,code:value.trim()})}
+    try{result=await api('scan','POST',{eventId,code:value.trim(),testOnly:rehearsal})}
     catch(error){throw Error('Could not verify ticket. Do not admit. '+(error instanceof Error?error.message:''))}
     setScanOutcome(result.outcome);setScanCode('');
     // The admission result is authoritative. History refresh must not stall the next QR.
-    if(!scanning)void api('gates/activity?eventId='+encodeURIComponent(eventId))
+    if(!rehearsal&&!scanning)void api('gates/activity?eventId='+encodeURIComponent(eventId))
       .then(history=>setScans(history.scans||[])).catch(()=>{});
    });
   }finally{verificationInFlight.current=false}
@@ -713,7 +714,11 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     {eventId&&<div className="rw-gate-stage">
     <div className="rw-scan-context"><span>Scanning for</span><strong>{gates.find(gate=>gate.event_id===eventId)?.title}</strong></div>
     {busy&&<p role="status" className="rw-scan-verifying">Verifying ticket…</p>}
-    {!scanning&&<button type="button" className="primary" disabled={busy} onClick={()=>{void startScan()}} style={{fontSize:18,padding:"18px 24px",width:"100%"}}>📷 Start fast continuous scanner</button>}
+    <button type="button" className={rehearsal?'primary':'ghost'} aria-pressed={rehearsal}
+      onClick={()=>{setRehearsal(v=>!v);setScanOutcome('')}} style={{width:'100%',padding:14,marginBottom:10}}>
+        {rehearsal?'⚠ TEST ONLY ACTIVE — No admission will be recorded':'Enable non-consuming test mode'}
+     </button>
+     {!scanning&&<button type="button" className="primary" disabled={busy} onClick={()=>{void startScan()}} style={{fontSize:18,padding:"18px 24px",width:"100%"}}>📷 Start fast continuous scanner</button>}
     <div className="rw-camera rw-gate-camera" style={{display:scanning?'block':'none'}}><video id="gate-video" autoPlay muted playsInline style={{width:'100%'}}/>
     {scanning&&<div className="rw-scan-target" aria-hidden="true"><div className="rw-scan-sweep"/></div>}</div>{scanning&&btn('Stop scanning',stopScan,true)}
     <p id="gate-backup-help" style={{fontSize:13,opacity:.88}}>QR not detected? Enter the backup code printed below the QR on the ticket. Entry still works only once.</p>
@@ -723,8 +728,8 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
       <button type="submit" className="ghost" disabled={busy||!scanCode.trim()}>Verify ticket code</button>
     </form>
     {!!scanOutcome&&<div key={scanOutcome} role="status" className={'rw-result '+scanOutcome}>
-      <b>{scanOutcome==='approved'?'✓ VALID — ADMIT':scanOutcome==='duplicate'?'ALREADY CHECKED IN':scanOutcome==='wrong_event'?'WRONG EVENT':scanOutcome==='revoked'?'REVOKED TICKET':'✕ ENTRY REJECTED'}</b>
-      <p>{scanOutcome==='approved'?'This ticket is genuine and has been redeemed.':scanOutcome==='duplicate'?'The ticket has already been used. Do not admit again.':'Do not admit this ticket. Ask the holder to contact the organiser.'}</p>
+      <b>{scanOutcome==='valid_test'?'TEST ONLY — VALID, NOT ADMITTED':scanOutcome==='approved'?'✓ VALID — ADMIT':scanOutcome==='duplicate'?'ALREADY CHECKED IN':scanOutcome==='wrong_event'?'WRONG EVENT':scanOutcome==='revoked'?'REVOKED TICKET':'✕ ENTRY REJECTED'}</b>
+      <p>{scanOutcome==='valid_test'?'Rehearsal passed. No ticket was redeemed. Disable test mode before admitting guests.':scanOutcome==='approved'?'This ticket is genuine and has been redeemed.':scanOutcome==='duplicate'?'The ticket has already been used. Do not admit again.':'Do not admit this ticket. Ask the holder to contact the organiser.'}</p>
     </div>}
     <details><summary>Recent scan activity</summary>
       {scans.length?<ul>{scans.slice(0,10).map(scan=><li key={scan.id}>{scan.outcome.replaceAll('_',' ')} · {nice(scan.scanned_at)}</li>)}</ul>:<p>No scans recorded yet.</p>}
