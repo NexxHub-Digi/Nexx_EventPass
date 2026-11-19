@@ -1,6 +1,7 @@
 import {db} from '@/lib/db';
 import { availableEventTickets, categoryIdPattern } from '@/lib/event-inventory';
 import {issueTicketCredential} from '@/lib/ticket-credentials';
+import {registerEntryCodes} from '@/lib/ticket-entry-code';
 import {offlineAccess,uuid} from '@/lib/offline-access';
 import {fail,ok,handleError,payload,str,positiveInt} from '@/lib/http';
 export const runtime='nodejs';
@@ -61,6 +62,7 @@ export async function POST(req:Request){
      active,qr_credential:issueTicketCredential(id,event.id,event.qr_keyword_ciphertext)};
    });
    await tx`insert into offline_tickets ${tx(tickets)}`;
+   await registerEntryCodes(tx,event.id,tickets.map(t=>t.id),'offline');
    await tx`insert into offline_ticket_audit(organiser_id,event_id,batch_id,actor_id,operation_id,action,details)
     values(${e.organiser_id},${eventId},${batch.id},${access.user.id},${crypto.randomUUID()},'batch_generated',
      ${JSON.stringify({quantity:qty,active,category,label})}::jsonb)`;

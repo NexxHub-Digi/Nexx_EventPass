@@ -31,11 +31,18 @@ export function entryCodeHash(input:string):string|null {
  const normalised=normaliseEntryCode(input);
  return normalised?createHash('sha256').update('EventPass:entry-lookup:v1:').update(normalised).digest('hex'):null;
 }
+export async function registerEntryCodes(tx:TransactionSql,eventId:string,ticketIds:string[],source:EntrySource){
+ if(!ticketIds.length)return;
+ const rows=ticketIds.map(id=>{
+  const hash=entryCodeHash(entryCodeForTicket(id,eventId));
+  if(!hash)throw Error('Could not derive secure admission code');
+  return {event_id:eventId,code_hash:hash,ticket_id:source==='online'?id:null,
+   offline_ticket_id:source==='offline'?id:null};
+ });
+ await tx`insert into ticket_entry_codes ${tx(rows)}`;
+}
 export async function registerEntryCode(tx:TransactionSql,eventId:string,ticketId:string,source:EntrySource){
- const hash=entryCodeHash(entryCodeForTicket(ticketId,eventId));
- if(!hash)throw Error('Could not derive secure admission code');
- await tx`insert into ticket_entry_codes(event_id,code_hash,ticket_id,offline_ticket_id)
-  values(${eventId},${hash},${source==='online'?ticketId:null},${source==='offline'?ticketId:null})`;
+ await registerEntryCodes(tx,eventId,[ticketId],source);
 }
 /** Lazy backfill for legacy tickets. Authorisation must be verified by the caller first. */
 export async function ensureEntryCodes(source:EntrySource,items:TicketEntry[]){
