@@ -38,7 +38,10 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
     if(!updated[0]&&!offlineUpdated[0]){const previous=await tx`select status,redeemed_at from tickets where id=${decoded.ticketId} and event_id=${eventId}
       union all select status,redeemed_at from offline_tickets where id=${decoded.ticketId} and event_id=${eventId}`;
       const old=previous[0];outcome=!old?'invalid':old.status==='revoked'?'revoked':old.redeemed_at?'duplicate':'inactive_or_unavailable';prior=old?.redeemed_at||null;}
-    await tx`insert into entry_scans(event_id,ticket_id,scanner_id,outcome,gate_label) values(${eventId},${outcome==='invalid'?null:decoded.ticketId},${u.id},${outcome},${gateLabel})`;
+    await tx`insert into entry_scans(event_id,ticket_id,scanner_id,outcome,gate_label) values(${eventId},${!updated[0]||outcome==='invalid'?null:decoded.ticketId},${u.id},${outcome},${gateLabel})`;
+    if(offlineUpdated[0])await tx`insert into offline_ticket_audit(organiser_id,event_id,batch_id,ticket_id,actor_id,operation_id,action,details)
+       select organiser_id,event_id,batch_id,id,${u.id},${crypto.randomUUID()},'gate_admitted',
+        jsonb_build_object('gateLabel',${gateLabel}) from offline_tickets where id=${decoded.ticketId}`;
     return {outcome,prior,admittedAt:updated[0]?.redeemed_at||offlineUpdated[0]?.redeemed_at||null};
   });
   return ok({...result,message:result.outcome==='approved'?'Entry approved':'Entry denied'});
