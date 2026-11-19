@@ -44,3 +44,12 @@ test('manual gate codes are one-way indexed and cannot bypass normal single-use 
  assert.match(migration,/primary key\(event_id,code_hash\)/);
  assert.doesNotMatch(migration,/code_plaintext/);
 });
+
+test('masquerade tickets display full secure backup code and readable QR',()=>{
+ const stub=read('src/components/TicketDesign.tsx');
+ const wallet=read('src/components/RoleWorkspace.tsx');
+ assert.match(stub,/ticketCode\?ticketCode\.toUpperCase\(\)/);
+ assert.doesNotMatch(stub,/ticketCode\.slice\(/);
+ assert.match(stub,/level="M"/);
+ assert.match(wallet,/ticketCode=\{t\.entry_code\|\|t\.id\}/);
+});
