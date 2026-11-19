@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import {randomUUID,randomBytes,createCipheriv,hkdfSync} from 'node:crypto';
 import { createEncryptedQr, decodeEncryptedQr, encryptOrganiserKeyword, qrEventHint } from '../src/lib/qr-encryption.ts';
 
 process.env.QR_SIGNING_SECRET = 'local-test-only-super-long-master-secret-at-least-32';
@@ -30,4 +30,16 @@ test('invalid tags, event mismatch and tampering are rejected',()=>{
 test('the wrong organiser keyword cannot decrypt an event',()=>{
   const other=encryptOrganiserKeyword(eventId,'different-keyword-12345');
   assert.equal(decodeEncryptedQr(createEncryptedQr(ticketId,eventId,cipher),eventId,other),null);
+});
+
+test('legacy EVP2 JSON encrypted passes still decode after EVP3 issuance',()=>{
+ const secret=process.env.QR_SIGNING_SECRET,keyword='sunset-private-keyword-2026';
+ const key=Buffer.from(hkdfSync('sha256',Buffer.from(secret),Buffer.from(eventId),Buffer.from('eventpass:ticket:v2:'+keyword),32));
+ const nonce=randomBytes(12),encrypt=createCipheriv('aes-256-gcm',key,nonce);
+ encrypt.setAAD(Buffer.from('eventpass:qr:'+eventId));
+ const body=Buffer.concat([encrypt.update(JSON.stringify({ticketId,eventId}),'utf8'),encrypt.final()]);
+ const legacy='EVP2.'+eventId+'.'+Buffer.concat([nonce,body,encrypt.getAuthTag()]).toString('base64url');
+ assert.equal(qrEventHint(legacy),eventId);
+ assert.deepEqual(decodeEncryptedQr(legacy,eventId,cipher),{ticketId,eventId});
+ assert.equal(decodeEncryptedQr(legacy,randomUUID(),cipher),null);
 });
