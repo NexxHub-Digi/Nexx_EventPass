@@ -10,7 +10,10 @@ test('only event organiser may review payments',()=>{
 });
 test('paid orders require configured bank instructions',()=>{
  const x=read('src/app/api/orders/route.ts');
- assert.match(x,/unitPrice>0&&method!=='paystack'&&!e\.payment_account_id/);
+ assert.match(x,/unitPrice>0&&method==='manual'&&!e\.payment_account_id/);
+ assert.match(x,/unitPrice>0&&method==='manual'&&reference\.length<5/);
+ assert.match(x,/paymentMethod==='free'\?'FREE':reference/);
+ assert.doesNotMatch(x,/method!=='paystack'&&!e\.payment_account_id/);
  assert.match(x,/method==='paystack'&&!e\.paystack_subaccount_code/);
  assert.match(x,/for update of e/);
  assert.match(x,/availableEventTickets\(tx,/);

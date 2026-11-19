@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const paymentAccountId=str(b.paymentAccountId,40).toLowerCase();
     const categoryId=str(b.ticketCategoryId,40).toLowerCase()||null;
     if(categoryId&&!categoryIdPattern.test(categoryId))return fail('Invalid ticket category');
-    if(!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(eventId) || !quantity || (method==='manual'&&reference.length<5)) return fail('Event, quantity and a reference for manual transfers are required');
+    if(!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(eventId) || !quantity) return fail('A valid event and ticket quantity are required');
     const result=await db().begin(async tx=>{
       if(reservationKey){
        // Serialize this buyer/key across events before inspecting inventory.
@@ -56,9 +56,10 @@ export async function POST(req: Request) {
       if((b.unitPriceNgn!==undefined||unitPrice!==Number(e.price_ngn))&&b.unitPriceNgn!==unitPrice)
        return {error:'Ticket price has changed. Reopen checkout and review the total before paying.',status:409};
       if(unitPrice*quantity>2147483647)return {error:'Order total exceeds the supported amount',status:400};
+      if(unitPrice>0&&method==='manual'&&reference.length<5)return {error:'A payment reference is required for bank transfer reservations',status:400};
       if(unitPrice>0&&method==='onsite'&&!e.onsite_payments_enabled)return {error:'Onsite payments are not enabled for this event',status:409};
       if(unitPrice>0&&method==='paystack'&&!e.paystack_subaccount_code)return {error:'Verified Paystack subaccount is required for gateway checkout',status:409};
-      if(unitPrice>0&&method!=='paystack'&&!e.payment_account_id)return {error:'Verified bank details are required before this event can accept paid orders',status:409};
+      if(unitPrice>0&&method==='manual'&&!e.payment_account_id)return {error:'Verified bank details are required before this event can accept paid orders',status:409};
       if(unitPrice>0&&method==='manual'&&paymentAccountId!==e.payment_account_id)
         return {error:'Refresh checkout to confirm the current verified bank details. If you already paid, contact the organiser before paying again.',status:409};
       const {available}=inventory;
@@ -66,7 +67,7 @@ export async function POST(req: Request) {
       const paymentMethod=unitPrice===0?'free':method;
       const orders=await tx`insert into ticket_orders
        (event_id,buyer_id,quantity,amount_ngn,payment_reference,status,reservation_expires_at,ticket_category_id,payment_method,payment_account_id,reservation_key,unit_price_ngn)
-       values (${eventId},${u.id},${quantity},${quantity*unitPrice},${paymentMethod==='onsite'?'ONSITE':paymentMethod==='paystack'?'PAYSTACK-PENDING':reference},'pending',now()+interval '45 minutes',${categoryId},${paymentMethod},${paymentMethod==='manual'?e.payment_account_id:null},${reservationKey},${unitPrice})
+       values (${eventId},${u.id},${quantity},${quantity*unitPrice},${paymentMethod==='onsite'?'ONSITE':paymentMethod==='paystack'?'PAYSTACK-PENDING':paymentMethod==='free'?'FREE':reference},'pending',now()+interval '45 minutes',${categoryId},${paymentMethod},${paymentMethod==='manual'?e.payment_account_id:null},${reservationKey},${unitPrice})
        returning id,event_id,buyer_id,ticket_category_id,quantity,amount_ngn,unit_price_ngn,payment_reference,payment_method,status,reservation_expires_at,created_at`;
       return {order:orders[0],available:available-quantity};
     });
