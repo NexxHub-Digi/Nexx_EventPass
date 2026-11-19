@@ -3,10 +3,10 @@
  * online and offline tickets. No ticket QR or payment state is changed.
  *
  * Dry run (default):
- *   DATABASE_URL=... QR_SIGNING_SECRET=... node scripts/backfill-entry-codes.mjs
+ *   DATABASE_URL=... QR_SIGNING_SECRET=... node --experimental-strip-types scripts/backfill-entry-codes.mjs
  *
  * Explicit staging apply:
- *   ENTRY_CODE_BACKFILL_CONFIRM=staging node scripts/backfill-entry-codes.mjs --apply
+ *   ENTRY_CODE_BACKFILL_CONFIRM=staging node --experimental-strip-types scripts/backfill-entry-codes.mjs --apply
  * Explicit production apply additionally requires:
  *   ENTRY_CODE_BACKFILL_CONFIRM=production ENTRY_CODE_BACKFILL_ALLOW_PRODUCTION=YES
  *
@@ -14,9 +14,8 @@
  * Never print credentials, codes, signing secrets, or connection strings.
  */
 import postgres from 'postgres';
-import {createHmac,createHash} from 'node:crypto';
+import {deriveEntryCode,entryCodeHash} from '../src/lib/entry-code-core.ts';
 
-const alphabet='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const key=process.env.QR_SIGNING_SECRET||'';
 const connection=process.env.DATABASE_URL||'';
 if(!connection)throw Error('DATABASE_URL is required');
@@ -27,17 +26,6 @@ if(apply&&!['staging','production'].includes(environment))
  throw Error('Set ENTRY_CODE_BACKFILL_CONFIRM=staging or production for --apply');
 if(apply&&environment==='production'&&process.env.ENTRY_CODE_BACKFILL_ALLOW_PRODUCTION!=='YES')
  throw Error('Production backfill requires ENTRY_CODE_BACKFILL_ALLOW_PRODUCTION=YES');
-
-function codeHash(ticketId,eventId){
- const digest=createHmac('sha256',key).update('EventPass:manual-admission:v1:')
-  .update(eventId.toLowerCase()).update(':').update(ticketId.toLowerCase()).digest();
- let value=BigInt('0x'+digest.subarray(0,8).toString('hex'))>>4n;
- let encoded='';
- for(let i=0;i<12;i++){encoded=alphabet[Number(value&31n)]+encoded;value>>=5n;}
- const code='NX-'+encoded.slice(0,4)+'-'+encoded.slice(4,8)+'-'+encoded.slice(8);
- return createHash('sha256').update('EventPass:entry-lookup:v1:')
-  .update(code.replace(/-/g,'')).digest('hex');
-}
 
 const sql=postgres(connection,{max:1,connect_timeout:10});
 try{
@@ -53,7 +41,8 @@ try{
       union all select id,event_id,'offline' as source from offline_tickets where status='issued'`;
    let inserted=0;
    for(const row of tickets){
-    const code_hash=codeHash(row.id,row.event_id);
+    const code_hash=entryCodeHash(deriveEntryCode(row.id,row.event_id,key));
+    if(!code_hash)throw Error('Unable to derive indexed entry code');
     const existing=await tx`insert into ticket_entry_codes(event_id,code_hash,ticket_id,offline_ticket_id)
       values(${row.event_id},${code_hash},
        ${row.source==='online'?row.id:null},${row.source==='offline'?row.id:null})
