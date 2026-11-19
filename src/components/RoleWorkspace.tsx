@@ -96,7 +96,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const id=setInterval(refresh,12000);return ()=>clearInterval(id);
  },[role,me?.id,me?.account_status]);
  useEffect(()=>{if(!eventId){setOrders([]);setScans([]);return}
- if(role==='organiser')api('orders?eventId='+encodeURIComponent(eventId)).then(v=>setOrders(v.orders||[])).catch(e=>setMessage((e as Error).message));
+ if(role==='organiser'){setOrders([]);api('orders?eventId='+encodeURIComponent(eventId)).then(v=>setOrders(v.orders||[])).catch(e=>setMessage((e as Error).message));}
  if(role==='organiser'||role==='gate')api('gates/activity?eventId='+encodeURIComponent(eventId)).then(v=>setScans(v.scans||[])).catch(e=>setMessage((e as Error).message));
  if(role==='organiser')api('events/media?eventId='+encodeURIComponent(eventId)).then(v=>setEventMedia(v.media||[])).catch(e=>setMessage((e as Error).message));
  },[eventId,role]);
@@ -154,7 +154,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  })}
  async function review(id:string,decision:'approved'|'rejected'){await run(async()=>{
   await api('review','POST',{orderId:id,decision});setMessage('Payment review saved');
-  const r=await api('orders?eventId='+encodeURIComponent(eventId));setOrders(r.orders||[]);
+  const r=await api('orders?eventId='+encodeURIComponent(eventId));setOrders(r.orders||[]);await fetchAll();
  })}
  async function inviteGate(){await run(async()=>{
   if(!eventId)throw Error('Select an event first');
@@ -364,6 +364,20 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  {role==='organiser'&&<div className="rw-workspace-shell"><nav className="rw-panel" aria-label="Organiser navigation" style={{display:'grid',gap:8,alignContent:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:8}}>ORGANISER WORKSPACE</div>
    {(['dashboard','events','tickets','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>setOrganiserTab(tab)} style={{textTransform:'capitalize',textAlign:'left',padding:12}}>{tab==='tickets'?'Ticket Studio':tab==='team'?'Gate Management':tab==='payments'?'Payments & Bank Details':tab==='dashboard'?'Overview':tab}</button>)}
   </nav><div className="rw-layout" style={{minWidth:0}}>
+  <section className="rw-panel rw-wide" aria-label="Active organiser event" style={{padding:16}}>
+    <div className="eyebrow">ACTIVE EVENT CONTEXT</div>
+    <label className="rw-field">Choose the event for payments, ticket design and gate management
+      <select value={eventId} onChange={e=>{
+        const id=e.target.value;setEventId(id);setOrders([]);setScans([]);setEventMedia([]);setLatestInvite('');
+        const selected=events.find(ev=>ev.id===id);
+        if(selected){setEventDescription(selected.description||'');setEventCategory(selected.category||'Other');setTicketTheme(selected.ticket_theme||'aurora');setAdmissionLabel(selected.admission_label||'ADMIT ONE');setPosterTemplate(selected.poster_template||'none');}
+      }}>
+        <option value="">Select an event</option>
+        {events.filter(e=>e.organiser_id===me?.id).map(e=><option value={e.id} key={e.id}>{e.title} · {e.status} / {e.verification_status||'pending'}</option>)}
+      </select>
+    </label>
+    {eventId&&<div className="rw-actions">{btn('Ticket Studio',()=>setOrganiserTab('tickets'),true)}{btn('Payment approvals',()=>setOrganiserTab('payments'),true)}{btn('Gate team',()=>setOrganiserTab('team'),true)}</div>}
+  </section>
   {organiserTab==='profile'&&<section className="rw-panel rw-wide"><div className="eyebrow">ORGANISER PROFILE</div><h2>My account</h2><p><strong>Name:</strong> {me?.full_name||'Not set'}</p><p><strong>Email:</strong> {me?.email}</p><p><strong>Account status:</strong> {me?.account_status}</p><p>For changes to verified identity or organiser permissions, contact Platform Support under Settings.</p></section>}
   
   {organiserTab==='dashboard'&&<section className="rw-panel rw-wide" style={{display:organiserTab==='dashboard'?'':'none'}}><div className="eyebrow">ORGANISER DASHBOARD</div><h2>Welcome, {me?.full_name||'Organiser'}</h2><p>Manage your events, tickets, payments and admissions from one place.</p><div className="rw-stats">
