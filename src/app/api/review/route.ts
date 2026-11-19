@@ -20,7 +20,7 @@ export async function POST(req: Request) {
       if(decision==='approved'){
         if(Number(order.amount_ngn)>0 && !order.receipt_data)return {error:'Buyer must upload payment receipt before approval',status:409};
         if(order.event_status!=='published' || new Date(order.starts_at).getTime()<Date.now())return {error:'Event cannot accept new tickets',status:409};
-        const counts=await tx`select count(*)::int as issued from tickets where event_id=${order.event_id}`;
+        const counts=await tx`select ((select count(*)::int from tickets where event_id=${order.event_id} and status='issued') + (select count(*)::int from offline_tickets where event_id=${order.event_id} and status='issued')) as issued`;
         if(Number(counts[0].issued)+Number(order.quantity)>Number(order.capacity))return {error:'Event capacity exceeded',status:409};
       }
       const refundStatus=decision==='rejected'&&Number(order.amount_ngn)>0&&Boolean(order.receipt_data)?'review_required':'not_required';
