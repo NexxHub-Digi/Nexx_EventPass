@@ -261,7 +261,10 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(operatorGates.length,1);
   assert.ok(expect(await req('/api/gates',{cookie:org.cookie}),200,'organiser gate workspace').gates.length);
   assert.ok(expect(await req('/api/auth/me',{cookie:operator.cookie}),200,'gate portal').portals.includes('gate'));
-  const scans=await Promise.all([post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr})]);
+  const rehearsal=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.admission_code,testOnly:true}),200,'backup-code rehearsal');
+  assert.equal(rehearsal.outcome,'valid_test','rehearsal must not redeem a ticket');
+  assert.equal((await sql`select redeemed_at from tickets where id=${ticket.id}`)[0].redeemed_at,null,'rehearsal does not persist admission');
+  const scans=await Promise.all([post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.admission_code})]);
   assert.deepEqual(scans.map((r,i)=>expect(r,200,'concurrent scan '+i).outcome).sort(),['approved','duplicate']);
   const history=expect(await req('/api/gates/activity?eventId='+event.id,{cookie:operator.cookie}),200,'gate log');
   const recordedHistory=expect(await req('/api/gate-history?eventId='+event.id,{cookie:operator.cookie}),200,'operator history after scanning');
@@ -321,7 +324,8 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(patch,200,'activate selected offline ticket');
   const activated=expect(await req(offlinePath,{cookie:org.cookie}),200,'refresh activated credential').tickets;
   assert.equal(activated.find(t=>t.id===first.id).qr,legacyQr1,'activation does not rotate the QR');
-  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'first offline scan').outcome,'approved');
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.admission_code,testOnly:true}),200,'offline backup-code rehearsal').outcome,'valid_test');
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.admission_code}),200,'first offline backup-code admission').outcome,'approved');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'duplicate offline scan').outcome,'duplicate');
   const offlineHistory=expect(await req('/api/gate-history?eventId='+privateEvent.id,{cookie:org.cookie}),200,'offline scan references').scans;
   for(const outcome of ['approved','duplicate']){
