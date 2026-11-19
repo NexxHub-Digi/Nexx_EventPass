@@ -42,8 +42,9 @@ test('manual gate codes are one-way indexed and cannot bypass normal single-use 
  assert.match(gate,/entryCodeHash/);
  assert.match(gate,/redeemed_at is null/);
  assert.match(gate,/entry_method/);
- assert.match(entry,/createHmac/);
- assert.match(entry,/createHash/);
+ assert.match(entry,/deriveEntryCode/);
+ assert.match(read('src/lib/entry-code-core.ts'),/createHmac/);
+ assert.match(read('src/lib/entry-code-core.ts'),/createHash/);
  assert.match(migration,/primary key\(event_id,code_hash\)/);
  assert.doesNotMatch(migration,/code_plaintext/);
 });
@@ -56,7 +57,8 @@ test('legacy entry-code backfill is opt-in, indexes offline and online tickets a
  assert.match(migration,/from tickets where status='issued'/);
  assert.match(migration,/from offline_tickets where status='issued'/);
  assert.match(migration,/on conflict do nothing returning code_hash/);
- assert.match(migration,/createHmac\('sha256',key\)/);
- assert.match(migration,/EventPass:entry-lookup:v1:/);
+ assert.match(migration,/deriveEntryCode/);
+ assert.match(read('src/lib/entry-code-core.ts'),/createHmac\('sha256',key\)/);
+ assert.match(read('src/lib/entry-code-core.ts'),/EventPass:entry-lookup:v1:/);
  assert.doesNotMatch(migration,/insert into ticket_entry_codes\([^)]*plaintext/);
 });
