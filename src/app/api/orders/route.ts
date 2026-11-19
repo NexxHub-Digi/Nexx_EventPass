@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try { const u=await currentUser();if(!u||u.account_status!=='active')return fail('Active account required',403);
     const b=await payload(req);const eventId=str(b.eventId,40),quantity=positiveInt(b.quantity,10),reference=str(b.paymentReference,250);
-    const method=b.paymentMethod??'manual';
+    const method=str(b.paymentMethod,12)||'manual';
     if(!['manual','onsite','paystack'].includes(method)||method==='paystack'&&!paystackTestEnabled())return fail('Payment method is unavailable');
     const reservationKey=str(b.reservationKey,40).toLowerCase()||null;
     if(reservationKey&&!categoryIdPattern.test(reservationKey))return fail('Invalid reservation key');
