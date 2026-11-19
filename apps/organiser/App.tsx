@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
 import * as DocumentPicker from 'expo-document-picker';
+import TicketStudioPreview from './TicketStudioPreview';
 WebBrowser.maybeCompleteAuthSession();
 
 const PORTAL: string="organiser",TITLE="Nexx EventPass Event Organiser",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
@@ -252,14 +253,14 @@ export default function App(){
   <Text style={s.hint}>{m.approved?'✓ Approved':'Pending media review'}</Text>
   <Pressable accessibilityRole="button" accessibilityLabel={'Remove '+(m.file_name||m.media_type)} disabled={busy} onPress={()=>confirmRemoveMedia(m.id)} style={[s.button,s.subButton,{minHeight:44}]}><Text style={s.buttonText}>Remove upload</Text></Pressable>
  </View>)}</ScrollView>
- <Text style={s.title}>Update ticket design</Text>{theme.startsWith('stj-')&&<View style={{borderWidth:3,borderColor:'#f1c36a',backgroundColor:'#240732',borderRadius:12,flexDirection:'row',overflow:'hidden',marginVertical:12,minHeight:145}}>
- <View style={{flex:3,padding:11,justifyContent:'space-around',alignItems:'center'}}>
-  <Text style={{fontSize:27}}>🎭 ✨</Text><Text numberOfLines={2} style={{fontSize:16,color:'#ffe4a3',fontWeight:'900',textAlign:'center'}}>{events.find(e=>e.id===eventId)?.title||'Your Masquerade Event'}</Text>
-  <Text style={{fontSize:10,color:'#fff',textAlign:'center'}}>{events.find(e=>e.id===eventId)?.venue||'Your event venue'}</Text>
-  <Text style={{fontSize:12,color:'#f9d77b',fontWeight:'900'}}>{admissionLabel}</Text>
- </View><View style={{flex:1,borderLeftColor:'#ffcf74',borderLeftWidth:2,borderStyle:'dashed',alignItems:'center',justifyContent:'center',padding:6}}>
-  <Text style={{fontSize:25,color:'#f7d77c'}}>◈</Text><Text style={{fontSize:8,color:'#fff',textAlign:'center'}}>QR GENERATED ON APPROVAL</Text>
- </View></View>}
+ <Text style={s.title}>Update ticket design</Text>
+ <TicketStudioPreview key={eventId} eventId={eventId}
+  title={events.find(e=>e.id===eventId)?.title||''}
+  venue={events.find(e=>e.id===eventId)?.venue||''}
+  startsAt={events.find(e=>e.id===eventId)?.starts_at||''}
+  priceNgn={Number(events.find(e=>e.id===eventId)?.price_ngn||0)}
+  organiser={member.full_name} admissionLabel={admissionLabel} theme={theme}/>
+ <Text style={s.hint}>Only the admission label, selected theme, description and category are saved by Save event design. Preview-only fields are not persisted.</Text>
 {input('Ticket admission label',admissionLabel,setAdmissionLabel)}<ScrollView horizontal contentContainerStyle={{gap:8}}>{themes.map(([id,name])=><Pressable key={id} onPress={()=>setTheme(id)} style={[s.card,{backgroundColor:theme===id?'#513c83':'#273351'}]}><Text style={s.buttonText}>{name}</Text></Pressable>)}</ScrollView>
  {input('Description',description,setDescription)}{input('Category',category,setCategory)}{button('Save event design',()=>{void saveDesign()})}
 <Text style={s.title}>Promotional poster collection</Text><Text style={s.hint}>The two portrait layouts promote your event and do not contain an admission QR.</Text>
