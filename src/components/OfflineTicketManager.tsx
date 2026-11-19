@@ -4,7 +4,7 @@ import {QRCodeSVG} from 'qrcode.react';
 type Event={id:string;title:string;organiser_id:string;visibility?:string};
 type Batch={id:string;label:string;category:string;quantity:number;valid_count:number;active_count:number;admitted_count:number;created_at:string};
 type Ticket={id:string;serial_number:number;batch_id:string;status:string;active:boolean;distribution:string;redeemed_at:string|null;qr:string|null;sale_amount_ngn:number|null};
-type Activity={id:string;action:string;created_at:string;actor_name:string;details:unknown};
+type Activity={id:string;action:string;created_at:string;actor_name:string;ticket_id:string|null;batch_id:string|null;details:unknown};
 type Team={id:string;user_id:string;full_name:string;email:string;permissions:string[];revoked_at:string|null};
 async function api(route:string,method='GET',data?:unknown){
  const r=await fetch('/api/offline/'+route,{method,credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});
