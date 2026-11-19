@@ -455,6 +455,22 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/events/ticket-categories?eventId='+wrongOwnerEvent.id),404,'inventory hides invalid owner');
   expect(await post('/api/platform/events',adminCookie,{eventId:wrongOwnerEvent.id,action:'verify'}),409,'admin cannot publish events with an ineligible owner');
 
+  const correction={eventId:wrongOwnerEvent.id,action:'correct_owner',expectedOwnerId:admin.id,
+   organiserEmail:org.email,reason:'Confirmed owner in fixture',ownershipConfirmed:true};
+  assert.ok(expect(await req('/api/platform/events',{cookie:adminCookie}),200,'moderation flags invalid owner').events
+    .some(event=>event.id===wrongOwnerEvent.id&&!event.owner_eligible));
+  expect(await post('/api/platform/events',org.cookie,correction),403,'correction requires Platform Admin');
+  expect(await post('/api/platform/events',adminCookie,{...correction,ownershipConfirmed:false}),400,'correction requires explicit confirmation');
+  await sql`insert into gate_assignments(event_id,user_id) values(${wrongOwnerEvent.id},${admin.id})`;
+  expect(await post('/api/platform/events',adminCookie,correction),409,'gate dependencies block correction');
+  await sql`delete from gate_assignments where event_id=${wrongOwnerEvent.id}`;
+  expect(await post('/api/platform/events',adminCookie,correction),200,'admin corrects confirmed owner');
+  const [corrected]=await sql`select organiser_id,status,verification_status from events where id=${wrongOwnerEvent.id}`;
+  assert.deepEqual({...corrected},{organiser_id:org.id,status:'draft',verification_status:'pending'});
+  const [correctionAudit]=await sql`select details from platform_admin_actions where action='correct_event_owner' and details->>'eventId'=${wrongOwnerEvent.id}`;
+  assert.equal(correctionAudit.details.previousOwnerId,admin.id);
+  expect(await post('/api/platform/events',adminCookie,correction),409,'stale correction cannot transfer an eligible event');
+
   const pricedEvent=expect(await post('/api/events',org.cookie,{
    title:'E2E category pricing',venue:'Test',startsAt:new Date(Date.now()+3600000).toISOString(),
    priceNgn:1000,capacity:4,paymentAccountId:secondBank.id,qrKeyword:'category-pricing-test'
