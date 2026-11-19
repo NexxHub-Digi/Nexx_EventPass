@@ -18,11 +18,26 @@ export async function POST(req: Request) {
     const b=await payload(req);const eventId=str(b.eventId,40),quantity=positiveInt(b.quantity,10),reference=str(b.paymentReference,250);
     const method=b.paymentMethod??'manual';
     if(method!=='manual'&&method!=='onsite')return fail('Payment method is unavailable');
+    const reservationKey=str(b.reservationKey,40).toLowerCase()||null;
+    if(reservationKey&&!categoryIdPattern.test(reservationKey))return fail('Invalid reservation key');
     const paymentAccountId=str(b.paymentAccountId,40).toLowerCase();
     const categoryId=str(b.ticketCategoryId,40).toLowerCase()||null;
     if(categoryId&&!categoryIdPattern.test(categoryId))return fail('Invalid ticket category');
     if(!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(eventId) || !quantity || (method==='manual'&&reference.length<5)) return fail('Event, quantity and a reference for manual transfers are required');
     const result=await db().begin(async tx=>{
+      if(reservationKey){
+       // Serialize this buyer/key across events before inspecting inventory.
+       await tx`select pg_advisory_xact_lock(hashtextextended(${u.id+':'+reservationKey},0))`;
+       const [prior]=await tx`select id,event_id,buyer_id,ticket_category_id,quantity,amount_ngn,payment_reference,
+         payment_method,payment_account_id,status,reservation_expires_at,created_at
+         from ticket_orders where buyer_id=${u.id} and reservation_key=${reservationKey}`;
+       if(prior){
+        const same=prior.event_id===eventId.toLowerCase()&&Number(prior.quantity)===quantity&&prior.ticket_category_id===categoryId&&
+         (prior.payment_method==='free'||(prior.payment_method===method&&(method==='onsite'||
+          (prior.payment_account_id===paymentAccountId&&prior.payment_reference===reference))));
+        return same?{order:prior,replayed:true}:{error:'This reservation key already belongs to another checkout. Open My orders.',status:409};
+       }
+      }
       // Lock this event before reserving inventory, preventing two simultaneous
       // buyers from taking its final available tickets.
       const rows=await tx`select e.id,e.price_ngn,e.capacity,e.onsite_payments_enabled,p.id as payment_account_id
@@ -42,13 +57,13 @@ export async function POST(req: Request) {
       if(available<quantity)return {error:'Insufficient tickets remaining. Reduce quantity or choose another event.',status:409,available};
       const paymentMethod=Number(e.price_ngn)===0?'free':method;
       const orders=await tx`insert into ticket_orders
-       (event_id,buyer_id,quantity,amount_ngn,payment_reference,status,reservation_expires_at,ticket_category_id,payment_method,payment_account_id)
-       values (${eventId},${u.id},${quantity},${quantity*Number(e.price_ngn)},${paymentMethod==='onsite'?'ONSITE':reference},'pending',now()+interval '45 minutes',${categoryId},${paymentMethod},${paymentMethod==='manual'?e.payment_account_id:null})
+       (event_id,buyer_id,quantity,amount_ngn,payment_reference,status,reservation_expires_at,ticket_category_id,payment_method,payment_account_id,reservation_key)
+       values (${eventId},${u.id},${quantity},${quantity*Number(e.price_ngn)},${paymentMethod==='onsite'?'ONSITE':reference},'pending',now()+interval '45 minutes',${categoryId},${paymentMethod},${paymentMethod==='manual'?e.payment_account_id:null},${reservationKey})
        returning id,event_id,buyer_id,ticket_category_id,quantity,amount_ngn,payment_reference,payment_method,status,reservation_expires_at,created_at`;
       return {order:orders[0],available:available-quantity};
     });
     if('error' in result)return fail(String(result.error),Number(result.status));
     return ok({...result,message:result.order.payment_method==='onsite'?'Show this reservation to the organiser and pay onsite within 45 minutes. Tickets are released after collection is confirmed.':
-      'Tickets reserved for 45 minutes. The organiser reviews the reservation before QR release.'},201);
+      'Tickets reserved for 45 minutes. The organiser reviews the reservation before QR release.'},result.replayed?200:201);
   }catch(e){return handleError(e);}
 }

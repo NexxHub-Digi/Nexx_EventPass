@@ -264,6 +264,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.deepEqual(scans.map((r,i)=>expect(r,200,'concurrent scan '+i).outcome).sort(),['approved','duplicate']);
   const history=expect(await req('/api/gates/activity?eventId='+event.id,{cookie:operator.cookie}),200,'gate log');
   const recordedHistory=expect(await req('/api/gate-history?eventId='+event.id,{cookie:operator.cookie}),200,'operator history after scanning');
+  assert.ok(recordedHistory.scans.some(scan=>scan.outcome==='approved'&&scan.ticket_id===ticket.id&&scan.offline_ticket_id===null));
   assert.ok(recordedHistory.scans.length&&recordedHistory.scans.every(scan=>scan.created_at));
   assert.equal(Number(history.stats.admitted),1);assert.equal(Number(history.stats.duplicates),1);
   const otherEvent=expect(await post('/api/events',org.cookie,{title:'E2E Other Event',venue:'E2E Other Venue',startsAt:date,capacity:3,priceNgn:0,qrKeyword:'other-private-keyword',ticketTheme:dynamicTheme.id}),201,'second event').event;
@@ -321,6 +322,15 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(activated.find(t=>t.id===first.id).qr,legacyQr1,'activation does not rotate the QR');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'first offline scan').outcome,'approved');
   assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:first.qr}),200,'duplicate offline scan').outcome,'duplicate');
+  const offlineHistory=expect(await req('/api/gate-history?eventId='+privateEvent.id,{cookie:org.cookie}),200,'offline scan references').scans;
+  for(const outcome of ['approved','duplicate']){
+   assert.ok(offlineHistory.some(scan=>scan.outcome===outcome&&scan.offline_ticket_id===first.id&&scan.ticket_id===null));
+  }
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:privateEvent.id,code:'not-a-ticket-credential'}),200,'invalid credential').outcome,'invalid');
+  const invalidScan=expect(await req('/api/gate-history?eventId='+privateEvent.id,{cookie:org.cookie}),200,'invalid scan history').scans[0];
+  assert.equal(invalidScan.outcome,'invalid');
+  assert.equal(invalidScan.offline_ticket_id,null);
+  assert.equal(invalidScan.ticket_id,null);
   expect(await req('/api/offline/tickets',{cookie:wrong.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[first.id],action:'activate'}}),403,'unauthorised activation');
   const second=inventory[1];
   expect(await req('/api/offline/tickets',{cookie:org.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[second.id],action:'distribution',distribution:'sold',amountNgn:4000}}),200,'record external sale');
@@ -387,7 +397,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   ]);
   assert.deepEqual(contenders.map(response=>response.status).sort(),[201,409],'online and external issuance cannot both claim the last category seat');
   expect(await post('/api/offline/batches',org.cookie,{eventId:privateEvent.id,ticketCategoryId:balcony.id,quantity:1,idempotencyKey:randomUUID()}),400,'reject another event’s category');
-  expect(await post('/api/orders',wrong.cookie,{eventId:lastSeatEvent.id,quantity:1,paymentReference:'General seat fixture'}),201,'General seat remains independently available');
+  const request={eventId:lastSeatEvent.id,quantity:1,paymentReference:'General seat fixture',reservationKey:randomUUID()};
+  const duplicateReservation=await Promise.all([post('/api/orders',wrong.cookie,request),post('/api/orders',wrong.cookie,request)]);
+  assert.deepEqual(duplicateReservation.map(result=>result.status).sort(),[200,201]);
+  assert.equal(duplicateReservation[0].data.order.id,duplicateReservation[1].data.order.id);
+  expect(await post('/api/orders',wrong.cookie,{...request,quantity:2}),409,'reject conflicting reservation key reuse');
 
   const onsiteBuyer=await signUp('onsite-buyer');
   const patchFinance=(cookie,body)=>req('/api/finance',{cookie,method:'PATCH',body});
@@ -433,5 +447,13 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(expect(await patchFinance(adminCookie,{...remittance,receivedNgn:75}),200,'correct settlement from statement').status,'matched');
   assert.equal(Number((await ledger(org.cookie)).totals.outstanding_ngn),0);
   await patchFinance(adminCookie,{action:'commission',basisPoints:0});
+  const [wrongOwnerEvent]=await sql`insert into events(organiser_id,title,slug,venue,starts_at,price_ngn,capacity,status,verification_status,visibility)
+   values(${admin.id},'E2E admin-owned legacy event',${'admin-owned-'+tag},'Test',now()+interval '1 hour',0,1,'published','verified','public') returning id`;
+  assert.ok(!expect(await req('/api/events'),200,'public discovery hides invalid owner').events.some(event=>event.id===wrongOwnerEvent.id));
+  assert.ok(expect(await req('/api/events',{cookie:adminCookie}),200,'admin still sees event for correction').events.some(event=>event.id===wrongOwnerEvent.id));
+  expect(await req('/api/events/payment-instructions?eventId='+wrongOwnerEvent.id),404,'booking hides invalid owner');
+  expect(await req('/api/events/ticket-categories?eventId='+wrongOwnerEvent.id),404,'inventory hides invalid owner');
+  expect(await post('/api/platform/events',adminCookie,{eventId:wrongOwnerEvent.id,action:'verify'}),409,'admin cannot publish events with an ineligible owner');
+
  }finally{await sql.end()}
 },{timeout:180000});

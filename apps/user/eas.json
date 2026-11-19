@@ -5,7 +5,10 @@
   "build": {
     "preview": {
       "distribution": "internal",
-      "environment": "preview"
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_RELEASE_CHANNEL": "preview"
+      }
     },
     "production": {
       "autoIncrement": true,

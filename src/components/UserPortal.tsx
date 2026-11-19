@@ -25,6 +25,7 @@ export default function UserPortal(){
   const timer=window.setInterval(()=>setFeaturedIndex(i=>(i+1)%Math.min(liveEvents.length,6)),8000);
   return()=>window.clearInterval(timer);
  },[heroPlaying,liveEvents.length,tab,selected]);
+ const reservationKey=useRef('');
  const checkoutDialog=useRef<HTMLElement>(null);
  useEffect(()=>{
   if(!selected||!checkoutDialog.current)return;
@@ -103,14 +104,15 @@ export default function UserPortal(){
  const [paymentMethod,setPaymentMethod]=useState<'manual'|'onsite'>('manual');
  const reserve=async()=>{if(!selected||busy||!paymentDetails)return;if(!account){window.location.assign('/login/user');return}setBusy(true);setNotice('');try{
  if(selected.price>0&&paymentMethod==='manual'&&!reference.trim())throw Error('Enter your payment reference');
- const res=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({eventId:selected.id,quantity,ticketCategoryId,paymentMethod,paymentAccountId:paymentDetails.payment_account_id,paymentReference:selected.price>0?reference.trim():'FREE-TICKET'})});
+ reservationKey.current ||= crypto.randomUUID();
+ const res=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({eventId:selected.id,quantity,ticketCategoryId,reservationKey:reservationKey.current,paymentMethod,paymentAccountId:paymentDetails.payment_account_id,paymentReference:selected.price>0?reference.trim():'FREE-TICKET'})});
  const data=await res.json();if(!res.ok)throw Error(data.error||'Reservation failed');
  let evidenceUploaded=false;
  if(receipt&&paymentMethod==='manual'){try{await sendReceipt(data.order.id,receipt);evidenceUploaded=true}catch(e){setNotice('Reservation created, but receipt upload failed: '+(e instanceof Error?e.message:'Upload error')+'. Upload evidence from My Tickets before expiry.')}}
  setSelected(null);setReceipt(null);setReference('');setTab('Tickets');if(!receipt||paymentMethod==='onsite'||evidenceUploaded)setNotice(evidenceUploaded?'Reservation and payment evidence submitted for organiser review.':data.message);await refreshAccount();
  }catch(e){setNotice(e instanceof Error?e.message:'Unable to reserve tickets')}finally{setBusy(false)}};
  const uploadReceipt=async(orderId:string,file:File)=>{setBusy(true);setNotice('');try{await sendReceipt(orderId,file);await refreshAccount();setNotice('Payment evidence submitted for organiser review.')}catch(e){setNotice(e instanceof Error?e.message:'Upload failed')}finally{setBusy(false)}};
- const open=(e:EventItem)=>{setPaymentDetails(null);setPaymentError('');setCopyStatus('');setPaymentMethod('manual');setTicketCategoryId('');setTicketCategories([]);setGeneralCapacity(null);setCategoryError('');setNotice('');setQuantity(1);setReference('');setReceipt(null);setSelected(e)};
+ const open=(e:EventItem)=>{reservationKey.current='';setPaymentDetails(null);setPaymentError('');setCopyStatus('');setPaymentMethod('manual');setTicketCategoryId('');setTicketCategories([]);setGeneralCapacity(null);setCategoryError('');setNotice('');setQuantity(1);setReference('');setReceipt(null);setSelected(e)};
  const toggle=(id:string)=>setSaved(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
  const tabs=[['Discover','◎'],['Tickets','▣'],['Saved','♡'],['Profile','◯']];
  const events=tab==='Saved'?filtered.filter(e=>saved.includes(e.id)):filtered;

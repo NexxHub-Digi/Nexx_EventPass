@@ -76,6 +76,66 @@ export default function App(){
   return ()=>clearInterval(id);
  },[token,member?.id,member?.account_status]);
  async function exec(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ const reservationInFlight=useRef(false);
+ const reservationKey=useRef('');
+ const [receiptErrors,setReceiptErrors]=useState<Record<string,string>>({});
+ async function pickReceipt(){
+  const choice=await DocumentPicker.getDocumentAsync({
+   type:['image/png','image/jpeg','image/webp','application/pdf'],copyToCacheDirectory:true
+  });
+  if(choice.canceled)return null;
+  const file=choice.assets[0];
+  if(file.size!==undefined&&file.size>2_000_000)throw Error('Choose a receipt under 2 MB.');
+  return file;
+ }
+ async function uploadReceipt(orderId:string,file:DocumentPicker.DocumentPickerAsset){
+  const form=new FormData();
+  form.append('orderId',orderId);
+  if(Platform.OS==='web'&&file.file)form.append('receipt',file.file);
+  else{
+   const types:Record<string,string>={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',pdf:'application/pdf'};
+   const extension=file.name.split('.').pop()?.toLowerCase()||'';
+   form.append('receipt',{uri:file.uri,name:file.name,type:file.mimeType||types[extension]||'application/octet-stream'} as unknown as Blob);
+  }
+  await api('orders/receipt',token,'POST',form);
+  setOrders(previous=>previous.map(order=>order.id===orderId?
+   {...order,receipt_uploaded_at:new Date().toISOString()}:order));
+ }
+ async function recoverReceipt(orderId:string){
+  await exec(async()=>{
+   const file=await pickReceipt();
+   if(!file)return;
+   setReceiptErrors(previous=>({...previous,[orderId]:''}));
+   try{await uploadReceipt(orderId,file)}catch(error){
+    setReceiptErrors(previous=>({...previous,[orderId]:error instanceof Error?error.message:'Receipt upload failed. Try again.'}));
+    return;
+   }
+   setOrders((await api('orders',token)).orders||[]);
+  });
+ }
+ async function reserveEvent(event:Event){
+  if(reservationInFlight.current)return;
+  reservationInFlight.current=true;
+  try{await exec(async()=>{
+   if(inventory?.eventId!==event.id)throw Error('Payment options are unavailable. Reopen the event to retry.');
+   reservationKey.current ||= Crypto.randomUUID();
+   const response=await api('orders',token,'POST',{
+    reservationKey:reservationKey.current,
+    eventId:event.id,quantity:Number(qty),ticketCategoryId,paymentAccountId:inventory.payment.payment_account_id,
+    paymentMethod:onsite?'onsite':'manual',paymentReference:event.price_ngn>0?ref:'FREE-TICKET'
+   });
+   const order:Order={...response.order,event_title:event.title};
+   setOrders(previous=>[order,...previous.filter(item=>item.id!==order.id)]);
+   reservationKey.current='';setEventId('');setRef('');setProof(null);setSection('orders');
+   if(proof&&event.price_ngn>0&&!onsite){
+    try{await uploadReceipt(order.id,proof)}catch(error){
+     setReceiptErrors(previous=>({...previous,[order.id]:'Reservation saved. '+(error instanceof Error?error.message:'Receipt upload failed.')+' Retry here.'}));
+     return;
+    }
+    setOrders((await api('orders',token)).orders||[]);
+   }
+  })}finally{reservationInFlight.current=false}
+ }
  async function login(){await exec(async()=>{
    const redirect='eventpassuser://oauth';
    const verifier=Array.from(Crypto.getRandomBytes(32)).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -152,7 +212,7 @@ export default function App(){
  <Text style={s.title}>{e.title}</Text><Text style={s.hint}>{e.venue}</Text><Text style={s.hint}>{e.description||'Explore this event and available tickets.'}</Text>
  <Text style={{color:'#8AFFE7',fontSize:20,fontWeight:'800'}}>₦{Number(e.price_ngn).toLocaleString()}</Text>
  {e.video_media_id&&button('Watch event preview video',()=>{void Linking.openURL(BASE+'/api/events/media?id='+e.video_media_id)},true)}
- {button(eventId===e.id?'Close event':'Explore tickets',()=>{if(eventId===e.id){setEventId('');setGallery([]);setInventory(null)}else{setInventory(null);setEventId(e.id);void api('events/media?eventId='+e.id,token).then(r=>setGallery(r.media||[])).catch(()=>setGallery([]))}})}
+ {button(eventId===e.id?'Close event':'Explore tickets',()=>{if(eventId===e.id){setEventId('');setGallery([]);setInventory(null)}else{reservationKey.current='';setRef('');setProof(null);setInventory(null);setEventId(e.id);void api('events/media?eventId='+e.id,token).then(r=>setGallery(r.media||[])).catch(()=>setGallery([]))}})}
  {eventId===e.id&&<>
   <Text style={s.title}>Event gallery</Text>
   <ScrollView horizontal contentContainerStyle={{gap:10,marginVertical:10}}>{gallery.map(m=><Pressable key={m.id} onPress={()=>{if(m.media_type==='video')void Linking.openURL(BASE+m.url)}}>
@@ -171,18 +231,24 @@ export default function App(){
   </View>}
   {input('Number of tickets',qty,setQty)}
   {e.price_ngn>0&&!onsite&&<>{input('Bank transfer reference',ref,setRef)}
-  {button(proof?'Receipt: '+proof.name:'Select payment receipt',()=>{void DocumentPicker.getDocumentAsync({type:['image/png','image/jpeg','image/webp','application/pdf']}).then(v=>{if(!v.canceled)setProof(v.assets[0])})},true)}</>}
-  {button('Request tickets',()=>{void exec(async()=>{if(inventory?.eventId!==e.id)throw Error('Ticket categories are unavailable. Reopen the event and try again.');if(e.price_ngn>0&&!onsite&&!proof)throw Error('Receipt required for paid tickets');const o=await api('orders',token,'POST',{eventId:e.id,quantity:Number(qty),ticketCategoryId,paymentAccountId:inventory.payment.payment_account_id,paymentMethod:onsite?'onsite':'manual',paymentReference:e.price_ngn>0?ref:'FREE-TICKET'});if(proof&&e.price_ngn>0&&!onsite){const form=new FormData();form.append('orderId',o.order.id);form.append('receipt',{uri:proof.uri,name:proof.name,type:proof.mimeType||'application/pdf'} as unknown as Blob);await api('orders/receipt',token,'POST',form)}setEventId('');setRef('');setProof(null);setSection('orders');await load(token);Alert.alert('Request submitted','Your organiser will review the ticket request.')})})}
+  {button(proof?'Receipt: '+proof.name:'Select payment receipt',()=>{void exec(async()=>{const file=await pickReceipt();if(file)setProof(file)})},true)}</>}
+  {button('Request tickets',()=>void reserveEvent(e))}
  </>}</View></View>)}
 {!events.length&&<Text style={s.hint}>No verified events yet. Check again after organisers publish new experiences.</Text>}
 </>}
-{section==='tickets'&&<><Text style={s.title}>My ticket wallet</Text>{!tickets.length&&<Text style={s.hint}>Your approved passes appear here.</Text>}{tickets.map(t=><View key={t.id} style={[s.card,{backgroundColor:palette[t.ticket_theme||'aurora']||'#1c4e72'}]}>{t.ticket_art_id&&<Image source={{uri:BASE+'/api/events/media?id='+t.ticket_art_id}} style={{height:140,borderRadius:9,marginBottom:10}}/>}<Text style={s.title}>{t.title}</Text>{t.qr&&<View style={{backgroundColor:'#fff',padding:14,alignSelf:'center',marginVertical:14,borderRadius:12}}><QRCode value={t.qr} size={200}/></View>}<Text style={s.hint}>{t.redeemed_at?'Already scanned':t.status}</Text></View>)}
+{section==='tickets'&&<><Text style={s.title}>My ticket wallet</Text>{!tickets.length&&<Text style={s.hint}>Your approved passes appear here.</Text>}{tickets.map(t=><View key={t.id} style={[s.card,{backgroundColor:palette[t.ticket_theme||'aurora']||'#1c4e72'}]}>{t.ticket_art_id&&<Image source={{uri:BASE+'/api/events/media?id='+t.ticket_art_id,headers:{Authorization:'Bearer '+token}}} style={{height:140,borderRadius:9,marginBottom:10}}/>}<Text style={s.title}>{t.title}</Text>{t.qr&&<View style={{backgroundColor:'#fff',padding:14,alignSelf:'center',marginVertical:14,borderRadius:12}}><QRCode value={t.qr} size={200}/></View>}<Text style={s.hint}>{t.redeemed_at?'Already scanned':t.status}</Text></View>)}
 </>}
 {section==='orders'&&<><Text style={s.title}>My orders</Text>{!orders.length&&<Text style={s.hint}>Your reservations appear here.</Text>}{orders.map(o=><View key={o.id} style={s.card}><Text style={{color:'#fff',fontWeight:'800'}}>{o.event_title}</Text>
  <Text style={s.hint}>{o.status} · ₦{Number(o.amount_ngn).toLocaleString()} · {o.payment_method==='onsite'?'Onsite':o.payment_method==='free'?'Free':'Receipt '+(o.receipt_uploaded_at?'submitted':'missing')}</Text>
  {o.status==='pending'&&o.payment_method==='onsite'&&<Text selectable style={s.hint}>Show this order onsite: {o.id}</Text>}
  {o.status==='pending'&&o.reservation_expires_at&&<Text style={[s.hint,{color:new Date(o.reservation_expires_at).getTime()<=Date.now()?'#FDA4AF':'#68EBD1'}]}>
  {new Date(o.reservation_expires_at).getTime()<=Date.now()?'Reservation expired. Contact organiser if money was sent.':'Reserved until '+new Date(o.reservation_expires_at).toLocaleString()}</Text>}
+ {o.status==='pending'&&o.amount_ngn>0&&o.payment_method!=='onsite'&&
+   o.reservation_expires_at&&new Date(o.reservation_expires_at).getTime()>Date.now()&&<>
+  <Text style={s.hint}>Receipt: PNG, JPEG, WebP or PDF, up to 2 MB.</Text>
+  {!!receiptErrors[o.id]&&<Text accessibilityRole="alert" style={s.error}>{receiptErrors[o.id]}</Text>}
+  {button(o.receipt_uploaded_at?'Replace receipt':receiptErrors[o.id]?'Retry receipt upload':'Upload receipt',()=>void recoverReceipt(o.id),true)}
+ </>}
  {o.status==='rejected'&&o.receipt_uploaded_at&&(()=>{
   const request=paymentCases.find(item=>item.payment_order_id===o.id);
   if(request)return <Text style={s.hint}>Support: {request.status.replaceAll('_',' ')}{request.resolution?' · '+request.resolution:''}</Text>;

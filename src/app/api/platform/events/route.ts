@@ -24,11 +24,11 @@ export async function POST(req:Request){
   const u=await admin();if(!u)return fail('Platform Administrator only',403);
   const b=await payload(req),action=str(b.action,32),eventId=str(b.eventId,40),mediaId=str(b.mediaId,40);
   if(!uuid(eventId)||!['verify','reject','approve_media','reject_media'].includes(action))return fail('Invalid review action');
-  const owned=await db()`select e.id,e.status,e.starts_at,owner.account_status from events e
+  const owned=await db()`select e.id,e.status,e.starts_at,owner.role as owner_role,owner.account_status from events e
    join app_users owner on owner.id=e.organiser_id where e.id=${eventId}`;
   if(!owned[0])return fail('Event not found',404);
   if(action==='verify'){
-   if(owned[0].account_status!=='active')return fail('Organiser is not active',409);
+   if(owned[0].account_status!=='active'||owned[0].owner_role!=='organiser')return fail('Assign the event to an active organiser before publishing',409);
    if(new Date(owned[0].starts_at).getTime()<=Date.now())return fail('Cannot verify a past event',409);
    const pending=await db()`select count(*)::int as count from event_media where event_id=${eventId} and approved=false`;
    if(Number(pending[0]?.count)>0)return fail('Review every pending media asset before verifying the event',409);
