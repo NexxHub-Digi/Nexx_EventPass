@@ -14,6 +14,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run test:qr
+      - run: npm run test:entry-codes
       - run: npm run test:workflow
       - run: npm run test:paystack
       - run: node --test tests/gate-invitations.test.mjs
