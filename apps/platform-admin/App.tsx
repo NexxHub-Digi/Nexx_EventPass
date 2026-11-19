@@ -93,7 +93,7 @@ export default function App(){
   if(!selectedAccount)throw Error('Select an account');
   if(action==='deactivate'&&!deactivateReason.trim())throw Error('Provide a deactivation reason');
   await api('platform/users',token,'PATCH',{action,userId:selectedAccount,fullName:userName,reason:deactivateReason});
-  const r=await api('platform/users?q='+encodeURIComponent(userSearch),token);setAccounts(r.accounts||[]);
+  const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(accountRole)+'&page='+accountPage,token);setAccounts(r.accounts||[]);setAccountCount(r.count||0);
   Alert.alert('Account updated','Change recorded in platform audit.');
  })}
  async function resolveCase(id:string,status:'in_progress'|'resolved'){await exec(async()=>{
@@ -182,6 +182,43 @@ export default function App(){
   {button('Ticket themes',()=>setSection('themes'),true)}
  {button('Platform settings',()=>setSection('settings'),true)}
  </>}
+ {section==='analytics'&&<><Text style={s.title}>Events & analytics</Text>
+ <Text style={s.hint}>Confirmed revenue excludes pending orders and manually tracked offline sales.</Text>
+ {input('Search event or organiser',eventQuery,setEventQuery)}
+ {button('Search event reports',()=>{void searchEvents()},true)}
+ {!eventMetrics.length&&<Text style={s.hint}>No events match this search. Try another title or organiser.</Text>}
+ {eventMetrics.map(event=><View key={event.id} style={s.card}>
+  <Text style={s.title}>{event.title}</Text><Text style={s.hint}>Organiser: {event.organiser_name} · {event.status} · {event.verification_status}</Text>
+  <Text style={s.hint}>Issued: {event.tickets_issued} (offline {event.external_tickets_issued}) · Admitted: {event.checked_in}</Text>
+  <Text style={s.hint}>Capacity: {event.capacity} · Pending orders: {event.pending_orders} · Reserved seats: {event.reserved_seats}</Text>
+  <Text style={s.hint}>Confirmed order revenue: ₦{Number(event.confirmed_revenue_ngn).toLocaleString('en-NG')}</Text>
+  <Text style={s.hint}>Refund cases: {event.refund_cases} · Gate assignments: {event.active_gate_operators}</Text>
+  {button('Open moderation',()=>setSection('events'),true)}
+ </View>)}
+ </>}
+ {section==='themes'&&<><Text style={s.title}>Ticket themes</Text>
+ <Text style={s.hint}>Create reusable ticket themes for organisers. Each colour must be a six-digit HEX value.</Text>
+ {input('New theme name',themeName,setThemeName)}
+ {input('Theme category or label',themeLabel,setThemeLabel)}
+ {input('Background colour A (e.g. #552AA8)',themeA,setThemeA)}
+ {input('Background colour B (e.g. #231A56)',themeB,setThemeB)}
+ {input('Accent colour (e.g. #FFFFFF)',themeAccent,setThemeAccent)}
+ <View accessibilityLabel="New ticket theme preview" style={[s.card,{backgroundColor:/^#[A-Fa-f0-9]{6}$/.test(themeA)?themeA:'#253251',borderColor:/^#[A-Fa-f0-9]{6}$/.test(themeAccent)?themeAccent:'#506180',borderWidth:2}]}>
+  <Text style={{color:'#fff',fontWeight:'900'}}>{themeName.trim()||'New ticket theme'}</Text>
+  <Text style={{color:'#fff'}}>{themeLabel.trim()||'Preview only — not published'}</Text>
+  <View style={{backgroundColor:/^#[A-Fa-f0-9]{6}$/.test(themeB)?themeB:'#231A56',height:16,borderRadius:8,marginTop:8}}/>
+ </View>
+ {button('Create ticket theme',()=>Alert.alert('Publish new ticket theme?','Organisers will be able to select this design. Review its name and colours before publishing.',[
+  {text:'Cancel',style:'cancel'},{text:'Create theme',onPress:()=>void createTheme()}
+ ]))}
+ <Text style={s.title}>Available themes ({themes.length})</Text>
+ {themes.map(theme=><View key={theme.id} style={s.card}>
+  <View style={{height:10,backgroundColor:theme.color_a,borderRadius:5,marginBottom:8}}/>
+  <Text style={s.title}>{theme.name}</Text>
+  <Text style={s.hint}>{theme.label} · {theme.id}</Text>
+  <Text style={s.hint}>{theme.color_a} / {theme.color_b} · Accent: {theme.accent}</Text>
+ </View>)}
+ </>}
  {section==='events'&&<><Text style={s.title}>Event moderation</Text>
  <Text style={s.hint}>Review listing ownership, eligibility and pending media.</Text>
  {!moderationEvents.length&&<Text style={s.hint}>No events require moderation.</Text>}
@@ -255,7 +292,16 @@ export default function App(){
  </>}
  {section==='accounts'&&<><Text style={s.title}>All users and access</Text><Text style={s.hint}>Search user, organiser and gate identities. Open a profile to see ticket and event counts.</Text>
  {input('Search account by email or name',userSearch,setUserSearch)}
- {button('Search accounts',()=>{void searchUsers()},true)}
+ <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>
+  {([['','All'],['user','Users'],['organiser','Organisers'],['platform_admin','Admins']] as const).map(([role,label])=><Pressable key={role} accessibilityRole="button" accessibilityState={{selected:accountRole===role}} style={[s.button,s.subButton,accountRole===role&&{borderColor:'#5DE9C5'}]} onPress={()=>{setAccountRole(role);void searchUsers(1,role)}}><Text style={s.buttonText}>{label}</Text></Pressable>)}
+ </View>
+ {button('Search accounts',()=>{void searchUsers(1)},true)}
+ <Text style={s.hint}>Showing page {accountPage} of {Math.max(1,Math.ceil(accountCount/40))} · {accountCount} matching accounts</Text>
+ <View style={{flexDirection:'row',gap:10}}>
+  <Pressable accessibilityRole="button" accessibilityState={{disabled:accountPage<=1||busy}} disabled={accountPage<=1||busy} style={[s.button,s.subButton,{flex:1}]} onPress={()=>void searchUsers(accountPage-1)}><Text style={s.buttonText}>Previous</Text></Pressable>
+  <Pressable accessibilityRole="button" accessibilityState={{disabled:accountPage*40>=accountCount||busy}} disabled={accountPage*40>=accountCount||busy} style={[s.button,s.subButton,{flex:1}]} onPress={()=>void searchUsers(accountPage+1)}><Text style={s.buttonText}>Next</Text></Pressable>
+ </View>
+ {!accounts.length&&<Text style={s.hint}>No accounts match these filters.</Text>}
  {accounts.map(a=><View key={a.id} style={s.card}>
   <Text style={{color:'#fff',fontWeight:'800',fontSize:16}}>{a.full_name}</Text><Text style={s.hint}>{a.email} · {a.role} · {a.account_status}</Text>
   <Text style={s.hint}>{a.ticket_count} tickets · {a.order_count} orders · {a.event_count} hosted events · {a.gate_event_count} gates</Text>
