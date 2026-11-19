@@ -6,6 +6,7 @@ import * as Crypto from 'expo-crypto';
 WebBrowser.maybeCompleteAuthSession();
 import QRCode from 'react-native-qrcode-svg';
 import * as DocumentPicker from 'expo-document-picker';
+import {filterDiscoveryEvents,toggleSavedEvent} from './discovery';
 const PORTAL: string="user",TITLE="Nexx EventPass User",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null};
 type Event={visibility?:string;onsite_payments_enabled?:boolean;id:string;title:string;venue:string;organiser_id:string;starts_at:string;price_ngn:number;status:string;description?:string;category?:string;ticket_theme?:string;cover_media_id?:string|null;video_media_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
@@ -30,8 +31,8 @@ export default function App(){
  const [ref,setRef]=useState(''),[qty,setQty]=useState('1'),[proof,setProof]=useState<DocumentPicker.DocumentPickerAsset|null>(null);
  const [query,setQuery]=useState(''),[category,setCategory]=useState('All'),[sortBy,setSortBy]=useState<'name'|'price'>('name'),[saved,setSaved]=useState<string[]>([]),[gallery,setGallery]=useState<{id:string;media_type:string;url:string}[]>([]);
  const [inventory,setInventory]=useState<{eventId:string;categories:{id:string;name:string;price_ngn:number}[];generalCapacity:number;payment:{payment_account_id:string|null;bank_name:string;bank_account_name:string;bank_account_number:string;onsite_payments_enabled:boolean}}|null>(null);
- const visibleEvents=events.filter(e=>e.status==='published'&&e.visibility==='public'&&(section!=='saved'||saved.includes(e.id))&&(category==='All'||(e.category||'Other')===category)&&[e.title,e.venue,e.description||''].join(' ').toLowerCase().includes(query.trim().toLowerCase())).sort((a,b)=>sortBy==='price'?Number(a.price_ngn)-Number(b.price_ngn):a.title.localeCompare(b.title));
- function toggleSaved(id:string){setSaved(previous=>previous.includes(id)?previous.filter(item=>item!==id):[...previous,id])}
+ const visibleEvents=filterDiscoveryEvents(events,{section:section==='saved'?'saved':'discover',category,sortBy,query,saved});
+ function toggleSaved(id:string){setSaved(previous=>toggleSavedEvent(previous,id))}
  const [onsite,setOnsite]=useState(false),[gateway,setGateway]=useState(false),[paystackEnabled,setPaystackEnabled]=useState(false);
  const [ticketCategoryId,setTicketCategoryId]=useState('');
  function checkoutUnitPrice(event:Event){
