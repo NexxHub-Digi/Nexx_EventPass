@@ -49,6 +49,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [eventMedia,setEventMedia]=useState<EventMedia[]>([]),[moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<EventMedia[]>([]);
  const [organisers,setOrganisers]=useState<Organiser[]>([]),[stats,setStats]=useState<Record<string,number>>({});
  const [selectedOrganiser,setSelectedOrganiser]=useState(''),[editName,setEditName]=useState('');
+ const [rejectOrganiserId,setRejectOrganiserId]=useState(''),[rejectOrganiserReason,setRejectOrganiserReason]=useState('');
  const [canCreate,setCanCreate]=useState(true),[canGates,setCanGates]=useState(true),[canPayments,setCanPayments]=useState(true);
  const [eventReports,setEventReports]=useState<EventReport[]>([]),[reportSearch,setReportSearch]=useState(''),[selectedReport,setSelectedReport]=useState(''),[auditHistory,setAuditHistory]=useState<AuditRecord[]>([]);
  const [refundCases,setRefundCases]=useState<RefundCase[]>([]),[refundNote,setRefundNote]=useState('');
@@ -213,8 +214,15 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   await api('gates','DELETE',{eventId:i.event_id,email:i.invitee_email});setMessage('Gate invitation and access revoked');
   const g=await api('gates');setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
  })}
- async function adminAction(action:string,id?:string){if(['revoke','reject'].includes(action)&&!window.confirm(action==='revoke'?'Suspend this organiser? Existing ticket and financial history will be retained.':'Reject this organiser application?'))return;await run(async()=>{
-  await api('platform/organisers','POST',{action,userId:id,email:newOrganiser});setMessage('Organiser action completed');setNewOrganiser('');
+ async function adminAction(action:string,id?:string){if(action==='revoke'&&!window.confirm('Suspend this organiser? Existing ticket and financial history will be retained.'))return;
+  if(action==='reject'){
+   if(rejectOrganiserId!==id||rejectOrganiserReason.trim().length<10){setMessage('Enter a rejection reason of at least 10 characters');return}
+   if(!window.confirm('Reject this organiser application with the recorded reason?'))return;
+  }
+  await run(async()=>{
+  await api('platform/organisers','POST',{action,userId:id,email:newOrganiser,...(action==='reject'?{reason:rejectOrganiserReason.trim()}:{})});
+  if(action==='reject'){setRejectOrganiserId('');setRejectOrganiserReason('')}
+  setMessage('Organiser action completed');setNewOrganiser('');
   const a=await api('platform/organisers');setOrganisers(a.organisers||[]);if(id)setSelectedOrganiser(id);
  })}
  function chooseOrganiser(id:string){
@@ -417,7 +425,10 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     <div><b>{o.full_name}</b><p>{o.email}</p><small>{o.role==='user'&&o.requested_role==='organiser'?'PENDING APPROVAL':o.account_status.toUpperCase()} · {o.event_count} events · {o.tickets_issued} tickets · {o.gate_operators} operators</small></div>
     <div className="rw-actions">
     {btn(selectedOrganiser===o.id?'Close profile':'View / edit profile',()=>selectedOrganiser===o.id?setSelectedOrganiser(''):chooseOrganiser(o.id),true)}
-    {o.role==='user'&&o.requested_role==='organiser'&&<>{btn('Approve',()=>{void adminAction('approve',o.id)})}{btn('Reject',()=>{void adminAction('reject',o.id)},true)}</>}
+    {o.role==='user'&&o.requested_role==='organiser'&&<>{btn('Approve',()=>{void adminAction('approve',o.id)})}
+    {rejectOrganiserId===o.id?<div className="rw-actions" style={{display:'grid',gap:8}}><label className="rw-field">Reason for rejecting this application<textarea rows={3} maxLength={400} minLength={10} required value={rejectOrganiserReason} onChange={e=>setRejectOrganiserReason(e.target.value)} /></label>
+    {btn('Confirm rejection',()=>{void adminAction('reject',o.id)},true)}{btn('Cancel rejection',()=>{setRejectOrganiserId('');setRejectOrganiserReason('')},true)}</div>
+    :btn('Reject',()=>{setRejectOrganiserId(o.id);setRejectOrganiserReason('')},true)}</>}
     {o.role==='organiser'&&o.account_status==='active'&&btn('Revoke access',()=>{void adminAction('revoke',o.id)},true)}
     {o.role==='organiser'&&o.account_status==='suspended'&&btn('Restore access',()=>{void adminAction('restore',o.id)})}
     </div></div>)}
