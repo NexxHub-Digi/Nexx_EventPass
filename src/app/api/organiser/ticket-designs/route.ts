@@ -47,7 +47,7 @@ export async function POST(req:Request){
    if(!themes.length)return {error:'Choose an available ticket theme',status:400};
    const [row]=await tx`insert into event_ticket_design_versions(event_id,version,theme_id,mode,fields,enabled,saved_by)
     select ${eventId},coalesce(max(version),0)+1,${draft.theme},${draft.mode},
-      ${JSON.stringify(draft.fields)}::jsonb,${JSON.stringify(draft.enabled)}::jsonb,${u.id}
+      ${tx.json(draft.fields)},${tx.json(draft.enabled)},${u.id}
     from event_ticket_design_versions where event_id=${eventId}
     returning id,event_id,version,theme_id as theme,mode,fields,enabled,created_at`;
    return {draft:row};
