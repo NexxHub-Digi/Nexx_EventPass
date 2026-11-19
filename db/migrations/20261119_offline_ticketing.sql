@@ -68,3 +68,6 @@ create table if not exists offline_ticket_staff (
  revoked_at timestamptz,
  unique (organiser_id,user_id)
 );
+-- Preserve existing scan outcomes and add a distinct non-admitting inactive state.
+alter table entry_scans drop constraint if exists entry_scans_outcome_check;
+alter table entry_scans add constraint entry_scans_outcome_check check (outcome in ('approved','duplicate','invalid','revoked','wrong_event','inactive_or_unavailable'));
