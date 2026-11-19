@@ -24,12 +24,14 @@ export default function App(){
   return ()=>{mounted=false;listener.remove()};
  },[]);
  const [booting,setBooting]=useState(true);
- const [section,setSection]=useState<'discover'|'tickets'|'orders'|'profile'>('discover');
+ const [section,setSection]=useState<'discover'|'saved'|'tickets'|'orders'|'profile'>('discover');
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [ref,setRef]=useState(''),[qty,setQty]=useState('1'),[proof,setProof]=useState<DocumentPicker.DocumentPickerAsset|null>(null);
- const [query,setQuery]=useState(''),[category,setCategory]=useState('All'),[gallery,setGallery]=useState<{id:string;media_type:string;url:string}[]>([]);
+ const [query,setQuery]=useState(''),[category,setCategory]=useState('All'),[sortBy,setSortBy]=useState<'name'|'price'>('name'),[saved,setSaved]=useState<string[]>([]),[gallery,setGallery]=useState<{id:string;media_type:string;url:string}[]>([]);
  const [inventory,setInventory]=useState<{eventId:string;categories:{id:string;name:string;price_ngn:number}[];generalCapacity:number;payment:{payment_account_id:string|null;bank_name:string;bank_account_name:string;bank_account_number:string;onsite_payments_enabled:boolean}}|null>(null);
+ const visibleEvents=events.filter(e=>e.status==='published'&&e.visibility==='public'&&(section!=='saved'||saved.includes(e.id))&&(category==='All'||(e.category||'Other')===category)&&[e.title,e.venue,e.description||''].join(' ').toLowerCase().includes(query.trim().toLowerCase())).sort((a,b)=>sortBy==='price'?Number(a.price_ngn)-Number(b.price_ngn):a.title.localeCompare(b.title));
+ function toggleSaved(id:string){setSaved(previous=>previous.includes(id)?previous.filter(item=>item!==id):[...previous,id])}
  const [onsite,setOnsite]=useState(false),[gateway,setGateway]=useState(false),[paystackEnabled,setPaystackEnabled]=useState(false);
  const [ticketCategoryId,setTicketCategoryId]=useState('');
  function checkoutUnitPrice(event:Event){
@@ -172,7 +174,7 @@ export default function App(){
    await SecureStore.setItemAsync('eventpass_token',data.token);
    setToken(data.token);await load(data.token);
  })}
- async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null)}}
+ async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null);setSaved([])}}
  const input=(hint:string,value:string,update:(x:string)=>void,secret=false)=><TextInput style={s.input} placeholder={hint} placeholderTextColor="#94a3b8" value={value} onChangeText={update} autoCapitalize="none" secureTextEntry={secret}/>;
  const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&(reduceMotion?s.pressedStill:s.pressed),busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
  const surfaceMotion=useRef(new Animated.Value(1)).current;
@@ -218,21 +220,26 @@ export default function App(){
   </View>:<>
  <Text style={s.title}>Welcome, {member.full_name}</Text><Text style={s.hint}>{member.email}</Text>
  {member.account_status==='pending'?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
- {section==='discover'&&<>
+ {(section==='discover'||section==='saved')&&<>
 <View style={{borderRadius:20,backgroundColor:'#27275b',marginBottom:16,overflow:'hidden'}}>
  <Image source={require('./assets/discover-venue.webp')} style={{width:'100%',height:150}} resizeMode="cover"/><View style={{padding:19}}>
  <Text style={{color:'#6AF5D2',fontSize:11,letterSpacing:1.6,fontWeight:'800'}}>NEXX EVENTPASS DISCOVERY</Text>
  <Text style={{fontSize:29,fontWeight:'900',color:'#fff',marginTop:9}}>Your next experience awaits.</Text>
  <Text style={s.hint}>Discover verified events, videos and tickets from organisers near and far.</Text>
 </View></View>
+<Text style={s.title}>{section==='saved'?'Saved events':'Discover events'}</Text>
 {input('Search events, venues, experiences...',query,setQuery)}
 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginVertical:12}} contentContainerStyle={{gap:9}}>
  {['All',...new Set(events.map(e=>e.category||'Other'))].map(c=><Pressable key={c} style={[s.button,{marginVertical:0,paddingHorizontal:17},category!==c&&s.subButton]} onPress={()=>setCategory(c)}><Text style={s.buttonText}>{c}</Text></Pressable>)}
 </ScrollView>
-{events.filter(e=>e.status==='published'&&e.visibility==='public'&&(category==='All'||(e.category||'Other')===category)&&[e.title,e.venue,e.description||''].join(' ').toLowerCase().includes(query.toLowerCase())).map(e=><View key={e.id} style={[s.card,{overflow:'hidden',padding:0}]}>
+<View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:12}}>
+ <Text style={[s.hint,{flex:1}]}>{visibleEvents.length} {visibleEvents.length===1?'event':'events'}</Text>
+ <Pressable accessibilityRole="button" accessibilityLabel="Sort events" onPress={()=>setSortBy(value=>value==='name'?'price':'name')} style={[s.button,s.subButton,{paddingHorizontal:12}]}><Text style={s.buttonText}>{sortBy==='name'?'Sort: name':'Sort: lowest price'}</Text></Pressable>
+</View>
+{visibleEvents.map(e=><View key={e.id} style={[s.card,{overflow:'hidden',padding:0}]}>
  {e.cover_media_id?<Image source={{uri:BASE+'/api/events/media?id='+e.cover_media_id}} style={{height:210,width:'100%'}} resizeMode="cover"/>:
  <View style={{height:145,backgroundColor:'#50368d',padding:24,justifyContent:'center'}}><Text style={{fontSize:38,color:'#fff'}}>◈</Text><Text style={s.title}>{e.title}</Text></View>}
- <View style={{padding:18}}><Text style={{color:'#6AF5D2',fontSize:12,fontWeight:'800'}}>{e.category||'Event'} · {new Date(e.starts_at).toLocaleString()}</Text>
+ <View style={{padding:18}}><Pressable accessibilityRole="button" accessibilityLabel={saved.includes(e.id)?'Remove from saved':'Save event'} accessibilityState={{selected:saved.includes(e.id)}} onPress={()=>toggleSaved(e.id)} style={{alignSelf:'flex-end',padding:10,minHeight:44,minWidth:44,alignItems:'center',justifyContent:'center',borderRadius:12,backgroundColor:'#302857'}}><Text style={{color:saved.includes(e.id)?'#8AFFE7':'#fff',fontSize:23}}>{saved.includes(e.id)?'♥':'♡'}</Text></Pressable><Text style={{color:'#6AF5D2',fontSize:12,fontWeight:'800'}}>{e.category||'Event'} · {new Date(e.starts_at).toLocaleString()}</Text>
  <Text style={s.title}>{e.title}</Text><Text style={s.hint}>{e.venue}</Text><Text style={s.hint}>{e.description||'Explore this event and available tickets.'}</Text>
  <Text style={{color:'#8AFFE7',fontSize:20,fontWeight:'800'}}>₦{Number(e.price_ngn).toLocaleString()}</Text>
  {e.video_media_id&&button('Watch event preview video',()=>{void Linking.openURL(BASE+'/api/events/media?id='+e.video_media_id)},true)}
@@ -260,7 +267,7 @@ export default function App(){
   {button(proof?'Receipt: '+proof.name:'Select payment receipt',()=>{void exec(async()=>{const file=await pickReceipt();if(file)setProof(file)})},true)}</>}
   {button('Request tickets',()=>void reserveEvent(e))}
  </>}</View></View>)}
-{!events.length&&<Text style={s.hint}>No verified events yet. Check again after organisers publish new experiences.</Text>}
+{!visibleEvents.length&&<View style={s.card}><Text style={s.hint}>{section==='saved'?'No saved events match your filters. Select the heart on an event to save it.':events.length?'No events match your filters. Try another category or search.':'No verified events yet. Check again after organisers publish new experiences.'}</Text></View>}
 </>}
 {section==='tickets'&&<><Text style={s.title}>My ticket wallet</Text>{!tickets.length&&<Text style={s.hint}>Your approved passes appear here.</Text>}{tickets.map(t=><View key={t.id} style={[s.card,{backgroundColor:palette[t.ticket_theme||'aurora']||'#1c4e72'}]}>{t.ticket_art_id&&<Image source={{uri:BASE+'/api/events/media?id='+t.ticket_art_id,headers:{Authorization:'Bearer '+token}}} style={{height:140,borderRadius:9,marginBottom:10}}/>}<Text style={s.title}>{t.title}</Text>{t.qr&&<View style={{backgroundColor:'#fff',padding:14,alignSelf:'center',marginVertical:14,borderRadius:12}}><QRCode value={t.qr} size={232}/></View>}{t.entry_code&&!t.redeemed_at&&<Text selectable style={[s.hint,{textAlign:'center',fontSize:17,fontWeight:'900',letterSpacing:1}]}>Backup code: {t.entry_code}</Text>}
  <Text style={s.hint}>{t.redeemed_at?'Already scanned':t.status}</Text></View>)}
@@ -310,7 +317,7 @@ export default function App(){
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
  </ScrollView>
   </Animated.View>
- {member&&<View style={s.navigation}>{([['discover', 'Discover'], ['tickets', 'Tickets'], ['orders', 'Orders'], ['profile', 'Profile']] as const).map(([key,label])=><Pressable key={key} accessibilityRole="tab" accessibilityState={{selected:section===key}} disabled={busy}
+ {member&&<View style={s.navigation}>{([['discover', 'Discover'], ['saved', 'Saved'], ['tickets', 'Tickets'], ['orders', 'Orders'], ['profile', 'Profile']] as const).map(([key,label])=><Pressable key={key} accessibilityRole="tab" accessibilityState={{selected:section===key}} disabled={busy}
   style={({pressed})=>[s.navLink,section===key&&s.navCurrent,pressed&&(reduceMotion?s.pressedStill:s.pressed)]} onPress={()=>setSection(key)}><Text style={[s.navText,section===key&&s.navTextCurrent]}>{label}</Text></Pressable>)}</View>}
  </View>
 }
