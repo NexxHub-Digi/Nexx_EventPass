@@ -79,11 +79,11 @@ export function TicketDesign({themeId='stj-royal-gold',title,venue,startsAt,orga
    <div className="masque-stub-heading">✦ <strong>{organiser||'EVENTPASS'}</strong> ✦</div>
    <div className="masque-stub-title">{title}</div>
    <div className="masque-qr-frame">
-    {qr&&!preview?<QRCodeSVG value={qr} size={compact?76:126} level="H" includeMargin bgColor="#ffffff" fgColor="#121017"/>:
+    {qr&&!preview?<QRCodeSVG value={qr} size={compact?88:156} level="M" includeMargin bgColor="#ffffff" fgColor="#121017"/>:
      <div className="masque-qr-pending"><span>◈</span><small>QR GENERATED<br/>AFTER APPROVAL</small></div>}
    </div>
    <div className="masque-stub-admit">{status==='redeemed'?'USED':admissionLabel}</div>
-   <div className="masque-stub-code">{ticketCode?ticketCode.slice(0,14).toUpperCase():'SECURE ADMISSION'}</div>
+   <div className="masque-stub-code">{ticketCode?ticketCode.replace(/(.{4})(.{4})(.{4})/,'$1-$2-$3'):'SECURE ADMISSION'}</div>
   </div>
   {preview&&<div className="masque-sample">TEMPLATE PREVIEW · NOT VALID FOR ENTRY</div>}
  </div>;
