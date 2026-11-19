@@ -19,6 +19,7 @@ export default function App(){
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [code,setCode]=useState(''),[scanning,setScanning]=useState(false),[outcome,setOutcome]=useState(''),[permission,askPermission]=useCameraPermissions();
+ const [testOnly,setTestOnly]=useState(false),[outcomeMessage,setOutcomeMessage]=useState('');
  const [reduceMotion,setReduceMotion]=useState(true);
  const resultMotion=useRef(new Animated.Value(1)).current;
  useEffect(()=>{
@@ -60,14 +61,15 @@ export default function App(){
 async function verify(v:string){if(scanLock.current)return;scanLock.current=true;setOutcome('');try{await exec(async()=>{
  if(!eventId)throw Error('Select an event');
  let r;
- try{r=await api('scan',token,'POST',{eventId,code:v.trim()})}
+ try{r=await api('scan',token,'POST',{eventId,code:v.trim(),testOnly})}
  catch(error){throw Error('Could not verify ticket. Do not admit. '+(error instanceof Error?error.message:''))}
- setOutcome(r.outcome);
- setHistory(h=>[{id:Date.now(),eventId,outcome:r.outcome,at:new Date().toLocaleTimeString()},...h].slice(0,100));
- setCounts(c=>({approved:c.approved+(r.outcome==='approved'?1:0),denied:c.denied+(r.outcome==='approved'?0:1)}));
+ setOutcome(r.outcome);setOutcomeMessage(r.message||'');
+ if(!r.testOnly){
+  setHistory(h=>[{id:Date.now(),eventId,outcome:r.outcome,at:new Date().toLocaleTimeString()},...h].slice(0,100));
+  setCounts(c=>({approved:c.approved+(r.outcome==='approved'?1:0),denied:c.denied+(r.outcome==='approved'?0:1)}));
+  void refreshHistory(eventId);
+ }
  setCode('');
- // Server history sync runs separately so it cannot block the next scan.
- void refreshHistory(eventId);
  })}finally{scanLock.current=false}}
 async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');setOutcome('');setCameraError('');setCameraReady(false);await exec(async()=>{
  const perm=permission?.granted?permission:await askPermission();
@@ -158,6 +160,8 @@ async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');
  {eventId&&button('Open QR scanner',()=>{setTab('scan')})}</>}
  {tab==='scan'&&<><Text style={s.eyebrow}>LIVE VERIFICATION</Text><Text style={s.heroTitle}>Ticket scanner</Text><Text style={s.hint}>{gates.find(g=>g.event_id===eventId)?.title||'Select an assigned event first'}</Text>
  {!eventId?<>{button('Choose an event',()=>setTab('home'))}</>:<View style={s.scanCard}>
+ {button(testOnly?'TEST MODE ACTIVE — Switch to live admission':'Enable non-consuming rehearsal',()=>{setTestOnly(v=>!v);setOutcome('');setOutcomeMessage('')},true)}
+ {testOnly&&<Text style={[s.hint,{color:'#FBBF24',fontWeight:'900'}]}>TEST ONLY. No attendee will be admitted in this mode.</Text>}
  {scanning?<View style={s.camera}><CameraView facing="back" style={{flex:1}} onCameraReady={()=>setCameraReady(true)} onMountError={()=>{
   setCameraReady(false);setScanning(false);setCameraError('Camera could not start. Check permissions or enter the ticket code.');
  }} barcodeScannerSettings={{barcodeTypes:['qr']}} onBarcodeScanned={cameraReady?({data})=>{
@@ -182,7 +186,7 @@ async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');
   </>}
  {button(scanning?'Stop continuous scanner':'Start fast camera',()=>{if(scanning){setScanning(false);setCameraReady(false)}else void openCamera()})}
  </View>}
- {!!outcome&&<Animated.View accessibilityRole="alert" style={[s.result,{opacity:resultMotion,transform:[{translateY:resultMotion.interpolate({inputRange:[0,1],outputRange:[8,0]})}]},{borderColor:outcome==='approved'?'#22C55E':outcome==='duplicate'?'#F59E0B':'#EF4444'}]}><Text style={[s.resultTitle,{color:outcome==='approved'?'#4ADE80':outcome==='duplicate'?'#FBBF24':'#F87171'}]}>{outcome==='approved'?'✓ ENTRY APPROVED':outcome==='duplicate'?'⚠ ALREADY USED':outcome==='wrong_event'?'✕ WRONG EVENT':'✕ ENTRY DENIED'}</Text><Text style={s.hint}>{outcome==='approved'?'Ticket redeemed. Admit this attendee. The camera is ready for the next guest.':'Do not admit. Contact the event organiser if assistance is required.'}</Text></Animated.View>}</>}
+ {!!outcome&&<Animated.View accessibilityRole="alert" style={[s.result,{opacity:resultMotion,transform:[{translateY:resultMotion.interpolate({inputRange:[0,1],outputRange:[8,0]})}]},{borderColor:outcome==='approved'?'#22C55E':outcome==='duplicate'?'#F59E0B':'#EF4444'}]}><Text style={[s.resultTitle,{color:outcome==='approved'?'#4ADE80':outcome==='duplicate'?'#FBBF24':'#F87171'}]}>{outcome==='approved'?'✓ ENTRY APPROVED':outcome==='valid_test'?'TEST ONLY — VALID, NOT ADMITTED':outcome==='duplicate'?'⚠ ALREADY USED':outcome==='wrong_event'?'✕ WRONG EVENT':'✕ ENTRY DENIED'}</Text><Text style={s.hint}>{outcome==='valid_test'?'Rehearsal passed. No ticket was redeemed. Switch off TEST MODE before admitting.':outcomeMessage||'Do not admit; contact the organiser.'}</Text></Animated.View>}</>}
  {tab==='history'&&<><Text style={s.eyebrow}>SERVER AUDIT HISTORY</Text><Text style={s.heroTitle}>Scan history</Text><Text style={s.hint}>Your last 100 scans for the selected event, stored in Neon.</Text>{history.length===0?<View style={s.card}><Text style={s.hint}>No tickets scanned in this session.</Text></View>:history.map(h=><View key={h.id} style={s.card}><Text style={s.eventTitle}>{h.outcome==='approved'?'✓ Approved':h.outcome==='duplicate'?'⚠ Duplicate':'✕ Rejected'}</Text><Text style={s.hint}>{gates.find(g=>g.event_id===h.eventId)?.title||'Assigned event'} · {h.at}</Text></View>)}</>}
  {tab==='profile'&&<><Text style={s.eyebrow}>ACCOUNT</Text><Text style={s.heroTitle}>Operator profile</Text><View style={s.card}><Text style={s.eventTitle}>{member.full_name}</Text><Text style={s.hint}>{member.email}</Text><Text style={s.hint}>Assigned events: {gates.length}</Text></View>{button('Sign out',()=>{void logout()},true)}</>}
  </>}
