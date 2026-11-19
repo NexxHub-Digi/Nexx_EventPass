@@ -7,7 +7,8 @@
       "distribution": "internal",
       "environment": "preview",
       "env": {
-        "EXPO_PUBLIC_RELEASE_CHANNEL": "preview"
+        "EXPO_PUBLIC_RELEASE_CHANNEL": "preview",
+        "EXPO_PUBLIC_API_URL": "https://nexx-eventpass-git-staging-nexxs-projects-903f5c1d.vercel.app"
       }
     },
     "production": {
