@@ -27,6 +27,12 @@
     "plugins": [
       "expo-secure-store"
     ],
-    "icon": "./assets/app-icon.png"
+    "icon": "./assets/app-icon.png",
+    "owner": "nexx-digital-hub",
+    "extra": {
+      "eas": {
+        "projectId": "afa79045-b0a0-4193-90ef-d0aab43df4d4"
+      }
+    }
   }
 }
