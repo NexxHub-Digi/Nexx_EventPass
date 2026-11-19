@@ -428,6 +428,14 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const pools=expect(await req(categoryPath+'?eventId='+lastSeatEvent.id),200,'discover published ticket categories');
   assert.equal(pools.generalCapacity,1);
   assert.equal(pools.categories[0].id,balcony.id);
+  const freeWithoutReference=expect(await post('/api/orders',buyer.cookie,{
+    eventId:lastSeatEvent.id,quantity:1
+  }),201,'free General checkout does not require a bank transfer reference').order;
+  assert.equal(freeWithoutReference.payment_method,'free');
+  assert.equal(freeWithoutReference.payment_reference,'FREE');
+  expect(await req('/api/orders',{cookie:buyer.cookie,method:'PATCH',
+    body:{action:'cancel',orderId:freeWithoutReference.id}}),200,'cancel unpaid free hold to release seat');
+
   const contenders=await Promise.all([
     post('/api/orders',wrong.cookie,{eventId:lastSeatEvent.id,ticketCategoryId:balcony.id,quantity:1,paymentReference:'E2E shared capacity'}),
     post('/api/offline/batches',org.cookie,{eventId:lastSeatEvent.id,ticketCategoryId:balcony.id,quantity:1,idempotencyKey:randomUUID()})
@@ -453,6 +461,16 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/orders',onsiteBuyer.cookie,{...onsiteBody,paymentMethod:'paystack'}),400,'placeholder cannot create a Paystack payment');
   expect(await patchFinance(wrong.cookie,{action:'onsite',eventId:onsiteEvent.id,enabled:true}),403,'non-owner cannot enable onsite collection');
   expect(await patchFinance(org.cookie,{action:'onsite',eventId:onsiteEvent.id,enabled:true}),200,'enable onsite collection');
+  // Onsite collection is independent of verified bank-transfer instructions.
+  // Preserve the original bank association after the regression fixture.
+  await sql`update events set payment_account_id=null where id=${onsiteEvent.id}`;
+  const onsiteWithoutBank=expect(await post('/api/orders',onsiteBuyer.cookie,onsiteBody),
+    201,'onsite reservation succeeds without a bank transfer account').order;
+  assert.equal(onsiteWithoutBank.payment_method,'onsite');
+  expect(await req('/api/orders',{cookie:onsiteBuyer.cookie,method:'PATCH',
+    body:{action:'cancel',orderId:onsiteWithoutBank.id}}),200,'cancel unpaid onsite hold');
+  await sql`update events set payment_account_id=${secondBank.id} where id=${onsiteEvent.id}`;
+
   await sql`update events set starts_at=now()-interval '10 minutes' where id=${onsiteEvent.id}`;
   const onsite=expect(await post('/api/orders',onsiteBuyer.cookie,onsiteBody),201,'reserve onsite during event').order;
   assert.equal(onsite.payment_method,'onsite');
