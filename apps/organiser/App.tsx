@@ -152,16 +152,21 @@ export default function App(){
  return <View style={s.root}>
   <StatusBar barStyle="light-content"/>
   <View style={s.head}>
-   <Pressable style={s.brandRow} accessibilityRole="button" accessibilityLabel="Organiser home" disabled={busy||!member} onPress={()=>{
-     setTab('dashboard');scroll.current?.scrollTo({y:0,animated:false});
-   }}>
-    <Image accessible={false} source={require('./assets/app-icon.png')} style={s.brandMark}/><View style={s.brandCopy}>
+    {member?.role==='organiser'&&<Pressable accessibilityRole="button" accessibilityLabel={desktopNavigation?(showDesktopSidebar?'Collapse organiser sidebar':'Expand organiser sidebar'):(menuOpen?'Close organiser menu':'Open organiser menu')} accessibilityState={{expanded:desktopNavigation?showDesktopSidebar:menuOpen}}
+     onPress={()=>desktopNavigation?setShowDesktopSidebar(x=>!x):setMenuOpen(x=>!x)} style={s.menuTrigger}><Text style={s.menuIcon}>☰</Text></Pressable>}
+    <Pressable style={s.brandRow} accessibilityRole="button" accessibilityLabel="Organiser dashboard" disabled={busy||!member} onPress={()=>navigateOrganiser('dashboard')}>
+     <Image accessible={false} source={require('./assets/app-icon.png')} style={s.brandMark}/><View style={s.brandCopy}>
     <Text style={s.brand}>Nexx EventPass</Text><Text style={s.headLabel}>Organiser</Text>
    </View></Pressable>
    {member&&<Pressable accessibilityRole="button" accessibilityLabel="Sign out" disabled={busy} onPress={()=>void logout()} style={s.accountBadge}><Text style={s.headLabel}>Sign out</Text></Pressable>}
   </View>
-  <Animated.View style={[{flex:1},surfaceStyle]}>
-  <ScrollView ref={scroll} key={member?tab:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
+  <View style={s.workspaceFrame}>
+    {member?.role==='organiser'&&desktopNavigation&&showDesktopSidebar&&<View style={s.sidebarDesktop}>
+     <OrganiserSidebar active={tab} onSelect={navigateOrganiser} onClose={()=>setShowDesktopSidebar(false)} name={member.full_name}
+      pendingPayments={inbox.pending} eventCount={events.filter(e=>e.organiser_id===member.id).length}/>
+    </View>}
+    <Animated.View style={[{flex:1},surfaceStyle]}>
+   <ScrollView ref={scroll} key={member?tab:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
  {!member?<View style={s.welcome}>
    <View pointerEvents="none" style={s.welcomeGlow} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"/>
    <Text style={s.welcomeLabel}>Event studio</Text><Text style={s.welcomeTitle}>Run your events.</Text>
@@ -311,19 +316,27 @@ export default function App(){
  {button('Sign out',()=>{void logout()},true)}</>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
  </ScrollView>
-  </Animated.View>
- {member?.role==='organiser'&&<View style={s.navigation}>
-  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7,paddingHorizontal:5}}>
-   {([['dashboard','Overview'],['events','Events'],['tickets','Ticket Studio'],['payments','Payments'],['team','Gate Team'],['profile','Profile']] as const).map(([id,label])=>
-    <Pressable key={id} accessibilityRole="tab" accessibilityState={{selected:tab===id}} disabled={busy} style={({pressed})=>[s.navChip,tab===id&&s.navSelected,pressed&&(reduceMotion?s.pressedStill:s.pressed)]} onPress={()=>setTab(id)}>
-     <Text style={[s.navText,tab===id&&s.navTextCurrent]}>{label}</Text>
-    </Pressable>)}
-  </ScrollView>
- </View>}
+    </Animated.View>
+   </View>
+   {member?.role==='organiser'&&!desktopNavigation&&menuOpen&&<View style={s.drawerOverlay}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Dismiss organiser menu" style={s.drawerBackdrop} onPress={()=>setMenuOpen(false)}/>
+    <View style={[s.drawerPanel,{width:Math.min(330,viewportWidth*.86)}]}>
+     <OrganiserSidebar active={tab} onSelect={navigateOrganiser} onClose={()=>setMenuOpen(false)} name={member.full_name} drawer
+      pendingPayments={inbox.pending} eventCount={events.filter(e=>e.organiser_id===member.id).length}/>
+    </View>
+   </View>}
  </View>
 }
 const s=StyleSheet.create({
  root:{flex:1,backgroundColor:'#0b1020'},
+ workspaceFrame:{flex:1,flexDirection:'row',minHeight:0},
+ sidebarDesktop:{width:250,height:'100%',flexShrink:0},
+ menuTrigger:{width:44,height:44,borderRadius:11,borderWidth:1,borderColor:'#5b6788',backgroundColor:'#2d3056',alignItems:'center',justifyContent:'center'},
+ menuIcon:{color:'#fff',fontWeight:'900',fontSize:23},
+ drawerOverlay:{position:'absolute',top:0,bottom:0,left:0,right:0,zIndex:90},
+ drawerBackdrop:{position:'absolute',top:0,bottom:0,left:0,right:0,backgroundColor:'#020615cc'},
+ drawerPanel:{height:'100%',paddingTop:Platform.OS==='android'?(StatusBar.currentHeight||24):Platform.OS==='ios'?45:0},
+
  head:{backgroundColor:'#111a31',borderBottomWidth:1,borderColor:'#334362',paddingHorizontal:18,paddingTop:(Platform.OS==='android'?(StatusBar.currentHeight||0):Platform.OS==='ios'?54:14)+8,paddingBottom:15,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},
  brandRow:{flexDirection:'row',alignItems:'center',gap:10,flexShrink:1},brandCopy:{flexShrink:1},
  brandMark:{width:44,height:44,borderRadius:12},
