@@ -334,6 +334,10 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(issuedAfterDraft.design_version,2,'subsequent draft version does not mutate issued design');
   assert.equal(issuedAfterDraft.design_snapshot?.fields?.holder,'Custom holder preview','historical issue retains prior editable field values');
   expect(await req('/api/events/media',{cookie:org.cookie,method:'DELETE',body:{id:ticketArtwork.id}}),409,'issued artwork cannot be removed');
+  expect(await post('/api/platform/events',adminCookie,{eventId:event.id,mediaId:ticketArtwork.id,action:'reject_media'}),409,
+    'admin cannot delete approved media used by an issued ticket');
+  expect(await post('/api/platform/events',adminCookie,{eventId:event.id,mediaId:ticketArtwork.id,action:'approve_media'}),409,
+    'approved media cannot be re-moderated through the pending review endpoint');
   assert.equal(ticket?.admission_label,'ADMIT ONE — MASK COMPULSORY','issued ticket preserves approved admission wording');
   expect(await req('/api/events/media?id='+artworkId),200,'verified poster publicly accessible');
   expect(await req('/api/events/media?eventId='+event.id,{cookie:buyer.cookie}),200,'buyer can browse gallery');
