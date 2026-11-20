@@ -17,6 +17,8 @@ on:
     branches: [main]
     paths:
       - .github/workflows/native-android-preview-apks.yml
+      - apps/gate/App.tsx
+      - apps/gate/app.json
 
 permissions:
   contents: read
@@ -33,7 +35,7 @@ jobs:
     steps:
       - id: choose
         env:
-          APP: ${{ github.event.inputs.app || 'all' }}
+          APP: ${{ github.event.inputs.app || (github.event_name == 'push' && 'gate') || 'all' }}
         run: |
           case "$APP" in
             all) echo 'apps=["user","organiser","gate","platform-admin"]' >> "$GITHUB_OUTPUT" ;;
