@@ -2,6 +2,7 @@ import {db} from '@/lib/db';
 import {paystackApi,paystackTestEnabled,validPaystackCharge,type VerifiedPaystackCharge} from '@/lib/paystack';
 import {issueTicketCredential} from '@/lib/ticket-credentials';
 import {registerEntryCode} from '@/lib/ticket-entry-code';
+import {makeIssuedDesignSnapshot} from '@/lib/ticket-design-snapshot';
 export type Reconciliation={status:'pending'|'issued'|'already_issued'|'reconciliation_required';ticketsIssued?:number};
 export async function reconcilePaystackReference(reference:string):Promise<Reconciliation>{
  if(!paystackTestEnabled()||!/^EP-[a-f0-9-]{36}$/i.test(reference))throw Error('Paystack test mode or reference invalid');
@@ -70,6 +71,10 @@ export async function reconcilePaystackReference(reference:string):Promise<Recon
   const [design]=await tx`select e.ticket_theme,e.admission_label,e.qr_keyword_ciphertext,
     (select id from event_media m where m.event_id=e.id and m.media_type='ticket_art'
     and m.approved order by m.created_at asc limit 1) as ticket_art_id from events e where e.id=${event.id}`;
+  const [savedDesign]=await tx`select version,theme_id,mode,fields,enabled from event_ticket_design_versions
+   where event_id=${event.id} order by version desc limit 1`;
+  const snapshot=makeIssuedDesignSnapshot(savedDesign||null,order.ticket_category_id||null);
+  const issuedTheme=snapshot?.theme||design.ticket_theme;
   const [ledger]=await tx`insert into verified_order_payments
    (order_id,method,gross_ngn,commission_basis_points,collection_reference,verified_by)
    values(${order.id},'paystack',${order.amount_ngn},${payment.commission_basis_points},${reference},null)
@@ -81,9 +86,9 @@ export async function reconcilePaystackReference(reference:string):Promise<Recon
     values(${id},${event.id},${order.id},${order.buyer_id},${credential})`;
    await registerEntryCode(tx,event.id,id,'online');
    await tx`insert into ticket_deliveries
-    (ticket_id,order_id,recipient_id,event_id,ticket_theme,ticket_art_id,admission_label)
+    (ticket_id,order_id,recipient_id,event_id,ticket_theme,ticket_art_id,admission_label,design_version,design_snapshot)
     values(${id},${order.id},${order.buyer_id},${event.id},
-     ${design.ticket_theme},${design.ticket_art_id},${design.admission_label})`;
+     ${issuedTheme},${design.ticket_art_id},${design.admission_label},${snapshot?.version||null},${snapshot?tx.json(snapshot):null})`;
   }
   await tx`update ticket_orders set status='approved',reviewed_at=now(),reviewed_by=null where id=${order.id}`;
   await tx`update paystack_payments set status='success',provider_transaction_id=${String(charge.id)},
