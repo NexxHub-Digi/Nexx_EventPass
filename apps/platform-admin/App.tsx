@@ -1,6 +1,7 @@
 import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {AccessibilityInfo,Animated,Easing,Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import PlatformOverview from './PlatformOverview';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
 WebBrowser.maybeCompleteAuthSession();
@@ -180,17 +181,17 @@ export default function App(){
    <Text style={s.welcomeText}>Review accounts, verify bank details and resolve support cases.</Text>
    {button('Continue with Google',()=>{void login()})}
   </View>:<>
- <Text style={s.title}>Welcome, {member.full_name}</Text><Text style={s.hint}>{member.email}</Text>
+ {section!=='overview'&&<View style={s.sectionBanner}>
+  <Text style={s.sectionEyebrow}>NEXX EVENTPASS  /  ADMINISTRATION</Text>
+  <Text style={s.sectionBannerTitle}>{({organisers:'Organiser management',accounts:'Users & access',events:'Event moderation',analytics:'Events & analytics',finance:'Payments & refunds',support:'Support desk',themes:'Ticket themes',audit:'Audit history',settings:'Platform settings',more:'Explore workspace'} as Record<string,string>)[section]||'Platform operations'}</Text>
+  <Text style={s.sectionBannerHint}>Signed in as {member.full_name} · Secure administrator workspace</Text>
+ </View>}
  {member.account_status==='pending'?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
- {section==='overview'&&<><Text style={s.title}>Platform overview</Text>
- <Text style={s.hint}>Live totals across online and offline tickets and gate admissions.</Text>
- {Object.entries(summary).map(([key,value])=><View key={key} style={s.card}>
-  <Text style={{color:'#fff',fontSize:21,fontWeight:'900'}}>{Number(value).toLocaleString('en-NG')}</Text>
-  <Text style={s.hint}>{key.replace(/_/g,' ')}</Text>
- </View>)}
- {button('Moderate events',()=>setSection('events'))}
- {button('Payment exceptions',()=>setSection('finance'),true)}
- </>}
+ {section==='overview'&&<PlatformOverview fullName={member.full_name} summary={summary}
+ pendingOrganisers={applicants.filter(a=>a.role==='user'&&a.requested_role==='organiser').length}
+ pendingEvents={moderationEvents.filter(e=>e.verification_status==='pending').length}
+ pendingRefunds={refundCases.filter(r=>r.refund_status!=='settled').length}
+ onNavigate={target=>setSection(target)} onRefresh={()=>void exec(async()=>load(token))} busy={busy}/>}
  {section==='more'&&<><Text style={s.title}>More tools</Text>
  {button('Users & access',()=>setSection('accounts'))}
  {button('Events & analytics',()=>setSection('analytics'),true)}
@@ -394,7 +395,7 @@ export default function App(){
   const selected=section===key||(key==='more'&&(['accounts','analytics','finance','audit','support','themes','settings'] as string[]).includes(section));
   return <Pressable key={key} accessibilityRole="tab" accessibilityState={{selected}} disabled={busy}
   style={({pressed})=>[s.navLink,selected&&s.navCurrent,pressed&&(reduceMotion?s.pressedStill:s.pressed)]} onPress={()=>setSection(key)}>
-  <Text style={[s.navText,selected&&s.navTextCurrent]}>{label}</Text></Pressable>})}</View>}
+  <Text style={[s.navIcon,selected&&s.navTextCurrent]}>{key==='overview'?'▦':key==='organisers'?'♧':key==='events'?'◇':'☰'}</Text><Text style={[s.navText,selected&&s.navTextCurrent]}>{label}</Text></Pressable>})}</View>}
  </View>
 }
 const s=StyleSheet.create({
@@ -424,5 +425,10 @@ const s=StyleSheet.create({
  welcomeText:{color:'#d0d9f2',fontSize:16,lineHeight:24,marginBottom:6},
  navigation:{flexDirection:'row',paddingHorizontal:8,paddingTop:8,paddingBottom:Platform.OS==='ios'?24:10,gap:4,backgroundColor:'#111b32',borderTopWidth:1,borderColor:'#354971'},
  navLink:{flex:1,alignItems:'center',justifyContent:'center',minHeight:49,borderRadius:11,paddingHorizontal:2},
- navCurrent:{backgroundColor:'#32265c'},navText:{fontSize:12,fontWeight:'700',color:'#c1cdec'},navTextCurrent:{color:'#9ccfff'},
+ sectionBanner:{borderRadius:18,borderColor:'#65588e',borderWidth:1,backgroundColor:'#1c2240',padding:19,marginTop:8,marginBottom:12,gap:9},
+ sectionEyebrow:{fontSize:10,letterSpacing:1.3,fontWeight:'900',color:'#c4adf8'},
+ sectionBannerTitle:{fontSize:25,fontWeight:'900',letterSpacing:-.6,color:'#fff'},
+ sectionBannerHint:{fontSize:12,lineHeight:18,color:'#c2cce1'},
+ navIcon:{fontSize:18,color:'#c1cdec',fontWeight:'900'},
+ navCurrent:{backgroundColor:'#32265c',borderTopColor:'#d6ba7e',borderTopWidth:2},navText:{fontSize:11,fontWeight:'700',color:'#c1cdec'},navTextCurrent:{color:'#f2e1ba'},
 });
