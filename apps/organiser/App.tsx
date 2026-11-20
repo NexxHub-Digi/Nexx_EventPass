@@ -1,10 +1,11 @@
 import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,Animated,Easing,AppState,Alert,Share,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
+import {AccessibilityInfo,Animated,Easing,AppState,Alert,Share,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image,useWindowDimensions,BackHandler} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
 import * as DocumentPicker from 'expo-document-picker';
 import TicketStudioPreview from './TicketStudioPreview';
+import OrganiserSidebar,{type OrganiserPage} from './OrganiserSidebar';
 WebBrowser.maybeCompleteAuthSession();
 
 const PORTAL: string="organiser",TITLE="Nexx EventPass Event Organiser",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
@@ -58,7 +59,12 @@ export default function App(){
  const [bankAccounts,setBankAccounts]=useState<BankAccount[]>([]),[eventBankId,setEventBankId]=useState('');
  const verifiedBanks=bankAccounts.filter(account=>account.status==='verified');
  const [onsiteOrder,setOnsiteOrder]=useState(''),[collected,setCollected]=useState(''),[collectionRef,setCollectionRef]=useState('');
- const [tab,setTab]=useState<'dashboard'|'events'|'tickets'|'payments'|'team'|'profile'>('dashboard');
+ const [tab,setTab]=useState<OrganiserPage>('dashboard');
+ const [menuOpen,setMenuOpen]=useState(false),[showDesktopSidebar,setShowDesktopSidebar]=useState(true);
+ const {width:viewportWidth}=useWindowDimensions();
+ const desktopNavigation=viewportWidth>=900;
+ useEffect(()=>{if(!menuOpen)return;const back=BackHandler.addEventListener('hardwareBackPress',()=>{setMenuOpen(false);return true});return ()=>back.remove()},[menuOpen]);
+ function navigateOrganiser(target:OrganiserPage){setTab(target);setMenuOpen(false);scroll.current?.scrollTo({y:0,animated:false})}
  const [themes,setThemes]=useState<[string,string][]>([['aurora','Aurora Glow'],['midnight','Midnight Gold'],['sunset','Sunset Social'],['neon','Neon Pulse'],['minimal','Minimal Ivory'],['custom','Custom Artwork']]);
  async function uploadEventFile(purpose=''){if(!eventId)throw Error('Select an event');
   const result=await DocumentPicker.getDocumentAsync({type:purpose==='ticket_art'?['image/jpeg','image/png','image/webp']:['image/jpeg','image/png','image/webp','video/mp4','video/webm']});
@@ -116,9 +122,9 @@ export default function App(){
    if(!code)throw Error('Google did not return a valid sign-in code');
    const data=await api('auth/mobile','','POST',{code,client:PORTAL,codeVerifier:verifier});
    await SecureStore.setItemAsync('eventpass_token',data.token);
-   setToken(data.token);await load(data.token);
+   setToken(data.token);await load(data.token);setTab('dashboard');setMenuOpen(false);
  })}
- async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null)}}
+ async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null);setTab('dashboard');setMenuOpen(false)}}
  const input=(hint:string,value:string,update:(x:string)=>void,secret=false)=><TextInput style={s.input} placeholder={hint} placeholderTextColor="#94a3b8" value={value} onChangeText={update} autoCapitalize="none" secureTextEntry={secret}/>;
  const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&(reduceMotion?s.pressedStill:s.pressed),busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
  const surfaceMotion=useRef(new Animated.Value(1)).current;
@@ -181,7 +187,7 @@ export default function App(){
   {button('Manage events',()=>setTab('events'))}{button('Review payments',()=>setTab('payments'),true)}
  </View>}
  {tab==='profile'&&<View style={s.card}><Text style={s.title}>My organiser profile</Text><Text style={s.hint}>Name: {member.full_name}</Text><Text style={s.hint}>Email: {member.email}</Text><Text style={s.hint}>Status: {member.account_status}</Text></View>}
- {events.some(e=>e.organiser_id===member.id)&&<View style={s.card}><Text style={s.hint}>ACTIVE EVENT · Choose an event for tickets, payments and gates</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8}}>{events.filter(e=>e.organiser_id===member.id).map(e=><Pressable key={e.id} onPress={()=>{setEventId(e.id);setOrders([]);setMedia([]);setDescription(e.description||'');setCategory(e.category||'Other');setTheme(e.ticket_theme||'aurora');setAdmissionLabel(e.admission_label||'ADMIT ONE');setPosterTemplate(e.poster_template||'none');void exec(async()=>{setOrders((await api('orders?eventId='+e.id,token)).orders||[]);setMedia((await api('events/media?eventId='+e.id,token)).media||[])})}} style={[s.navChip,eventId===e.id&&s.navSelected]}><Text style={s.buttonText}>{e.title}</Text></Pressable>)}</ScrollView></View>}
+ {(['events','tickets','payments','team'] as OrganiserPage[]).includes(tab)&&events.some(e=>e.organiser_id===member.id)&&<View style={s.card}><Text style={s.hint}>ACTIVE EVENT · Choose an event for tickets, payments and gates</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8}}>{events.filter(e=>e.organiser_id===member.id).map(e=><Pressable key={e.id} onPress={()=>{setEventId(e.id);setOrders([]);setMedia([]);setDescription(e.description||'');setCategory(e.category||'Other');setTheme(e.ticket_theme||'aurora');setAdmissionLabel(e.admission_label||'ADMIT ONE');setPosterTemplate(e.poster_template||'none');void exec(async()=>{setOrders((await api('orders?eventId='+e.id,token)).orders||[]);setMedia((await api('events/media?eventId='+e.id,token)).media||[])})}} style={[s.navChip,eventId===e.id&&s.navSelected]}><Text style={s.buttonText}>{e.title}</Text></Pressable>)}</ScrollView></View>}
  {tab==='payments'&&<>
  <Text style={s.title}>Pending payments ({inbox.pending})</Text>
  {button('Refresh pending payments',()=>void exec(async()=>refreshInbox()),true)}
