@@ -91,6 +91,27 @@ jobs:
       - name: Generate Android native project from Expo config
         working-directory: apps/${{ matrix.app }}
         run: npx expo prebuild --platform android --clean --no-install
+      - name: Verify generated Android security manifest
+        run: |
+          set -euo pipefail
+          MANIFEST="apps/${{ matrix.app }}/android/app/src/main/AndroidManifest.xml"
+          test -s "$MANIFEST"
+          grep -q 'android:allowBackup="false"' "$MANIFEST"
+          grep -q 'android:usesCleartextTraffic="false"' "$MANIFEST"
+          if [ "${{ matrix.app }}" = "gate" ]; then
+            grep -q 'android.permission.CAMERA' "$MANIFEST"
+          else
+            if grep -q 'android.permission.CAMERA' "$MANIFEST"; then
+              echo "Only Gate Operator may request the camera" >&2
+              exit 1
+            fi
+          fi
+          for PERM in READ_SMS READ_CONTACTS READ_CALL_LOG READ_PHONE_STATE ACCESS_FINE_LOCATION ACCESS_BACKGROUND_LOCATION REQUEST_INSTALL_PACKAGES SYSTEM_ALERT_WINDOW RECORD_AUDIO; do
+            if grep -q "android.permission.$PERM" "$MANIFEST"; then
+              echo "Unexpected sensitive permission in Android manifest: $PERM" >&2
+              exit 1
+            fi
+          done
       - name: Build self-contained release variant for internal testing
         working-directory: apps/${{ matrix.app }}/android
         run: |
@@ -101,6 +122,20 @@ jobs:
           APK="apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
           apksigner verify --print-certs "$APK" | grep -i "Android Debug"
+      - name: Inspect Android target, package ID and 16 KiB APK alignment
+        run: |
+          set -euo pipefail
+          APK="apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk"
+          TOOL_DIR="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          test -x "$TOOL_DIR/aapt"
+          test -x "$TOOL_DIR/zipalign"
+          "$TOOL_DIR/aapt" dump badging "$APK" > /tmp/eventpass-badging.txt
+          grep -q "targetSdkVersion:'36'" /tmp/eventpass-badging.txt
+          ROLE="${{ matrix.app }}"
+          if [ "$ROLE" = "platform-admin" ]; then ROLE="admin"; fi
+          grep -q "package: name='com.nexx.eventpass.$ROLE'" /tmp/eventpass-badging.txt
+          "$TOOL_DIR/zipalign" -c -P 16 4 "$APK"
+          echo "Verified Android 16 target, correct role package and 16 KiB APK zip alignment"
       - name: Upload Android internal test APK
         uses: actions/upload-artifact@v4
         with:
