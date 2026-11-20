@@ -16,6 +16,7 @@ jobs:
       - run: npm run test:qr
       - run: npm run test:entry-codes
       - run: npm run test:workflow
+      - run: node --test tests/platform-admin-visual-parity.test.mjs
       - run: node --test tests/refund-settlement-controls.test.mjs
       - run: node --test tests/admin-native-control-centre.test.mjs
       - run: node --test tests/admin-organiser-rejection.test.mjs
