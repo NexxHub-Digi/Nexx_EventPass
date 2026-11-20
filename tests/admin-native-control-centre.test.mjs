@@ -3,22 +3,25 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const native=read('apps/platform-admin/App.tsx');
+const sidebar=read('apps/platform-admin/AdminSidebar.tsx');
 const themes=read('src/app/api/ticket-themes/route.ts');
 const events=read('src/app/api/platform/event-directory/route.ts');
 const users=read('src/app/api/platform/users/route.ts');
 const organisers=read('src/app/api/platform/organisers/route.ts');
 
-test('native admin navigation offers all ten required web-equivalent sections, keeping an accessible More area',()=>{
+test('native admin navigation offers all ten sections in sidebar and no duplicate More list',()=>{
  for(const section of ['overview','organisers','accounts','events','analytics','finance','support','themes','audit','settings']){
-  assert.match(native,new RegExp("'"+section+"'"),section+' section is absent');
+  assert.match(sidebar,new RegExp("'"+section+"'"),section+' section absent from sidebar');
  }
- assert.match(native,/Events & analytics/);
- assert.match(native,/Ticket themes/);
- assert.match(native,/Users & access/);
+ assert.match(sidebar,/Events & analytics/);
+ assert.match(sidebar,/Ticket themes/);
+ assert.match(sidebar,/Users & access/);
  assert.match(native,/section==='themes'/);
  assert.match(native,/section==='analytics'/);
- assert.match(native,/setSection\('overview'\);scroll\.current/);
- assert.match(native,/accessibilityRole="tab"/);
+ assert.match(native,/navigateAdmin\('overview'\)/);
+ assert.match(native,/setMenuOpen\(false\)/);
+ assert.match(sidebar,/accessibilityRole="button"/);
+ assert.doesNotMatch(native,/section==='more'/);
 });
 test('events analytics source is the permission-protected directory, with accurate financial labels',()=>{
  assert.match(native,/api\('platform\/event-directory',t\)/);
