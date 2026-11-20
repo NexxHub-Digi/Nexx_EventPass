@@ -91,7 +91,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(expect(await req('/api/support/cases',{cookie:org.cookie}),200,'organiser sees support resolution').cases[0].status,'resolved');
   const savedCase=expect(await req('/api/support/cases',{cookie:adminCookie}),200,'admin can reload changed case').cases.find(c=>c.id===opened.id);
   assert.equal(savedCase.resolution,'Verified by Platform Admin');
-  const [auditForSupport]=await sql`select action,details from platform_admin_actions where action='resolve_support_case' and details->>'caseId'=${opened.id} order by id desc limit 1`;
+  const [auditForSupport]=await sql`select action,details from platform_admin_actions where action='resolve_support_case' and details->>'caseId'=${opened.id} order by created_at desc limit 1`;
   assert.equal(auditForSupport.details.toStatus,'resolved','audit records actual support status');
   assert.equal(auditForSupport.details.fromStatus,'in_progress');
   expect(await req('/api/support/cases',{cookie:adminCookie,method:'PATCH',body:{id:opened.id,status:'closed',priority:'high',resolution:'Verified by Platform Admin'}}),200,'close resolved support case');
