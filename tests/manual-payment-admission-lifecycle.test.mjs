@@ -9,7 +9,7 @@ test('receipts remain pending and cannot mint a QR credential',()=>{
  const receipt=source('src/app/api/orders/receipt/route.ts');
  const review=source('src/app/api/review/route.ts');
  assert.match(reserve,/payment_reference,status,reservation_expires_at/);
- assert.match(reserve,/\b'pending',now\(\)\+interval '45 minutes'/);
+ assert.match(reserve,/'pending',now\(\)\+interval '45 minutes'/);
  assert.match(receipt,/status='pending' and reservation_expires_at>now\(\)/);
  assert.doesNotMatch(receipt,/insert into tickets/);
  assert.match(review,/Only the owning organiser may review payments/);
