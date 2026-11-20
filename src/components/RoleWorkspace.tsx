@@ -67,6 +67,8 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
  const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string;entryCode?:string|null}|null>(null);
  const [adminTab,setAdminTab]=useState('overview');
+ const [adminMenuOpen,setAdminMenuOpen]=useState(false),[adminNavCollapsed,setAdminNavCollapsed]=useState(false),[organiserMenuOpen,setOrganiserMenuOpen]=useState(false);
+ const [adminLoadIssues,setAdminLoadIssues]=useState<string[]>([]);
  const [showEventDesign,setShowEventDesign]=useState(false);
  const [organiserTab,setOrganiserTab]=useState<'dashboard'|'events'|'tickets'|'offline'|'payments'|'team'|'profile'|'settings'>('dashboard');
  const [gateOperators,setGateOperators]=useState<GateOperator[]>([]);
@@ -81,6 +83,22 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   document.addEventListener('visibilitychange',refresh);
   return ()=>{window.clearInterval(timer);document.removeEventListener('visibilitychange',refresh)};
  },[role,me?.id,me?.role,me?.account_status]);
+ useEffect(()=>{
+  if(!adminMenuOpen&&!organiserMenuOpen)return;
+  const onKeyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'){setAdminMenuOpen(false);setOrganiserMenuOpen(false)}};
+  document.addEventListener('keydown',onKeyDown);
+  return ()=>document.removeEventListener('keydown',onKeyDown);
+ },[adminMenuOpen,organiserMenuOpen]);
+ const adminMenuItems=[
+  ['overview','Dashboard','▦'],['organisers','Organisers','◉'],['users','Users & access','♙'],['moderation','Event moderation','◇'],['reports','Events & analytics','▥'],
+  ['refunds','Payments & refunds','₦'],['support','Support desk','♧'],['themes','Ticket themes','✧'],['audit','Audit logs','≡'],['settings','Settings','⚙']
+ ] as const;
+ function navigateAdmin(tab:string){
+  setAdminTab(tab);setAdminMenuOpen(false);setMessage('');window.scrollTo({top:0,behavior:'instant'});
+ }
+ function navigateOrganiser(tab:typeof organiserTab){
+  setOrganiserTab(tab);setOrganiserMenuOpen(false);setMessage('');window.scrollTo({top:0,behavior:'instant'});
+ }
  const cameraGeneration=useRef(0);
  const verificationInFlight=useRef(false);
  const lastDecoded=useRef({value:'',at:0});
@@ -94,7 +112,16 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  async function fetchAll(){
   const m=await api('auth/me');setMe(m.user);setPortals(m.portals||[]);
   if(!m.user)return;
-  const [e,themeResult]=await Promise.all([api('events'),api('ticket-themes')]);setEvents(e.events||[]);if(themeResult.themes?.length)setThemeCatalog(themeResult.themes);
+  const adminIssues:string[]=[];
+  if(role==='platform-admin'){
+   const common=await Promise.allSettled([api('events'),api('ticket-themes')]);
+   if(common[0].status==='fulfilled')setEvents(common[0].value.events||[]);else adminIssues.push('Event catalogue unavailable');
+   if(common[1].status==='fulfilled'){if(common[1].value.themes?.length)setThemeCatalog(common[1].value.themes)}
+   else adminIssues.push('Ticket theme catalogue unavailable');
+  }else{
+   const [e,themeResult]=await Promise.all([api('events'),api('ticket-themes')]);
+   setEvents(e.events||[]);if(themeResult.themes?.length)setThemeCatalog(themeResult.themes);
+  }
   if(m.user.account_status==='pending'||(role==='organiser'&&m.user.role==='user'&&m.user.requested_role==='organiser'))return;
   const rr=role==='platform-admin'?'platform_admin':role;
   if(!(m.portals||[]).includes(rr))return;
@@ -108,13 +135,37 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
   }else if(role==='gate'){const g=await api('gates');setGates(g.gates||[]);}
   else if(role==='platform-admin'){
-   const [a,overview,banks]=await Promise.all([api('platform/organisers'),api('platform/overview'),api('organiser/payment-account')]);
-   setBankAccounts(banks.accounts||[]);
-   setOrganisers(a.organisers||[]);setStats(overview.stats||{});
-   const [reviews,people,support,configuration,report,refunds,audit]=await Promise.all([api('platform/events'),api('platform/users'),api('support/cases'),api('platform/settings'),api('platform/event-directory'),api('refunds'),api('platform/audit')]);
-   setEventReports(report.events||[]);setRefundCases(refunds.orders||[]);setAuditHistory(audit.history||[]);
-   setModerationEvents(reviews.events||[]);setModerationMedia(reviews.media||[]);
-   setAllUsers(people.accounts||[]);setUsersCount(people.count||0);setCases(support.cases||[]);setPlatformSettings(configuration.settings||{});
+   const calls=[
+    ['Organisers',api('platform/organisers')],
+    ['Dashboard',api('platform/overview')],
+    ['Bank verification',api('organiser/payment-account')],
+    ['Event moderation',api('platform/events')],
+    ['Users & access',api('platform/users')],
+    ['Support',api('support/cases')],
+    ['Settings',api('platform/settings')],
+    ['Events & analytics',api('platform/event-directory')],
+    ['Payments & refunds',api('refunds')],
+    ['Audit logs',api('platform/audit')]
+   ] as const;
+   const settled=await Promise.allSettled(calls.map(([,request])=>request));
+   const loaded=(i:number)=>{
+    const result=settled[i];
+    if(result.status==='fulfilled')return result.value;
+    adminIssues.push(calls[i][0]+' service unavailable');
+    return null;
+   };
+   const organisersResult=loaded(0);if(organisersResult)setOrganisers(organisersResult.organisers||[]);
+   const overview=loaded(1);if(overview)setStats(overview.stats||{});
+   const banks=loaded(2);if(banks)setBankAccounts(banks.accounts||[]);
+   const reviews=loaded(3);if(reviews){setModerationEvents(reviews.events||[]);setModerationMedia(reviews.media||[])}
+   const people=loaded(4);if(people){setAllUsers(people.accounts||[]);setUsersCount(people.count||0)}
+   const support=loaded(5);if(support)setCases(support.cases||[]);
+   const configuration=loaded(6);if(configuration){setPlatformSettings(configuration.settings||{});setSettingValue(String((configuration.settings||{})[settingKey]||''))}
+   const report=loaded(7);if(report)setEventReports(report.events||[]);
+   const refunds=loaded(8);if(refunds)setRefundCases(refunds.orders||[]);
+   const audit=loaded(9);if(audit)setAuditHistory(audit.history||[]);
+   setAdminLoadIssues(adminIssues);
+
   }
  }
  useEffect(()=>{setLoading(true);fetchAll().catch(e=>setMessage((e as Error).message)).finally(()=>setLoading(false));return ()=>{cameraGeneration.current++;scanControls.current?.stop()}},[role]);
@@ -254,7 +305,13 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    const x=await api('support/cases');setCases(x.cases||[]);setMessage('Support case '+status.replace('_',' ')+' and audit updated');
   });
  }
- async function saveSetting(){await run(async()=>{await api('platform/settings','PATCH',{key:settingKey,value:settingValue});setPlatformSettings({...platformSettings,[settingKey]:settingValue});setMessage('Platform setting saved')})}
+ async function saveSetting(){await run(async()=>{
+  const value=settingValue.trim();if(!value)throw Error('Enter a value for the selected platform setting.');
+  if(settingKey==='support_email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))throw Error('Enter a valid support email address.');
+  await api('platform/settings','PATCH',{key:settingKey,value});
+  const result=await api('platform/settings');setPlatformSettings(result.settings||{});
+  setSettingValue(String(result.settings?.[settingKey]||''));setMessage('Platform setting saved and reloaded from the server');
+ })}
  async function saveCapabilities(){await run(async()=>{
   await api('platform/organisers','POST',{action:'capabilities',userId:selectedOrganiser,canCreateEvents:canCreate,canInviteGates:canGates,canVerifyPayments:canPayments});
   const a=await api('platform/organisers');setOrganisers(a.organisers||[]);setMessage('Organiser permissions saved and audited');
@@ -320,8 +377,8 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  }
  function resetPortalHome(){
   setMessage('');
-  if(role==='platform-admin')setAdminTab('overview');
-  if(role==='organiser')setOrganiserTab('dashboard');
+  if(role==='platform-admin'){setAdminTab('overview');setAdminMenuOpen(false)}
+  if(role==='organiser'){setOrganiserTab('dashboard');setOrganiserMenuOpen(false)}
   if(role==='gate'){
    stopScan();setEventId('');setScanCode('');setScanOutcome('');setScans([]);
   }
@@ -347,9 +404,34 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   }}>◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title} · Nexx Future</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
  <nav className="rw-portal-switch" aria-label={`${title} workspace navigation`}><span aria-current="page">{title} workspace</span></nav>
  {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
- {role==='platform-admin'&&<header className="rw-panel ep-admin-hero" style={{marginBottom:16}}><div className="ep-admin-hero-copy"><div className="eyebrow">NEXX EVENTPASS / COMMAND CENTRE</div><h1>Platform administration</h1><p>Monitor operations, review critical decisions and manage your EventPass ecosystem from one control centre.</p></div><div className="ep-admin-hero-status"><span className="ep-admin-status-dot" aria-hidden="true"/> Administrator workspace <small>Authenticated operational view</small></div></header>}
- {role==='platform-admin'&&<div className="rw-workspace-shell ep-admin-workspace"><aside className="rw-panel ep-admin-sidebar" style={{alignSelf:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:12}}>OPERATIONS</div><nav aria-label="Platform administration" style={{display:'grid',gap:6}}>{([['overview','Overview'],['organisers','Organisers'],['moderation','Event moderation'],['reports','Analytics & events'],['refunds','Payments & refunds'],['users','Users & access'],['support','Support'],['themes','Ticket themes'],['audit','Audit logs'],['settings','Settings']] as const).map(([key,label])=><button type="button" key={key} className={adminTab===key?'primary':'ghost'} aria-current={adminTab===key?'page':undefined} onClick={()=>{setAdminTab(key);setMessage('')}} style={{textAlign:'left',padding:12}}>{label}</button>)}</nav></aside><div className="rw-layout" style={{minWidth:0}}>
-  <section className="rw-panel ep-admin-dashboard" style={{display:adminTab==='overview'?'':'none'}}><div className="ep-admin-section-heading"><div><div className="eyebrow">OPERATIONS AT A GLANCE</div><h2 id="admin-overview">Platform overview</h2><p>Live operational totals across organisers, reservations, tickets and admission activity.</p></div><span className="ep-admin-live-label">Database-backed</span></div><p className="ep-admin-metric-note">Verified collections are confirmed payments only. Offline sales are manually recorded, not necessarily received. Refund exposure reflects open review cases, not approved payouts.</p><div className="rw-stats ep-admin-kpis">{Object.entries(stats).map(([k,v])=><div className="rw-stat ep-admin-kpi" key={k}><small>{({verified_collections_ngn:'Verified collections',verified_commissions_ngn:'Verified platform commissions',commission_outstanding_ngn:'Outstanding commission remittance',manual_offline_sales_ngn:'Manually recorded offline sales',refund_review_exposure_ngn:'Unresolved refund exposure'} as Record<string,string>)[k]||k.replace(/_/g,' ')}</small><b>{k.endsWith('_ngn')?'₦'+Number(v).toLocaleString('en-NG'):Number(v).toLocaleString('en-NG')}</b><span className="ep-admin-kpi-rule" aria-hidden="true"/></div>)}</div>
+ 
+ {role==='platform-admin'&&<div className={['rw-workspace-shell','ep-admin-workspace',adminNavCollapsed?'is-collapsed':''].filter(Boolean).join(' ')}>
+  {adminMenuOpen&&<button type="button" className="ep-admin-drawer-scrim" aria-label="Close administrator menu" onClick={()=>setAdminMenuOpen(false)}/>}
+  <aside id="platform-admin-navigation" className={['rw-panel','ep-admin-sidebar',adminMenuOpen?'is-open':'',adminNavCollapsed?'is-collapsed':''].filter(Boolean).join(' ')}>
+   <div className="ep-admin-side-brand"><span className="ep-admin-side-symbol">◈</span><span className="ep-admin-side-label"><b>NEXX EVENTPASS</b><small>Administration</small></span><button type="button" className="ep-admin-side-close" aria-label="Close administrator menu" onClick={()=>setAdminMenuOpen(false)}>×</button></div>
+   <div className="eyebrow ep-admin-nav-caption">WORKSPACE</div>
+   <nav aria-label="Platform administration" style={{display:'grid',gap:6}}>{adminMenuItems.map(([key,label,glyph])=>
+    <button type="button" key={key} className={adminTab===key?'primary':'ghost'} aria-label={label} aria-current={adminTab===key?'page':undefined} title={label} onClick={()=>navigateAdmin(key)}>
+     <span className="ep-admin-nav-icon" aria-hidden="true">{glyph}</span><span className="ep-admin-nav-label">{label}</span>
+     {key==='support'&&cases.filter(c=>['open','in_progress'].includes(c.status)).length>0&&<span className="ep-admin-nav-count">{cases.filter(c=>['open','in_progress'].includes(c.status)).length}</span>}
+    </button>)}</nav>
+   <div className="ep-admin-side-footer"><small>Signed in securely</small><strong>{me.email}</strong></div>
+  </aside>
+  <div className="rw-layout ep-admin-main" style={{minWidth:0}}>
+   <header className="ep-admin-main-header">
+    <div className="ep-admin-main-leading">
+     <button type="button" className="ep-admin-menu-trigger" aria-controls="platform-admin-navigation" aria-expanded={adminMenuOpen} aria-label="Open or collapse administrator sidebar" onClick={()=>{
+      if(window.matchMedia('(max-width: 900px)').matches)setAdminMenuOpen(x=>!x);else setAdminNavCollapsed(x=>!x);
+     }}><span aria-hidden="true">☰</span> <span>Menu</span></button>
+     <div className="ep-admin-page-title"><div className="eyebrow">PLATFORM / {adminTab==='overview'?'DASHBOARD':'WORKSPACE'}</div><h1>{adminMenuItems.find(([key])=>key===adminTab)?.[1]||'Dashboard'}</h1></div>
+    </div>
+    <div className="ep-admin-header-status"><span className="ep-admin-status-dot" aria-hidden="true"/> Live database <small>{me.full_name}</small></div>
+   </header>
+  {adminLoadIssues.length>0&&<div className="ep-admin-load-warning" role="alert">
+    <div><strong>Some administrator modules could not load</strong><p>{adminLoadIssues.join(' · ')}</p><small>Working modules remain available; missing data is not being presented as zero.</small></div>
+    <button className="ghost" type="button" disabled={busy} onClick={()=>{void run(async()=>{await fetchAll()})}}>Retry modules</button>
+   </div>}
+   <section className="rw-panel ep-admin-dashboard" style={{display:adminTab==='overview'?'':'none'}}><div className="ep-admin-dashboard-welcome"><div><div className="eyebrow">WELCOME TO YOUR COMMAND CENTRE</div><h2>Good to see you, {me.full_name}</h2><p>Review live performance, resolve pending work and manage EventPass from the menu.</p></div><span className="ep-admin-live-label">Platform Administrator</span></div><div className="ep-admin-section-heading"><div><div className="eyebrow">OPERATIONS AT A GLANCE</div><h2 id="admin-overview">Platform overview</h2><p>Live operational totals across organisers, reservations, tickets and admission activity.</p></div><span className="ep-admin-live-label">Database-backed</span></div><p className="ep-admin-metric-note">Verified collections are confirmed payments only. Offline sales are manually recorded, not necessarily received. Refund exposure reflects open review cases, not approved payouts.</p><div className="rw-stats ep-admin-kpis">{Object.entries(stats).map(([k,v])=><div className="rw-stat ep-admin-kpi" key={k}><small>{({verified_collections_ngn:'Verified collections',verified_commissions_ngn:'Verified platform commissions',commission_outstanding_ngn:'Outstanding commission remittance',manual_offline_sales_ngn:'Manually recorded offline sales',refund_review_exposure_ngn:'Unresolved refund exposure'} as Record<string,string>)[k]||k.replace(/_/g,' ')}</small><b>{k.endsWith('_ngn')?'₦'+Number(v).toLocaleString('en-NG'):Number(v).toLocaleString('en-NG')}</b><span className="ep-admin-kpi-rule" aria-hidden="true"/></div>)}</div>
   <div className="ep-admin-section-heading"><div><div className="eyebrow">LIVE WORK QUEUE</div><h3>Requires administrator attention</h3><p>Open a section below to resolve records in the database. These are not demo tasks.</p></div>{btn('Refresh dashboard',()=>{void run(async()=>{await fetchAll();setMessage('Live administrator dashboard refreshed')})},true)}</div>
   <div className="ep-admin-queues">
    {([
@@ -361,10 +443,6 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    ] as [string,number,string][]).map(([label,count,tab])=><button type="button" key={label} className="ep-admin-queue-item" onClick={()=>setAdminTab(tab)}>
     <span className="ep-admin-queue-count">{count}</span><span>{label}</span><strong aria-hidden="true">›</strong>
    </button>)}
-  </div>
-  <div className="ep-admin-section-heading"><div><h3>Operational shortcuts</h3><p>All shortcuts open their connected administrative workspaces.</p></div></div>
-  <div className="ep-admin-shortcuts">
-   {([['Review organisers','organisers'],['Moderate events','moderation'],['Manage accounts','users'],['Payments & reconciliation','refunds'],['Support desk','support'],['Event analytics','reports'],['Audit history','audit'],['Platform settings','settings']] as [string,string][]).map(([label,tab])=><button type="button" key={tab} className="ghost" onClick={()=>setAdminTab(tab)}>{label} <span aria-hidden="true">›</span></button>)}
   </div>
   <h3>Recent support activity</h3>
   {cases.slice(0,4).map(c=><button type="button" className="ep-admin-recent-case" key={c.id} onClick={()=>{setSelectedSupportId(c.id);setSupportDrafts(p=>({...p,[c.id]:p[c.id]||{priority:c.priority,resolution:c.resolution||''}}));setAdminTab('support')}}><strong>{c.subject}</strong><small>{c.organiser_name} · {c.status.replace('_',' ')} · {c.priority}</small><span>Review case</span></button>)}
@@ -477,7 +555,9 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    <label className="rw-field">Setting<select value={settingKey} onChange={e=>{setSettingKey(e.target.value);setSettingValue(platformSettings[e.target.value]||'')}}>
     <option value="support_email">Support contact email</option><option value="organiser_approval_policy">Organiser approval checklist</option>
     <option value="event_verification_policy">Event authenticity checklist</option><option value="help_text">Help text</option></select></label>
-   <label className="rw-field">Value<textarea rows={3} value={settingValue} onChange={e=>setSettingValue(e.target.value)}/></label>{btn('Save settings',()=>{void saveSetting()})}
+   <p className="ep-admin-current-value"><strong>Currently stored:</strong> {platformSettings[settingKey]||'Not configured yet'}</p>
+   <label className="rw-field">Value<textarea rows={4} maxLength={750} value={settingValue} onChange={e=>setSettingValue(e.target.value)} placeholder="Enter the actual policy or support contact information"/></label>
+   <div className="rw-actions">{btn('Save & verify settings',()=>{void saveSetting()})}{btn('Reload saved value',()=>{void run(async()=>{const data=await api('platform/settings');setPlatformSettings(data.settings||{});setSettingValue(String(data.settings?.[settingKey]||''));setMessage('Saved settings refreshed')})},true)}</div>
   </section>
   <section className="rw-panel" style={{display:adminTab==='organisers'?'':'none'}}><h2>Organiser directory and access control</h2><div className="rw-profile" style={{margin:'12px 0 20px'}}>
    <h3>Approve verified organiser onboarding</h3><p>Only a previously registered, Google-verified User can become an organiser. This action uses the administrator approval API and never creates default passwords.</p>
@@ -556,10 +636,19 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   <span>{inbox.unread} new payment {inbox.unread===1?'receipt needs':'receipts need'} review.</span>
   <button type="button" onClick={()=>setOrganiserTab('payments')}>Open pending payments</button>
  </div>}
- {role==='organiser'&&<div className="rw-workspace-shell"><nav className="rw-panel" aria-label="Organiser navigation" style={{display:'grid',gap:8,alignContent:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:8}}>ORGANISER WORKSPACE</div>
-   {(['dashboard','events','tickets','offline','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>setOrganiserTab(tab)} style={{textTransform:'capitalize',textAlign:'left',padding:12}}>{tab==='tickets'?'Ticket Studio':tab==='offline'?'Offline Ticketing':tab==='team'?'Gate Management':tab==='payments'?'Payments & Bank Details':tab==='dashboard'?'Overview':tab}</button>)}
-  </nav><div className="rw-layout" style={{minWidth:0}}>
-  <section className="rw-panel rw-wide" aria-label="Active organiser event" style={{padding:16}}>
+ {role==='organiser'&&<div className="rw-workspace-shell ep-organiser-workspace">
+   {organiserMenuOpen&&<button type="button" className="ep-admin-drawer-scrim" aria-label="Close organiser menu" onClick={()=>setOrganiserMenuOpen(false)}/>}
+   <nav id="organiser-workspace-navigation" className={['rw-panel','ep-organiser-sidebar',organiserMenuOpen?'is-open':''].filter(Boolean).join(' ')} aria-label="Organiser navigation">
+    <div className="ep-admin-side-brand"><span className="ep-admin-side-symbol">◈</span><span className="ep-admin-side-label"><b>EVENTPASS</b><small>Organiser workspace</small></span><button type="button" className="ep-admin-side-close" aria-label="Close organiser menu" onClick={()=>setOrganiserMenuOpen(false)}>×</button></div>
+    {(['dashboard','events','tickets','offline','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>navigateOrganiser(tab)}>
+     <span className="ep-admin-nav-icon" aria-hidden="true">{({dashboard:'▦',events:'◇',tickets:'✧',offline:'▣',payments:'₦',team:'♙',profile:'◉',settings:'⚙'} as Record<string,string>)[tab]}</span>
+     <span>{tab==='tickets'?'Ticket Studio':tab==='offline'?'Offline ticketing':tab==='team'?'Gate management':tab==='payments'?'Payments & bank details':tab==='dashboard'?'Dashboard':tab}</span>
+    </button>)}
+   </nav>
+   <div className="rw-layout ep-organiser-main" style={{minWidth:0}}>
+    <header className="ep-organiser-workspace-toolbar"><button type="button" className="ep-admin-menu-trigger" aria-controls="organiser-workspace-navigation" aria-expanded={organiserMenuOpen} onClick={()=>setOrganiserMenuOpen(x=>!x)}><span aria-hidden="true">☰</span> Menu</button>
+    <div><div className="eyebrow">ORGANISER / WORKSPACE</div><h2>{organiserTab==='dashboard'?'Dashboard':organiserTab==='tickets'?'Ticket Studio':organiserTab==='offline'?'Offline ticketing':organiserTab==='team'?'Gate management':organiserTab==='payments'?'Payments & bank details':organiserTab.charAt(0).toUpperCase()+organiserTab.slice(1)}</h2></div></header>
+   <section className="rw-panel rw-wide" aria-label="Active organiser event" style={{padding:16}}>
     <div className="eyebrow">ACTIVE EVENT CONTEXT</div>
     <label className="rw-field">Choose the event for payments, ticket design and gate management
       <select value={eventId} onChange={e=>{

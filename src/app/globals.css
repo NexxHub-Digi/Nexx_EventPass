@@ -289,3 +289,116 @@
 .ep-admin-shell .ep-admin-recent-case span{color:#abf1da}
 .ep-admin-shell .ep-admin-support-case{flex-wrap:wrap}
 @media(max-width:550px){.ep-admin-shell .ep-admin-queues,.ep-admin-shell .ep-admin-shortcuts{grid-template-columns:1fr}.ep-admin-shell .ep-admin-queue-item{min-height:60px}}
+
+
+/* EventPass management workspace: dashboard-first sidebar / mobile drawer navigation */
+.ep-admin-shell .ep-admin-workspace{grid-template-columns:minmax(230px,255px) minmax(0,1fr);align-items:start;gap:22px}
+.ep-admin-shell .ep-admin-workspace.is-collapsed{grid-template-columns:72px minmax(0,1fr)}
+.ep-admin-shell .ep-admin-sidebar,.ep-organiser-workspace .ep-organiser-sidebar{
+ position:sticky;top:12px;align-self:start;display:flex;flex-direction:column;
+ height:calc(100dvh - 24px);min-height:460px;padding:14px!important;
+ border:1px solid #3a4968;border-radius:20px;background:linear-gradient(180deg,#15203a,#11192d);
+ box-shadow:0 16px 42px #04091435;min-width:0;
+}
+.ep-admin-shell .ep-admin-sidebar nav{display:grid;gap:6px;max-height:none;overflow-y:auto;min-height:0;align-content:start}
+.ep-admin-shell .ep-admin-sidebar nav button,.ep-organiser-workspace .ep-organiser-sidebar>button{
+ display:flex;align-items:center;gap:12px;text-align:left!important;
+ min-height:47px;padding:11px 12px!important;width:100%;
+ border-radius:12px;font-size:13px;font-weight:700;
+}
+.ep-admin-shell .ep-admin-sidebar nav button .ep-admin-nav-label{flex:1}
+.ep-admin-shell .ep-admin-sidebar nav button.primary,.ep-organiser-workspace .ep-organiser-sidebar>button.primary{
+ border:1px solid #9585d8;background:linear-gradient(115deg,#55409a,#362955);
+ box-shadow:inset 3px 0 0 #eac985;color:white;
+}
+.ep-admin-shell .ep-admin-sidebar nav button.ghost,.ep-organiser-workspace .ep-organiser-sidebar>button.ghost{
+ background:transparent;border:1px solid transparent;color:#cad5eb;
+}
+.ep-admin-shell .ep-admin-sidebar nav button.ghost:hover,.ep-organiser-workspace .ep-organiser-sidebar>button.ghost:hover{
+ border-color:#536993;background:#283655;color:#fff;
+}
+.ep-admin-side-brand{display:flex;align-items:center;gap:12px;padding:10px 4px 23px;min-height:66px}
+.ep-admin-side-symbol{width:40px;height:40px;display:grid;place-items:center;flex:none;border-radius:12px;background:#493178;color:#edcb89;font-size:22px}
+.ep-admin-side-label{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ep-admin-side-label b{font-size:12px;letter-spacing:.055em;color:#fff}
+.ep-admin-side-label small{font-size:11px;color:#b1c0da}
+.ep-admin-nav-caption{padding:4px 10px 10px!important;color:#bca9f2!important}
+.ep-admin-nav-icon{font-size:19px;min-width:24px;text-align:center;line-height:1.2;color:#e0c994}
+.ep-admin-nav-count{font-size:11px;font-weight:800;color:#241741;background:#f2d396;border-radius:99px;min-width:22px;text-align:center;padding:3px}
+.ep-admin-side-footer{margin-top:auto;border-top:1px solid #3f4b6b;padding:15px 8px 3px;display:flex;flex-direction:column;gap:5px;overflow-wrap:anywhere}
+.ep-admin-side-footer small{font-size:11px;color:#a6b3cd}
+.ep-admin-side-footer strong{font-size:12px;color:#e4eaf9}
+.ep-admin-side-close{display:none;border:1px solid #536387;border-radius:10px;background:#273655;color:#fff;min-height:38px;min-width:38px;font-size:23px;margin-left:auto}
+.ep-admin-shell .ep-admin-sidebar.is-collapsed{padding:12px 8px!important}
+.ep-admin-shell .ep-admin-sidebar.is-collapsed .ep-admin-side-brand{justify-content:center}
+.ep-admin-shell .ep-admin-sidebar.is-collapsed .ep-admin-side-label,
+.ep-admin-shell .ep-admin-sidebar.is-collapsed .ep-admin-nav-caption,
+.ep-admin-shell .ep-admin-sidebar.is-collapsed .ep-admin-nav-label,
+.ep-admin-shell .ep-admin-sidebar.is-collapsed .ep-admin-side-footer{display:none}
+.ep-admin-shell .ep-admin-sidebar.is-collapsed nav button{justify-content:center;padding:10px 5px!important}
+.ep-admin-shell .ep-admin-sidebar.is-collapsed .ep-admin-nav-icon{min-width:0}
+.ep-admin-shell .ep-admin-sidebar.is-collapsed .ep-admin-nav-count{position:absolute;transform:translate(19px,-16px);font-size:9px;min-width:16px}
+.ep-admin-main,.ep-organiser-main{min-width:0;width:100%;display:flex;flex-direction:column;gap:14px}
+.ep-admin-main-header,.ep-organiser-workspace-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 20px;min-height:88px;
+ border:1px solid #415070;background:#15223b;border-radius:17px}
+.ep-admin-main-leading{display:flex;align-items:center;gap:16px;min-width:0}
+.ep-admin-menu-trigger{display:inline-flex;align-items:center;gap:8px;padding:12px 14px;min-height:46px;flex:none;
+ border:1px solid #6774a4;border-radius:12px;background:#2d315a;color:#fff;font-weight:750;cursor:pointer}
+.ep-admin-menu-trigger:hover,.ep-admin-menu-trigger:focus-visible{background:#4f3784;outline:2px solid #a9e5d7;outline-offset:2px}
+.ep-admin-menu-trigger>span:first-child{font-size:19px}
+.ep-admin-page-title h1,.ep-organiser-workspace-toolbar h2{font-size:clamp(21px,2vw,29px);margin:3px 0 0;letter-spacing:-.025em}
+.ep-admin-page-title .eyebrow,.ep-organiser-workspace-toolbar .eyebrow{font-size:10px;letter-spacing:.11em}
+.ep-admin-header-status{display:flex;align-items:center;gap:8px;color:#bbf5e5;font-size:12px;font-weight:800;white-space:nowrap}
+.ep-admin-header-status small{display:block;color:#b7c6df;font-weight:500}
+.ep-admin-dashboard-welcome{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;
+ border:1px solid #66549c;border-radius:16px;padding:22px;margin:0 0 23px;
+ background:radial-gradient(circle at top right,#6559a455,transparent 38%),linear-gradient(120deg,#25214b,#172642)}
+.ep-admin-dashboard-welcome h2{font-size:clamp(23px,2.3vw,33px);margin:9px 0;letter-spacing:-.035em;color:#fff}
+.ep-admin-dashboard-welcome p{color:#d3dced;margin:0;font-size:14px;line-height:1.6}
+.ep-admin-shell .ep-admin-workspace .rw-panel{margin-bottom:0}
+.ep-organiser-workspace{grid-template-columns:245px minmax(0,1fr);align-items:start;gap:20px}
+.ep-organiser-workspace .ep-organiser-sidebar{padding:14px!important;gap:6px}
+.ep-organiser-workspace .ep-organiser-sidebar>button{font-size:13px;font-weight:750}
+.ep-organiser-workspace .ep-organiser-sidebar .ep-admin-side-brand{margin-bottom:10px}
+.ep-organiser-workspace .ep-organiser-sidebar>button:focus-visible,.ep-admin-shell .ep-admin-sidebar nav button:focus-visible{outline:2px solid #abf3df;outline-offset:2px}
+.ep-admin-drawer-scrim{display:none}
+@media(min-width:901px){.ep-organiser-workspace .ep-admin-menu-trigger{display:none}}
+@media(max-width:900px){
+ .ep-admin-shell .ep-admin-workspace,.ep-organiser-workspace{display:block!important;grid-template-columns:minmax(0,1fr)!important}
+ .ep-admin-shell .ep-admin-sidebar,.ep-organiser-workspace .ep-organiser-sidebar{
+  position:fixed!important;left:0;top:0!important;bottom:0;z-index:85;
+  height:100dvh;min-height:0;width:min(310px,85vw);max-height:none;
+  border-radius:0 18px 18px 0;overflow-y:auto;transform:translateX(-110%);
+  visibility:hidden;pointer-events:none;box-shadow:15px 0 60px #03071090;
+  transition:transform .18s ease,visibility .18s ease;
+ }
+ .ep-admin-shell .ep-admin-sidebar.is-open,.ep-organiser-workspace .ep-organiser-sidebar.is-open{
+  transform:translateX(0);visibility:visible;pointer-events:auto;
+ }
+ .ep-admin-shell .ep-admin-sidebar.is-open .ep-admin-nav-label{display:inline}
+ .ep-admin-shell .ep-admin-sidebar nav{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:6px!important;max-height:none}
+ .ep-admin-side-close{display:inline-flex;align-items:center;justify-content:center}
+ .ep-admin-drawer-scrim{display:block;position:fixed;inset:0;z-index:80;background:#020613bf;cursor:pointer;border:0}
+ .ep-admin-shell .ep-admin-main,.ep-organiser-workspace .ep-organiser-main{width:100%;display:flex;flex-direction:column}
+ .ep-admin-shell .ep-admin-workspace .rw-panel{width:100%}
+ .ep-admin-shell .ep-admin-workspace .ep-admin-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:520px){
+ .ep-admin-main-header,.ep-organiser-workspace-toolbar{padding:12px;gap:8px;min-height:73px}
+ .ep-admin-main-leading{gap:10px}
+ .ep-admin-menu-trigger{padding:10px 11px;min-height:44px;font-size:12px}
+ .ep-admin-header-status{font-size:10px}
+ .ep-admin-header-status small{display:none}
+ .ep-admin-dashboard-welcome{padding:16px}
+ .ep-admin-shell .ep-admin-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:370px){.ep-admin-header-status{display:none}}
+@media(prefers-reduced-motion:reduce){.ep-admin-shell .ep-admin-sidebar,.ep-organiser-workspace .ep-organiser-sidebar{transition:none}}
+
+/* Operational load failure is visible instead of silently showing zero data */
+.ep-admin-shell .ep-admin-load-warning{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;padding:17px 19px;
+ border:1px solid #bd9b62;background:#41331e;border-radius:14px;color:#fff2d5}
+.ep-admin-shell .ep-admin-load-warning strong{font-size:14px}
+.ep-admin-shell .ep-admin-load-warning p{font-size:12px;color:#ffe6b5;margin:7px 0}
+.ep-admin-shell .ep-admin-load-warning small{color:#e2cb9c}
+.ep-admin-shell .ep-admin-load-warning button{flex-shrink:0;min-height:44px;background:#453b2b;border-color:#cab17a}

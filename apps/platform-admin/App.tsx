@@ -1,8 +1,9 @@
 import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,Animated,Easing,Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
+import {AccessibilityInfo,Animated,Easing,Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image,useWindowDimensions,BackHandler} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import PlatformOverview from './PlatformOverview';
 import AdminFinanceLedger from './AdminFinanceLedger';
+import AdminSidebar,{type AdminPage} from './AdminSidebar';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
 WebBrowser.maybeCompleteAuthSession();
@@ -33,7 +34,10 @@ export default function App(){
   return ()=>{mounted=false;listener.remove()};
  },[]);
  const [booting,setBooting]=useState(true);
- const [section,setSection]=useState<'overview'|'organisers'|'accounts'|'events'|'analytics'|'finance'|'support'|'themes'|'audit'|'settings'|'more'>('overview');
+ const [section,setSection]=useState<AdminPage>('overview');
+ const [menuOpen,setMenuOpen]=useState(false),[showDesktopSidebar,setShowDesktopSidebar]=useState(true);
+ const {width:viewportWidth}=useWindowDimensions();
+ const desktopNavigation=viewportWidth>=900;
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [applicants,setApplicants]=useState<Applicant[]>([]),[organiserEmail,setOrganiserEmail]=useState('');
@@ -45,6 +49,7 @@ export default function App(){
  const [bankAccounts,setBankAccounts]=useState<{id:string;bank_name:string;account_name:string;account_number:string;status:string;organiser_name:string}[]>([]);
  const [bankReviewId,setBankReviewId]=useState(''),[bankReviewNote,setBankReviewNote]=useState('');
  const [summary,setSummary]=useState<Record<string,number>>({});
+ const [loadWarnings,setLoadWarnings]=useState<string[]>([]);
  const [moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<MediaReview[]>([]);
  const [auditHistory,setAuditHistory]=useState<AuditEntry[]>([]),[refundCases,setRefundCases]=useState<RefundCase[]>([]);
  const [eventMetrics,setEventMetrics]=useState<EventMetrics[]>([]),[eventQuery,setEventQuery]=useState('');
@@ -52,19 +57,47 @@ export default function App(){
  const [accountPage,setAccountPage]=useState(1),[accountCount,setAccountCount]=useState(0),[accountRole,setAccountRole]=useState('');
  const [refundNotes,setRefundNotes]=useState<Record<string,string>>({}),[ownerFixEvent,setOwnerFixEvent]=useState(''),[ownerFixEmail,setOwnerFixEmail]=useState(''),[ownerFixReason,setOwnerFixReason]=useState('');
  async function load(t:string){
- const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
- if(!(PORTAL==='organiser'&&me.user.account_status==='pending') && !(me.portals||[]).includes(PORTAL)){await SecureStore.deleteItemAsync('eventpass_token');setMember(null);setToken('');throw Error('This account is not authorised for this app')}
- setMember(me.user);
- setBankAccounts((await api('organiser/payment-account',t)).accounts||[]);
- if(me.user.account_status==='pending')return;
- const ev=await api('events',t);setEvents(ev.events||[]);
- const [a,people,support,configuration,overview,moderation,audit,refunds,eventDirectory,themeCatalog]=await Promise.all([
-  api('platform/organisers',t),api('platform/users',t),api('support/cases',t),api('platform/settings',t),
-  api('platform/overview',t),api('platform/events',t),api('platform/audit',t),api('refunds',t),api('platform/event-directory',t),api('ticket-themes',t)]);
- setApplicants(a.organisers||[]);setAccounts(people.accounts||[]);setCases(support.cases||[]);setSettings(configuration.settings||{});
- setSummary(overview.stats||{});setModerationEvents(moderation.events||[]);setModerationMedia(moderation.media||[]);
- setAuditHistory(audit.history||[]);setRefundCases(refunds.orders||[]);
- setEventMetrics(eventDirectory.events||[]);setThemes(themeCatalog.themes||[]);setAccountCount(people.count||0);setAccountPage(people.page||1);
+  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
+  if(!(me.portals||[]).includes(PORTAL)){
+   await SecureStore.deleteItemAsync('eventpass_token');setMember(null);setToken('');
+   throw Error('This account is not authorised for Platform Administration');
+  }
+  setMember(me.user);
+  if(me.user.account_status!=='active'){setLoadWarnings([]);return}
+  const services=[
+   ['Bank verification',api('organiser/payment-account',t)],
+   ['Events',api('events',t)],
+   ['Organisers',api('platform/organisers',t)],
+   ['Users & access',api('platform/users',t)],
+   ['Support desk',api('support/cases',t)],
+   ['Settings',api('platform/settings',t)],
+   ['Dashboard',api('platform/overview',t)],
+   ['Event moderation',api('platform/events',t)],
+   ['Audit logs',api('platform/audit',t)],
+   ['Payments & refunds',api('refunds',t)],
+   ['Events & analytics',api('platform/event-directory',t)],
+   ['Ticket themes',api('ticket-themes',t)]
+  ] as const;
+  const settled=await Promise.allSettled(services.map(([,promise])=>promise));
+  const warnings:string[]=[];
+  const result=(i:number)=>{
+   const item=settled[i];if(item.status==='fulfilled')return item.value;
+   warnings.push(services[i][0]+' unavailable');
+   return null;
+  };
+  const banks=result(0);if(banks)setBankAccounts(banks.accounts||[]);
+  const ev=result(1);if(ev)setEvents(ev.events||[]);
+  const a=result(2);if(a)setApplicants(a.organisers||[]);
+  const people=result(3);if(people){setAccounts(people.accounts||[]);setAccountCount(people.count||0);setAccountPage(people.page||1)}
+  const support=result(4);if(support)setCases(support.cases||[]);
+  const configuration=result(5);if(configuration){setSettings(configuration.settings||{});setSettingValue(String((configuration.settings||{})[settingKey]||''))}
+  const overview=result(6);if(overview)setSummary(overview.stats||{});
+  const moderation=result(7);if(moderation){setModerationEvents(moderation.events||[]);setModerationMedia(moderation.media||[])}
+  const audit=result(8);if(audit)setAuditHistory(audit.history||[]);
+  const refunds=result(9);if(refunds)setRefundCases(refunds.orders||[]);
+  const directory=result(10);if(directory)setEventMetrics(directory.events||[]);
+  const themes=result(11);if(themes)setThemes(themes.themes||[]);
+  setLoadWarnings(warnings);
  }
  useEffect(()=>{
   let mounted=true;
@@ -84,7 +117,7 @@ export default function App(){
    if(!code)throw Error('Google did not return a valid sign-in code');
    const data=await api('auth/mobile','','POST',{code,client:PORTAL,codeVerifier:verifier});
    await SecureStore.setItemAsync('eventpass_token',data.token);
-   setToken(data.token);await load(data.token);
+   setToken(data.token);await load(data.token);setSection('overview');setMenuOpen(false);
  })}
  async function searchUsers(page=1,role=accountRole){await exec(async()=>{const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(role)+'&page='+page,token);setAccounts(r.accounts||[]);setAccountPage(r.page||page);setAccountCount(r.count||0)})}
  async function searchEvents(){await exec(async()=>{const data=await api('platform/event-directory?q='+encodeURIComponent(eventQuery),token);setEventMetrics(data.events||[])})}
@@ -128,7 +161,15 @@ export default function App(){
    {text:'Cancel',style:'cancel'},{text:'Confirm',onPress:()=>void resolveCase(c,status)}
   ]);
  }
- async function saveSetting(){await exec(async()=>{await api('platform/settings',token,'PATCH',{key:settingKey,value:settingValue});setSettings({...settings,[settingKey]:settingValue});Alert.alert('Configuration saved')})}
+ async function saveSetting(){await exec(async()=>{
+  const value=settingValue.trim();
+  if(!value)throw Error('Enter a configuration value; blank settings cannot be saved.');
+  if(settingKey==='support_email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))throw Error('Enter a valid support email address.');
+  await api('platform/settings',token,'PATCH',{key:settingKey,value});
+  const result=await api('platform/settings',token);setSettings(result.settings||{});
+  setSettingValue(String(result.settings?.[settingKey]||''));
+  Alert.alert('Setting saved','Configuration was persisted and reloaded from the server.');
+ })}
  async function moderate(eventId:string,action:'verify'|'reject'|'approve_media'|'reject_media',mediaId?:string){await exec(async()=>{
   await api('platform/events',token,'POST',{eventId,action,...(mediaId?{mediaId}:{})});
   await load(token);Alert.alert('Review saved','The moderated record has been updated.');
@@ -147,7 +188,13 @@ export default function App(){
   setRefundCases((await api('refunds',token)).orders||[]);setRefundNotes(previous=>({...previous,[orderId]:''}));
   Alert.alert('Refund case updated','The action has been recorded in the payment audit.');
  })}
- async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null)}}
+ async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null);setMenuOpen(false);setSection('overview')}}
+ function navigateAdmin(page:AdminPage){setSection(page);setMenuOpen(false);scroll.current?.scrollTo({y:0,animated:false})}
+ useEffect(()=>{
+  if(!menuOpen)return;
+  const listener=BackHandler.addEventListener('hardwareBackPress',()=>{setMenuOpen(false);return true});
+  return ()=>listener.remove();
+ },[menuOpen]);
  const input=(hint:string,value:string,update:(x:string)=>void,secret=false)=><TextInput style={s.input} placeholder={hint} placeholderTextColor="#94a3b8" value={value} onChangeText={update} autoCapitalize="none" secureTextEntry={secret}/>;
  const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&(reduceMotion?s.pressedStill:s.pressed),busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
  const surfaceMotion=useRef(new Animated.Value(1)).current;
@@ -175,17 +222,26 @@ export default function App(){
  return <View style={s.root}>
   <StatusBar barStyle="light-content"/>
   <View style={s.head}>
-   <Pressable style={s.brandRow} accessibilityRole="button" accessibilityLabel="Platform Admin home" disabled={busy||!member} onPress={()=>{
-     setSection('overview');scroll.current?.scrollTo({y:0,animated:false});
-   }}>
+   {member&&<Pressable accessibilityRole="button" accessibilityLabel={desktopNavigation?(showDesktopSidebar?'Collapse sidebar':'Expand sidebar'):(menuOpen?'Close menu':'Open sidebar menu')} accessibilityState={{expanded:desktopNavigation?showDesktopSidebar:menuOpen}} onPress={()=>desktopNavigation?setShowDesktopSidebar(x=>!x):setMenuOpen(x=>!x)} style={s.menuTrigger}><Text style={s.menuTriggerIcon}>☰</Text></Pressable>}
+   <Pressable style={s.brandRow} accessibilityRole="button" accessibilityLabel="Platform Admin dashboard" disabled={busy||!member} onPress={()=>navigateAdmin('overview')}>
     <Image accessible={false} source={require('./assets/app-icon.png')} style={s.brandMark}/><View style={s.brandCopy}>
     <Text style={s.brand}>Nexx EventPass</Text><Text style={s.headLabel}>Platform Admin</Text>
    </View></Pressable>
    {member&&<Pressable accessibilityRole="button" accessibilityLabel="Sign out" disabled={busy} onPress={()=>void logout()} style={s.accountBadge}><Text style={s.headLabel}>Sign out</Text></Pressable>}
   </View>
-  <Animated.View style={[{flex:1},surfaceStyle]}>
-  <ScrollView ref={scroll} key={member?section:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
- {!member?<View style={s.welcome}>
+  <View style={s.workspaceFrame}>
+    {member&&desktopNavigation&&showDesktopSidebar&&<AdminSidebar active={section} operatorName={member.full_name} onNavigate={navigateAdmin} onClose={()=>setShowDesktopSidebar(false)}
+      pendingSupport={cases.filter(c=>['open','in_progress'].includes(c.status)).length}
+      pendingOrganisers={applicants.filter(a=>a.role==='user'&&a.requested_role==='organiser').length}
+      pendingRefunds={refundCases.filter(r=>['review_required','initiated'].includes(r.refund_status)).length}/>}
+    <Animated.View style={[{flex:1},surfaceStyle]}>
+    <ScrollView ref={scroll} key={member?section:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
+ {member&&loadWarnings.length>0&&<View style={s.loadNotice}>
+   <Text style={s.loadNoticeTitle}>Some workspaces could not load</Text>
+   <Text style={s.hint}>{loadWarnings.join(' · ')}. Other sections remain available; missing data is not shown as confirmed zero.</Text>
+   {button('Retry loading affected modules',()=>void exec(async()=>load(token)),true)}
+  </View>}
+  {!member?<View style={s.welcome}>
    <View pointerEvents="none" style={s.welcomeGlow} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"/>
    <Text style={s.welcomeLabel}>Platform operations</Text><Text style={s.welcomeTitle}>Manage EventPass.</Text>
    <Text style={s.welcomeText}>Review accounts, verify bank details and resolve support cases.</Text>
@@ -203,16 +259,8 @@ export default function App(){
  pendingRefunds={refundCases.filter(r=>r.refund_status!=='settled').length}
  pendingSupport={cases.filter(c=>['open','in_progress'].includes(c.status)).length}
  pendingBanks={bankAccounts.filter(b=>b.status==='pending').length}
- onNavigate={target=>setSection(target)} onRefresh={()=>void exec(async()=>load(token))} busy={busy}/>}
- {section==='more'&&<><Text style={s.title}>More tools</Text>
- {button('Users & access',()=>setSection('accounts'))}
- {button('Events & analytics',()=>setSection('analytics'),true)}
-  {button('Payments & refunds',()=>setSection('finance'),true)}
- {button('Audit logs',()=>setSection('audit'),true)}
- {button('Support cases',()=>setSection('support'),true)}
-  {button('Ticket themes',()=>setSection('themes'),true)}
- {button('Platform settings',()=>setSection('settings'),true)}
- </>}
+ recentActions={auditHistory}
+ onNavigate={navigateAdmin} onRefresh={()=>void exec(async()=>load(token))} busy={busy}/>}
  {section==='analytics'&&<><Text style={s.title}>Events & analytics</Text>
  <Text style={s.hint}>Confirmed revenue excludes pending orders and manually tracked offline sales.</Text>
  {input('Search event or organiser',eventQuery,setEventQuery)}
@@ -436,24 +484,58 @@ export default function App(){
   </View>}
  </View>)}
  </>}
- {section==='settings'&&<><Text style={s.title}>Platform settings</Text>
- <Text style={s.hint}>Supported settings: support_email, organiser_approval_policy, event_verification_policy, help_text. Secrets are configured only on the server.</Text>
- {input('Setting key',settingKey,setSettingKey)}{input('Setting value',settingValue,setSettingValue)}
- {button('Save setting',()=>{void saveSetting()})}</>}
+ {section==='settings'&&<><Text style={s.title}>Platform configuration</Text>
+ <Text style={s.hint}>Configure actual saved policies and contact details. API secrets are controlled in the hosting environment, not in the app.</Text>
+ {([
+  ['support_email','Support contact email','Shown to organisers requesting platform assistance'],
+  ['organiser_approval_policy','Organiser approval checklist','Requirements applied during organiser onboarding'],
+  ['event_verification_policy','Event authenticity checklist','Guidance used when reviewing events and media'],
+  ['help_text','Platform help text','Instructions available to users and organisers']
+ ] as const).map(([key,label,description])=><Pressable key={key} accessibilityRole="button"
+  accessibilityLabel={'Edit '+label} accessibilityState={{selected:settingKey===key}}
+  onPress={()=>{setSettingKey(key);setSettingValue(String(settings[key]||''))}}
+  style={[s.card,{borderColor:settingKey===key?'#b39be9':'#374b6f',backgroundColor:settingKey===key?'#312b55':'#16213a'}]}>
+   <Text style={{color:'#fff',fontWeight:'800',fontSize:14}}>{label}</Text>
+   <Text style={s.hint}>{description}</Text>
+   <Text style={{fontSize:12,color:'#bed0eb'}} numberOfLines={2}>{settings[key]||'Not configured yet — tap to set'}</Text>
+  </Pressable>)}
+ <View style={s.card}>
+  <Text style={s.title}>Edit selected setting</Text>
+  <Text style={s.hint}>{settingKey.replaceAll('_',' ')}</Text>
+  <TextInput accessibilityLabel={'Value for '+settingKey} placeholder="Enter a policy or contact value" placeholderTextColor="#9caecc"
+   multiline={settingKey!=='support_email'} maxLength={750} textAlignVertical="top" value={settingValue} onChangeText={setSettingValue}
+   autoCapitalize="none" style={[s.input,settingKey!=='support_email'&&{minHeight:105}]}/>
+  {button('Save and verify setting',()=>void saveSetting())}
+  {button('Reload saved settings',()=>void exec(async()=>{const data=await api('platform/settings',token);setSettings(data.settings||{});setSettingValue(String(data.settings?.[settingKey]||''))}),true)}
+ </View></>}
  </>}
  </>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
  </ScrollView>
-  </Animated.View>
- {member&&<View style={s.navigation}>{([['overview','Overview'],['organisers','Organisers'],['events','Events'],['more','More']] as const).map(([key,label])=>{
-  const selected=section===key||(key==='more'&&(['accounts','analytics','finance','audit','support','themes','settings'] as string[]).includes(section));
-  return <Pressable key={key} accessibilityRole="tab" accessibilityState={{selected}} disabled={busy}
-  style={({pressed})=>[s.navLink,selected&&s.navCurrent,pressed&&(reduceMotion?s.pressedStill:s.pressed)]} onPress={()=>setSection(key)}>
-  <Text style={[s.navIcon,selected&&s.navTextCurrent]}>{key==='overview'?'▦':key==='organisers'?'♧':key==='events'?'◇':'☰'}</Text><Text style={[s.navText,selected&&s.navTextCurrent]}>{label}</Text></Pressable>})}</View>}
+    </Animated.View>
+   </View>
+   {member&&!desktopNavigation&&menuOpen&&<View style={s.drawerOverlay}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Dismiss navigation drawer" onPress={()=>setMenuOpen(false)} style={s.drawerBackdrop}/>
+    <View style={[s.drawerPanel,{width:Math.min(334,viewportWidth*.86)}]}>
+     <AdminSidebar active={section} operatorName={member.full_name} onNavigate={navigateAdmin} onClose={()=>setMenuOpen(false)} isDrawer
+      pendingSupport={cases.filter(c=>['open','in_progress'].includes(c.status)).length}
+      pendingOrganisers={applicants.filter(a=>a.role==='user'&&a.requested_role==='organiser').length}
+      pendingRefunds={refundCases.filter(r=>['review_required','initiated'].includes(r.refund_status)).length}/>
+    </View>
+   </View>}
  </View>
 }
 const s=StyleSheet.create({
  root:{flex:1,backgroundColor:'#0b1020'},
+ workspaceFrame:{flex:1,flexDirection:'row',minHeight:0},
+ menuTrigger:{width:44,height:44,borderRadius:12,borderWidth:1,borderColor:'#5a668a',backgroundColor:'#272a52',alignItems:'center',justifyContent:'center'},
+ menuTriggerIcon:{color:'#fff',fontWeight:'900',fontSize:23},
+ drawerOverlay:{position:'absolute',top:0,bottom:0,left:0,right:0,zIndex:90,flexDirection:'row'},
+ drawerBackdrop:{position:'absolute',top:0,bottom:0,left:0,right:0,backgroundColor:'#020615cc'},
+ drawerPanel:{height:'100%',paddingTop:Platform.OS==='android'?(StatusBar.currentHeight||24):Platform.OS==='ios'?45:0},
+ loadNotice:{borderRadius:13,padding:14,backgroundColor:'#463821',borderWidth:1,borderColor:'#b69a5a',marginBottom:14},
+ loadNoticeTitle:{color:'#ffdf97',fontSize:14,fontWeight:'900'},
+
  head:{backgroundColor:'#111a31',borderBottomWidth:1,borderColor:'#334362',paddingHorizontal:18,paddingTop:(Platform.OS==='android'?(StatusBar.currentHeight||0):Platform.OS==='ios'?54:14)+8,paddingBottom:15,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},
  brandRow:{flexDirection:'row',alignItems:'center',gap:10,flexShrink:1},brandCopy:{flexShrink:1},
  brandMark:{width:44,height:44,borderRadius:12},
