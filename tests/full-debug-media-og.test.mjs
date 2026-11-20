@@ -45,3 +45,13 @@ test('QR keyword configuration cannot overwrite offline ticket credentials',()=>
  assert.match(route,/select id from offline_tickets where event_id=/);
  assert.match(route,/if\(issued\[0\]\|\|offline\[0\]\)return false/);
 });
+
+test('onsite reservations and payment instructions close with gate admission',()=>{
+ const orders=read('src/app/api/orders/route.ts');
+ const instructions=read('src/app/api/events/payment-instructions/route.ts');
+ const replacement=read('src/app/api/offline/reissue/route.ts');
+ assert.match(orders,/method==='onsite'.*e\.starts_at>=now\(\)-interval '4 hours'/);
+ assert.match(instructions,/e\.onsite_payments_enabled and e\.starts_at>=now\(\)-interval '4 hours'/);
+ assert.match(replacement,/starts_at>=now\(\)-interval '4 hours'/);
+ assert.doesNotMatch(replacement,/starts_at\+interval '24 hours'/);
+});
