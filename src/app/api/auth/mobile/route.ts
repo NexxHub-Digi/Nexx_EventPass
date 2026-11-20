@@ -19,8 +19,10 @@ export async function POST(req:Request){
    if(client==='gate'){
     const permission=await tx`select exists(select 1 from gate_assignments g
      join events e on e.id=g.event_id join app_users owner on owner.id=e.organiser_id
-     where g.user_id=${user.id} and e.status='published' and owner.account_status='active' and owner.role='organiser')
-     or ( ${user.role==='organiser'} and exists(select 1 from events e where e.organiser_id=${user.id} and e.status='published')) as eligible`;
+     where g.user_id=${user.id} and e.status='published' and e.verification_status='verified'
+      and owner.account_status='active' and owner.role='organiser')
+     or ( ${user.role==='organiser'} and exists(select 1 from events e where e.organiser_id=${user.id}
+       and e.status='published' and e.verification_status='verified')) as eligible`;
     if(!permission[0]?.eligible)return {error:'Not assigned to an active gate',status:403};
    }
    if(client==='organiser'&&user.role!=='organiser'&&user.requested_role!=='organiser')return {error:'Organiser application required',status:403};
