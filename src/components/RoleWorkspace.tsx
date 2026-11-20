@@ -15,7 +15,7 @@ type Member={id:string;email:string;full_name:string;role:string;account_status:
 type Event={payment_account_id?:string|null;onsite_payments_enabled?:boolean;id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;verification_status?:string;organiser?:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;cover_media_id?:string|null;video_media_id?:string|null;ticket_art_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
 type BankAccount={id:string;bank_name:string;account_name:string;account_number:string;status:'pending'|'verified'|'rejected';organiser_name?:string;review_note?:string};
 type Order={payment_method?:'manual'|'onsite'|'free';id:string;event_id:string;event_title:string;reservation_expires_at?:string;refund_status?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
-type Ticket={id:string;event_id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;entry_code?:string|null;redeemed_at?:string|null;ticket_theme?:string;admission_label?:string;ticket_art_id?:string|null};
+type Ticket={id:string;event_id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;entry_code?:string|null;redeemed_at?:string|null;ticket_theme?:string;admission_label?:string;ticket_art_id?:string|null;design_version?:number|null;design_snapshot?:{schema:string;version:number;theme:string;mode:'ticket'|'qr'|'both';fields:Record<string,string>;enabled:Record<string,boolean>}|null};
 type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string};
 type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null;can_create_events?:boolean;can_invite_gates?:boolean;can_verify_payments?:boolean};
 type GateOperator={event_id:string;user_id:string;gate_label:string;email:string;full_name:string;account_status:string;scan_count:number;admitted_count:number;last_scan_at:string|null};
@@ -33,6 +33,15 @@ const roles={user:'User',organiser:'Event Organiser',gate:'Gate Operator','platf
 type Role=keyof typeof roles;
 const money=(v:number)=>'₦'+Number(v).toLocaleString('en-NG');
 const nice=(v:string)=>new Date(v).toLocaleString('en-NG');
+function issuedField(ticket:Ticket,field:'title'|'venue'|'startsAt'|'organiser'|'admission',fallback:string){
+ const snapshot=ticket.design_snapshot;
+ if(!snapshot)return fallback;
+ if(snapshot.enabled?.[field]===false)return '';
+ const saved=snapshot.fields?.[field]||'';
+ // Blank studio sample values resolve to authoritative event/order information.
+ return saved.trim()||fallback;
+}
+
 async function api(route:string,method='GET',body?:unknown){
  const res=await fetch('/api/'+route,{method,credentials:'same-origin',
  headers:body instanceof FormData?undefined:{'Content-Type':'application/json'},body:body instanceof FormData?body:body?JSON.stringify(body):undefined,cache:'no-store'});
@@ -917,9 +926,9 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
       {new Date(o.reservation_expires_at).getTime()<=Date.now()?'Reservation expired. Contact organiser if you transferred funds.':'Reserved until '+nice(o.reservation_expires_at)}</p>}
       {o.refund_status&&o.refund_status!=='not_required'&&<p>Refund status: {o.refund_status.replaceAll('_',' ')}</p>}
       {!o.receipt_uploaded_at&&o.status==='pending'&&(!o.reservation_expires_at||new Date(o.reservation_expires_at).getTime()>Date.now())&&o.amount_ngn>0&&<label className="rw-field">Upload missing receipt<input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={e=>setReceiptUploads({...receiptUploads,[o.id]:e.target.files?.[0]||null})}/>{btn('Send receipt',()=>{void upload(o.id)})}</label>}</div></div>)}{!orders.length&&<p>Your event orders will appear here.</p>}</section>
-  <section className="rw-panel"><h2>My ticket wallet</h2>{tickets.map(t=>isMasqueradeTemplate(t.ticket_theme||'')?<div key={t.id} className="rw-wallet-masquerade"><TicketDesign themeId={t.ticket_theme} title={t.title} venue={t.venue} startsAt={t.starts_at} priceNgn={events.find(e=>e.id===t.event_id)?.price_ngn||0} organiser={events.find(e=>e.id===t.event_id)?.organiser||'Event Organiser'} qr={t.qr} ticketCode={t.entry_code||undefined} customArtwork={t.ticket_art_id?'/api/events/media?id='+t.ticket_art_id:null} admissionLabel={t.admission_label||'ADMIT ONE'} status={t.redeemed_at?'redeemed':t.status}/><small>{t.redeemed_at?'Already checked in':'Approved ticket · Unique entry QR'} · {t.entry_code||'Backup code pending'}</small>{t.qr&&btn('Enlarge secure entry QR',()=>setExpandedQr({value:t.qr!,eventName:t.title,entryCode:t.entry_code}),true)}</div>:<div key={t.id} className="rw-ticket rw-designed-ticket" style={{background:themeFor(t.ticket_theme||'aurora').gradient}}>
+  <section className="rw-panel"><h2>My ticket wallet</h2>{tickets.map(t=>isMasqueradeTemplate(t.ticket_theme||'')?<div key={t.id} className="rw-wallet-masquerade"><TicketDesign themeId={t.ticket_theme} title={issuedField(t,'title',t.title)} venue={issuedField(t,'venue',t.venue)} startsAt={issuedField(t,'startsAt',t.starts_at)} priceNgn={events.find(e=>e.id===t.event_id)?.price_ngn||0} organiser={issuedField(t,'organiser',events.find(e=>e.id===t.event_id)?.organiser||'Event Organiser')} qr={t.qr} ticketCode={t.entry_code||undefined} customArtwork={t.ticket_art_id?'/api/events/media?id='+t.ticket_art_id:null} admissionLabel={issuedField(t,'admission',t.admission_label||'ADMIT ONE')} status={t.redeemed_at?'redeemed':t.status}/><small>{t.redeemed_at?'Already checked in':'Approved ticket · Unique entry QR'} · {t.entry_code||'Backup code pending'}</small>{t.qr&&btn('Enlarge secure entry QR',()=>setExpandedQr({value:t.qr!,eventName:t.title,entryCode:t.entry_code}),true)}</div>:<div key={t.id} className={'rw-ticket rw-designed-ticket'+(t.design_snapshot?.mode==='qr'?' rw-ticket-qr-only':'')} style={{background:themeFor(t.ticket_theme||'aurora').gradient}}>
     {t.ticket_art_id&&<img className="rw-ticket-art" src={'/api/events/media?id='+t.ticket_art_id} alt="Custom event ticket design"/>}
-    <div className="rw-ticket-details"><small>NEXX EVENTPASS • OFFICIAL ENTRY</small><h3>{t.title}</h3><p>{t.venue} · {nice(t.starts_at)}</p>
+    <div className="rw-ticket-details"><small>NEXX EVENTPASS • OFFICIAL ENTRY</small><h3>{issuedField(t,'title',t.title)}</h3><p>{issuedField(t,'venue',t.venue)} · {issuedField(t,'startsAt',nice(t.starts_at))}</p>{t.design_version&&<small>Ticket Studio design version {t.design_version}</small>}
       {t.qr&&<div className="rw-qr"><QRCodeSVG value={t.qr} size={220} level="M" includeMargin/></div>}
       {t.entry_code&&<p><strong>Backup code: {t.entry_code}</strong></p>}
       <b>{t.redeemed_at?'ALREADY CHECKED IN':t.status.toUpperCase()}</b></div>

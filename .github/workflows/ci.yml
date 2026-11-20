@@ -16,6 +16,7 @@ jobs:
       - run: npm run test:qr
       - run: npm run test:entry-codes
       - run: npm run test:workflow
+      - run: node --experimental-strip-types --test tests/ticket-design-issuance-snapshot.test.mjs
       - run: node --test tests/organiser-sidebar-navigation.test.mjs
       - run: node --test tests/admin-sidebar-navigation.test.mjs
       - run: node --test tests/admin-native-finance-ledger.test.mjs
