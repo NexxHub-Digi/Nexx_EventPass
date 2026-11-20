@@ -433,6 +433,7 @@ export default function App(){
   <Text style={{color:'#fff',fontWeight:'800'}}>{item.action.replaceAll('_',' ')}</Text>
   <Text style={s.hint}>{item.performed_by} · {new Date(item.created_at).toLocaleString('en-NG')}</Text>
   {!!item.target_email&&<Text style={s.hint}>{item.target_email}</Text>}
+  {!!item.details?.reason&&<Text style={s.hint}>Reason: {item.details.reason}</Text>}
   {!!item.details&&<Text style={s.hint} selectable>{JSON.stringify(item.details)}</Text>}
  </View>)}
  <View style={{flexDirection:'row',gap:9}}>
