@@ -14,7 +14,7 @@ export async function GET(req:Request){
    left join organiser_bank_accounts a on a.id=e.payment_account_id and a.organiser_id=e.organiser_id and a.status='verified'
    where e.id=${eventId} and e.status='published' and e.verification_status='verified'
     and e.visibility='public' and u.role='organiser' and u.account_status='active'
-    and (e.starts_at>now() or (e.onsite_payments_enabled and coalesce(e.ends_at,e.starts_at+interval '24 hours')>now()))`;
+    and (e.starts_at>now() or (e.onsite_payments_enabled and e.starts_at>=now()-interval '4 hours'))`;
   if(!event)return fail('This event is no longer accepting reservations',404);
   if(Number(event.price_ngn)>0&&!event.payment_account_id)return fail('Bank account verification is pending. Please check back before paying.',409);
   return ok({payment:event});
