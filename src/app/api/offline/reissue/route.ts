@@ -14,7 +14,7 @@ export async function POST(req:Request){
    // Serialize serial allocation for replacements, including concurrent requests for different tickets.
    const [event]=await tx`select id,capacity,qr_keyword_ciphertext from events where id=${eventId} and status='published'
     and verification_status='verified' and qr_keyword_ciphertext is not null
-    and coalesce(ends_at,starts_at+interval '24 hours')>now() for update`;
+    and starts_at>=now()-interval '4 hours' for update`;
    if(!event)return {error:'Event cannot issue replacements',status:409};
    const original=await tx`select t.*,b.ticket_category_id from offline_tickets t join offline_ticket_batches b on b.id=t.batch_id where t.id=${ticketId} and t.event_id=${eventId} for update of t`;
    const old=original[0];if(!old)return {error:'Ticket not found',status:404};
