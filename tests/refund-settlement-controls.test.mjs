@@ -12,7 +12,8 @@ test('server refuses settlement before initiation and rejects any further settle
  assert.match(api,/action==='review_required'&&!\['not_required','review_required'\]\.includes/);
  assert.match(api,/action==='initiated'&&!\['review_required','initiated'\]\.includes/);
  assert.match(api,/note\.length<10/);
- assert.match(api,/for update of o/);
+ assert.match(api,/for update of e,o/);
+ assert.match(api,/for update\x60/);
  assert.match(api,/ticket_payment_audit/);
 });
 test('web admin and organiser use per-order settlement notes and only valid staged actions',()=>{
