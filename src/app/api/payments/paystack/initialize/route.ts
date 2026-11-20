@@ -22,6 +22,7 @@ export async function POST(req:Request){
     where o.id=${orderId} and o.buyer_id=${user.id} for update of o`;
    if(!order||order.status!=='pending'||order.payment_method!=='paystack'||
     new Date(order.reservation_expires_at).getTime()<=Date.now()||
+    new Date(order.starts_at).getTime()+4*60*60*1000<=Date.now()||
     order.event_status!=='published'||order.verification_status!=='verified'||
     order.account_status!=='active')return {error:'Active Paystack reservation required',status:409};
    const [prior]=await tx`select reference,authorization_url,status from paystack_payments where order_id=${orderId}`;

@@ -19,6 +19,9 @@ jobs:
       - run: npm run test:entry-codes
       - run: npm run test:workflow
       - run: node --test tests/manual-payment-admission-lifecycle.test.mjs
+      - run: node --test tests/full-debug-media-og.test.mjs
+      - run: node --test tests/native-oauth-host-routing.test.mjs
+      - run: node --test tests/pwa-installability.test.mjs
       - run: node --test tests/admin-audit-pagination.test.mjs
       - run: node --experimental-strip-types --test tests/ticket-design-issuance-snapshot.test.mjs
       - run: node --test tests/organiser-sidebar-navigation.test.mjs

@@ -13,7 +13,9 @@ export async function POST(req:Request){
       const existing=await tx`select id from events where id=${eventId} and organiser_id=${u.id} and qr_keyword_ciphertext is null for update`;
       if(!existing[0])return false;
       const issued=await tx`select id from tickets where event_id=${eventId} limit 1`;
-      if(issued[0])return false;
+      const offline=await tx`select id from offline_tickets where event_id=${eventId} limit 1`;
+      // Never invalidate credentials from previously generated or distributed passes.
+      if(issued[0]||offline[0])return false;
       await tx`update events set qr_keyword_ciphertext=${cipher} where id=${eventId}`;
       return true;
     });

@@ -60,15 +60,16 @@ export async function POST(req:Request){
   if(!owned[0])return fail('Event not found',404);
   if(action==='verify'){
    if(owned[0].account_status!=='active'||owned[0].owner_role!=='organiser')return fail('Assign the event to an active organiser before publishing',409);
+   if(owned[0].status==='cancelled')return fail('Cancelled events cannot be republished',409);
    if(new Date(owned[0].starts_at).getTime()<=Date.now())return fail('Cannot verify a past event',409);
    const pending=await db()`select count(*)::int as count from event_media where event_id=${eventId} and approved=false`;
    if(Number(pending[0]?.count)>0)return fail('Review every pending media asset before verifying the event',409);
    const published=await db().begin(async tx=>{
-    const [event]=await tx`select e.price_ngn,e.organiser_id,a.status as bank_status, owner.role,owner.account_status from events e
+    const [event]=await tx`select e.status as event_status,e.price_ngn,e.organiser_id,a.status as bank_status, owner.role,owner.account_status from events e
       join app_users owner on owner.id=e.organiser_id
       left join organiser_bank_accounts a on a.id=e.payment_account_id and a.organiser_id=e.organiser_id
       where e.id=${eventId} for update of e`;
-    if(!event||event.organiser_id!==owned[0].organiser_id||event.role!=='organiser'||event.account_status!=='active'||(Number(event.price_ngn)>0&&event.bank_status!=='verified'))return false;
+    if(!event||event.event_status==='cancelled'||event.organiser_id!==owned[0].organiser_id||event.role!=='organiser'||event.account_status!=='active'||(Number(event.price_ngn)>0&&event.bank_status!=='verified'))return false;
     await tx`update events set status='published',verification_status='verified',verified_by=${u.id},verified_at=now() where id=${eventId}`;
     await tx`insert into platform_admin_actions(admin_id,action,details) values(${u.id},'verify_event',${JSON.stringify({eventId})}::jsonb)`;
     return true;
@@ -89,11 +90,23 @@ export async function POST(req:Request){
    if(outcome.blocked)return fail('Cannot unpublish with issued tickets or active reservations. Open a supervised cancellation and refund case.',409);
   }else{
    if(!uuid(mediaId))return fail('Media ID required');
-   const result=action==='reject_media'
-    ?await db()`delete from event_media where event_id=${eventId} and id=${mediaId} returning id`
-    :await db()`update event_media set approved=true where event_id=${eventId} and id=${mediaId} returning id`;
-   if(!result[0])return fail('Media not found for event',404);
-   await db()`insert into platform_admin_actions(admin_id,action,details) values(${u.id},${action},${JSON.stringify({eventId,mediaId})}::jsonb)`;
+   const moderation=await db().begin(async tx=>{
+    // Lock the event before checking issued ticket art. Ticket issuance locks this
+    // same event row, so moderation can never remove artwork mid-issuance.
+    const [asset]=await tx`select m.id,m.approved,
+      exists(select 1 from ticket_deliveries d where d.ticket_art_id=m.id) as in_use
+      from event_media m join events e on e.id=m.event_id
+      where m.id=${mediaId} and e.id=${eventId} for update of e,m`;
+    if(!asset)return {error:'Media not found for event',status:404};
+    if(asset.approved)return {error:'Already-approved media cannot be moderated as pending',status:409};
+    if(asset.in_use)return {error:'Artwork is attached to issued tickets and cannot be removed',status:409};
+    if(action==='reject_media')await tx`delete from event_media where id=${mediaId} and approved=false`;
+    else await tx`update event_media set approved=true where id=${mediaId} and approved=false`;
+    await tx`insert into platform_admin_actions(admin_id,action,details)
+      values(${u.id},${action},${JSON.stringify({eventId,mediaId})}::jsonb)`;
+    return {success:true};
+   });
+   if('error' in moderation)return fail(String(moderation.error),Number(moderation.status));
   }
   return ok({success:true,action});
  }catch(e){return handleError(e)}

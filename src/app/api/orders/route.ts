@@ -48,7 +48,7 @@ export async function POST(req: Request) {
        left join paystack_organiser_accounts ps on ps.organiser_id=e.organiser_id
        where e.id=${eventId} and e.status='published' and e.verification_status='verified'
         and e.visibility='public'
-        and (e.starts_at>now() or (${method==='onsite'} and coalesce(e.ends_at,e.starts_at+interval '24 hours')>now())) and a.role='organiser' and a.account_status='active' for update of e`;
+        and (e.starts_at>now() or (${method==='onsite'} and e.starts_at>=now()-interval '4 hours')) and a.role='organiser' and a.account_status='active' for update of e`;
       const e=rows[0];if(!e)return {error:'Event is not available',status:400};
       const inventory=await availableEventTickets(tx,e.id,Number(e.capacity),categoryId);
       if(!inventory)return {error:'Ticket category is not available for this event',status:400};
