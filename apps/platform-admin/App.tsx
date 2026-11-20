@@ -200,6 +200,8 @@ export default function App(){
  pendingOrganisers={applicants.filter(a=>a.role==='user'&&a.requested_role==='organiser').length}
  pendingEvents={moderationEvents.filter(e=>e.verification_status==='pending').length}
  pendingRefunds={refundCases.filter(r=>r.refund_status!=='settled').length}
+ pendingSupport={cases.filter(c=>['open','in_progress'].includes(c.status)).length}
+ pendingBanks={bankAccounts.filter(b=>b.status==='pending').length}
  onNavigate={target=>setSection(target)} onRefresh={()=>void exec(async()=>load(token))} busy={busy}/>}
  {section==='more'&&<><Text style={s.title}>More tools</Text>
  {button('Users & access',()=>setSection('accounts'))}
