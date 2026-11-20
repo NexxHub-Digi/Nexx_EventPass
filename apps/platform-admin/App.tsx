@@ -349,8 +349,12 @@ export default function App(){
    {button('Cancel rejection',()=>{setRejectApplicant('');setRejectReason('')},true)}
   </View>:button('Reject application',()=>{setRejectApplicant(a.id);setRejectReason('')},true)}
  </>}
-{a.role==='organiser'&&a.account_status==='active'&&button('Suspend',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'suspend',userId:a.id});await load(token)})},true)}
-{a.role==='organiser'&&a.account_status==='suspended'&&button('Restore',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'restore',userId:a.id});await load(token)})})}</View>)}
+{a.role==='organiser'&&a.account_status==='active'&&button('Suspend organiser',()=>Alert.alert('Suspend organiser access?','This prevents organiser operations but preserves issued tickets, settlements and audit records for '+a.email+'.',[
+ {text:'Cancel',style:'cancel'},{text:'Suspend access',style:'destructive',onPress:()=>void exec(async()=>{await api('platform/organisers',token,'POST',{action:'suspend',userId:a.id});await load(token);Alert.alert('Access suspended','Organiser permissions have been revoked until restored.')})}
+]),true)}
+{a.role==='organiser'&&a.account_status==='suspended'&&button('Restore organiser',()=>Alert.alert('Restore organiser access?','Confirm '+a.email+' is authorised to resume organiser operations.',[
+ {text:'Cancel',style:'cancel'},{text:'Restore access',onPress:()=>void exec(async()=>{await api('platform/organisers',token,'POST',{action:'restore',userId:a.id});await load(token);Alert.alert('Access restored','Organiser account is active again.')})}
+]))}</View>)}
  </>}
  {section==='accounts'&&<><Text style={s.title}>All users and access</Text><Text style={s.hint}>Search user, organiser and gate identities. Open a profile to see ticket and event counts.</Text>
  {input('Search account by email or name',userSearch,setUserSearch)}
