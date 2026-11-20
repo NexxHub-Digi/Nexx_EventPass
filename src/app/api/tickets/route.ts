@@ -9,7 +9,7 @@ export async function GET(){
     const rows=await db()`select t.id,t.event_id,t.status,t.qr_credential,t.redeemed_at,t.created_at,d.created_at as delivered_at,d.status as delivery_status,e.title,e.venue,e.starts_at,coalesce(d.ticket_theme,e.ticket_theme) as ticket_theme,coalesce(d.admission_label,e.admission_label) as admission_label,d.design_version,d.design_snapshot,coalesce(d.ticket_art_id,(select m.id from event_media m where m.event_id=e.id and m.media_type='ticket_art' and m.approved order by m.created_at asc limit 1)) as ticket_art_id,e.qr_keyword_ciphertext from tickets t join ticket_orders o on o.id=t.order_id
       join verified_order_payments p on p.order_id=o.id join events e on e.id=t.event_id
       left join ticket_deliveries d on d.ticket_id=t.id
-      where t.owner_id=${u.id} and o.status='approved' order by t.created_at desc limit 200`;
+      where t.owner_id=${u.id} and (o.status='approved' or (o.status='cancelled' and t.status='revoked')) order by t.created_at desc limit 200`;
     // A reference or receipt is never sufficient to release a ticket credential.
     const activeRows=rows.filter(t=>new Date(t.starts_at).getTime()>=Date.now()-86400000);
     const backfilled=await fillMissingTicketCredentials('tickets', activeRows
