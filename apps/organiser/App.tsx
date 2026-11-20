@@ -173,25 +173,43 @@ export default function App(){
    <Text style={s.welcomeText}>Manage listings, issue tickets and confirm payments.</Text>
    {button('Continue with Google',()=>{void login()})}
   </View>:<>
- <Text style={s.title}>Welcome, {member.full_name}</Text><Text style={s.hint}>{member.email}</Text>
+ <View style={s.sectionHeader}><Text style={s.sectionOverline}>EVENTPASS / ORGANISER</Text>
+   <Text style={s.sectionHeading}>{tab==='dashboard'?'Dashboard':({events:'My events',tickets:'Ticket Studio',payments:'Payments & finance',team:'Gate management',profile:'My organiser profile'} as Record<string,string>)[tab]}</Text>
+   <Text style={s.hint}>{tab==='dashboard'?'Welcome, '+member.full_name+' · '+member.email:'Signed in as '+member.full_name}</Text>
+  </View>
  {inbox.unread>0&&member.role==='organiser'&&button(inbox.unread+' new payment receipt'+(inbox.unread===1?'':'s'),()=>setTab('payments'))}
  {(member.account_status==='pending'||member.requested_role==='organiser')?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
 
- {tab==='dashboard'&&<View style={s.card}><Text style={s.title}>Organiser dashboard</Text>
-  <Text style={s.hint}>Your events: {events.filter(e=>e.organiser_id===member.id).length} · Published: {events.filter(e=>e.organiser_id===member.id&&e.status==='published').length}</Text>
-  <Text style={s.hint}>Selected event: {events.find(e=>e.id===eventId)?.title||'None'}</Text>
-  <Text style={s.hint}>Pending payment reviews across your events: {inbox.pending}</Text>
-  <Text style={s.hint}>New payment notifications: {inbox.unread}</Text>
-  {finances?<View accessibilityLabel="Verified organiser financial totals" style={[s.card,{backgroundColor:'#1d2a49'}]}>
-   <Text style={s.hint}>Confirmed collections: ₦{Number(finances.gross_ngn).toLocaleString('en-NG')}</Text>
-   <Text style={s.hint}>Platform commissions: ₦{Number(finances.commission_ngn).toLocaleString('en-NG')}</Text>
-   <Text style={s.hint}>Organiser net: ₦{Number(finances.organiser_net_ngn).toLocaleString('en-NG')}</Text>
-   <Text style={s.hint}>Outstanding commission remittance: ₦{Number(finances.outstanding_ngn).toLocaleString('en-NG')}</Text>
-  </View>:<Text accessibilityRole="alert" style={s.hint}>{financeError||'Loading verified financial totals…'}</Text>}
-  {button('Refresh dashboard',()=>void exec(async()=>{await Promise.all([refreshInbox(),refreshFinances()])}),true)}
-  {button('Manage events',()=>setTab('events'))}{button('Review payments',()=>setTab('payments'),true)}
- </View>}
- {tab==='profile'&&<View style={s.card}><Text style={s.title}>My organiser profile</Text><Text style={s.hint}>Name: {member.full_name}</Text><Text style={s.hint}>Email: {member.email}</Text><Text style={s.hint}>Status: {member.account_status}</Text></View>}
+ {tab==='dashboard'&&<View style={s.dashboard}>
+   <View style={s.dashboardHero}><Text style={s.dashboardOverline}>LIVE ORGANISER OVERVIEW</Text><Text style={s.dashboardHeading}>Your events. One workspace.</Text>
+    <Text style={s.hint}>Manage bookings, payments, designs and the gate team from the menu.</Text>
+   </View>
+   <View style={s.metricGrid}>
+    {([
+     ['My events',events.filter(e=>e.organiser_id===member.id).length],
+     ['Published',events.filter(e=>e.organiser_id===member.id&&e.status==='published').length],
+     ['Pending reviews',inbox.pending],
+     ['New receipts',inbox.unread]
+    ] as const).map(([label,value])=><View style={s.metricCard} key={label}><Text style={s.metricLabel}>{label}</Text><Text style={s.metricValue}>{value}</Text></View>)}
+   </View>
+   {finances?<View style={s.card}><Text style={s.title}>Verified financial performance</Text>
+    <View style={s.metricGrid}>
+     {([
+      ['Confirmed collections',finances.gross_ngn],
+      ['Platform commissions',finances.commission_ngn],
+      ['Organiser net',finances.organiser_net_ngn],
+      ['Commission outstanding',finances.outstanding_ngn]
+     ] as const).map(([label,value])=><View style={s.metricCard} key={label}><Text style={s.metricLabel}>{label}</Text><Text style={s.metricMoney} numberOfLines={1} adjustsFontSizeToFit>₦{Number(value).toLocaleString('en-NG')}</Text></View>)}
+    </View><Text style={s.hint}>Verified payments only; unconfirmed or manually tracked offline collections are excluded.</Text>
+   </View>:<Text accessibilityRole="alert" style={s.hint}>{financeError||'Loading verified financial totals…'}</Text>}
+   <View style={s.card}><Text style={s.title}>Next actions</Text>
+    {button('Refresh dashboard',()=>void exec(async()=>{await Promise.all([refreshInbox(),refreshFinances()])}),true)}
+    {button('Manage events',()=>navigateOrganiser('events'))}
+    {button('Review pending payments',()=>navigateOrganiser('payments'),true)}
+    {button('Open Ticket Studio',()=>navigateOrganiser('tickets'),true)}
+   </View>
+  </View>}
+  {tab==='profile'&&<View style={s.card}><Text style={s.title}>My organiser profile</Text><Text style={s.hint}>Name: {member.full_name}</Text><Text style={s.hint}>Email: {member.email}</Text><Text style={s.hint}>Status: {member.account_status}</Text></View>}
  {(['events','tickets','payments','team'] as OrganiserPage[]).includes(tab)&&events.some(e=>e.organiser_id===member.id)&&<View style={s.card}><Text style={s.hint}>ACTIVE EVENT · Choose an event for tickets, payments and gates</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8}}>{events.filter(e=>e.organiser_id===member.id).map(e=><Pressable key={e.id} onPress={()=>{setEventId(e.id);setOrders([]);setMedia([]);setDescription(e.description||'');setCategory(e.category||'Other');setTheme(e.ticket_theme||'aurora');setAdmissionLabel(e.admission_label||'ADMIT ONE');setPosterTemplate(e.poster_template||'none');void exec(async()=>{setOrders((await api('orders?eventId='+e.id,token)).orders||[]);setMedia((await api('events/media?eventId='+e.id,token)).media||[])})}} style={[s.navChip,eventId===e.id&&s.navSelected]}><Text style={s.buttonText}>{e.title}</Text></Pressable>)}</ScrollView></View>}
  {tab==='payments'&&<>
  <Text style={s.title}>Pending payments ({inbox.pending})</Text>
@@ -344,6 +362,17 @@ const s=StyleSheet.create({
  headLabel:{fontSize:12,color:'#c6d3ec',fontWeight:'600',marginTop:3},
  accountBadge:{borderWidth:1,borderColor:'#46577a',paddingHorizontal:11,paddingVertical:9,borderRadius:11},
  body:{padding:18,paddingBottom:38,width:'100%',maxWidth:760,alignSelf:'center',flexGrow:1},
+ sectionHeader:{backgroundColor:'#1b2143',borderWidth:1,borderColor:'#60528a',borderRadius:18,padding:18,marginBottom:15,gap:4},
+ sectionOverline:{color:'#cbb8f7',letterSpacing:1.25,fontSize:10,fontWeight:'900'},
+ sectionHeading:{color:'#fff',fontSize:25,fontWeight:'900',letterSpacing:-.5},
+ dashboard:{gap:13},dashboardHero:{padding:19,backgroundColor:'#25234e',borderRadius:20,borderWidth:1,borderColor:'#695b9b',gap:7},
+ dashboardOverline:{fontSize:10,letterSpacing:1.2,fontWeight:'900',color:'#e5c68d'},
+ dashboardHeading:{fontWeight:'900',fontSize:26,color:'#fff',letterSpacing:-.6},
+ metricGrid:{flexDirection:'row',flexWrap:'wrap',gap:9},
+ metricCard:{width:'48%',minHeight:96,padding:13,backgroundColor:'#1c2a49',borderColor:'#465578',borderWidth:1,borderRadius:14,justifyContent:'space-between'},
+ metricLabel:{color:'#c1cfe5',fontSize:11,fontWeight:'700'},metricValue:{color:'#fff',fontSize:26,fontWeight:'900'},
+ metricMoney:{color:'#e4d5a7',fontSize:19,fontWeight:'900'},
+
  title:{color:'#f7f8ff',fontSize:22,fontWeight:'800',letterSpacing:-.45,marginTop:12,marginBottom:6},
  hint:{color:'#bac7e0',fontSize:14,lineHeight:21,marginVertical:5},
  input:{borderWidth:1,borderColor:'#455777',backgroundColor:'#192743',color:'#fff',minHeight:50,borderRadius:12,paddingHorizontal:14,marginVertical:7},
