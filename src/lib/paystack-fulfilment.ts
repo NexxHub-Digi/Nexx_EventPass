@@ -2,7 +2,7 @@ import {db} from '@/lib/db';
 import {paystackApi,paystackTestEnabled,validPaystackCharge,type VerifiedPaystackCharge} from '@/lib/paystack';
 import {issueTicketCredential} from '@/lib/ticket-credentials';
 import {registerEntryCode} from '@/lib/ticket-entry-code';
-import {makeIssuedDesignSnapshot} from '@/lib/ticket-design-snapshot';
+import {makeIssuedDesignSnapshot,type SavedDesign} from '@/lib/ticket-design-snapshot';
 export type Reconciliation={status:'pending'|'issued'|'already_issued'|'reconciliation_required';ticketsIssued?:number};
 export async function reconcilePaystackReference(reference:string):Promise<Reconciliation>{
  if(!paystackTestEnabled()||!/^EP-[a-f0-9-]{36}$/i.test(reference))throw Error('Paystack test mode or reference invalid');
@@ -73,7 +73,7 @@ export async function reconcilePaystackReference(reference:string):Promise<Recon
     and m.approved order by m.created_at asc limit 1) as ticket_art_id from events e where e.id=${event.id}`;
   const [savedDesign]=await tx`select version,theme_id,mode,fields,enabled from event_ticket_design_versions
    where event_id=${event.id} order by version desc limit 1`;
-  const snapshot=makeIssuedDesignSnapshot(savedDesign||null,order.ticket_category_id||null);
+  const snapshot=makeIssuedDesignSnapshot((savedDesign||null) as SavedDesign|null,order.ticket_category_id||null);
   const issuedTheme=snapshot?.theme||design.ticket_theme;
   const [ledger]=await tx`insert into verified_order_payments
    (order_id,method,gross_ngn,commission_basis_points,collection_reference,verified_by)
