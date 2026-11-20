@@ -278,6 +278,17 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(expect(await req('/api/platform/event-directory',{cookie:org.cookie}),200,'organiser scoped report').events.every(x=>x.organiser_id===org.id));
   expect(await req('/api/platform/audit',{cookie:wrong.cookie}),403,'platform audit cannot be read by ordinary users');
   assert.ok(expect(await req('/api/platform/audit',{cookie:adminCookie}),200,'audit log available to admin').history.length>0);
+  await sql`insert into platform_admin_actions(admin_id,action,details)
+    select ${admin.id},'e2e_bulk_audit',jsonb_build_object('batch',${tag}::text,'entry',seq)
+    from generate_series(1,35) seq`;
+  const auditOne=expect(await req('/api/platform/audit?action=e2e_bulk_audit&page=1',{cookie:adminCookie}),200,'first page of audit history');
+  assert.equal(auditOne.count,35);assert.equal(auditOne.page,1);assert.equal(auditOne.history.length,30);
+  const auditTwo=expect(await req('/api/platform/audit?action=e2e_bulk_audit&page=2',{cookie:adminCookie}),200,'second page of audit history');
+  assert.equal(auditTwo.history.length,5);assert.equal(auditTwo.page,2);
+  assert.equal(expect(await req('/api/platform/audit?q=e2e_bulk_audit',{cookie:adminCookie}),200,'search stored audit actions').count,35);
+  expect(await req('/api/platform/audit?page=0',{cookie:adminCookie}),400,'invalid page denied');
+  expect(await req('/api/platform/audit?action=e2e_bulk_audit',{cookie:wrong.cookie}),403,'ordinary users cannot read filtered audit trail');
+
 
   assert.equal(approved.issued,1,'approval immediately issues one ticket');
   assert.equal(approved.delivery,'in_app','user can retrieve ticket immediately');
