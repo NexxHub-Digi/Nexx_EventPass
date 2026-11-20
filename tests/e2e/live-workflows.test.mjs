@@ -405,6 +405,10 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/offline/tickets',{cookie:wrong.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[first.id],action:'activate'}}),403,'unauthorised activation');
   const second=inventory[1];
   expect(await req('/api/offline/tickets',{cookie:org.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[second.id],action:'distribution',distribution:'sold',amountNgn:4000}}),200,'record external sale');
+  const offlineFinancials=expect(await req('/api/platform/overview',{cookie:adminCookie}),200,'overview includes manually recorded sales').stats;
+  assert.ok(Number(offlineFinancials.manual_offline_sales_ngn)>=4000,'offline sale is separately reported before reissue');
+  const [confirmedBeforeOnsite]=await sql`select coalesce(sum(gross_ngn),0)::bigint as gross from verified_order_payments`;
+  assert.equal(Number(offlineFinancials.verified_collections_ngn),Number(confirmedBeforeOnsite.gross),'manual offline amount is never classified as verified collection');
   const replacement=expect(await post('/api/offline/reissue',org.cookie,{eventId:privateEvent.id,ticketId:second.id,reason:'Lost printed ticket'}),200,'atomic replacement');
   assert.ok(replacement.replacement.id!==second.id);
   const [newPass]=expect(await req(offlinePath,{cookie:org.cookie}),200,'replacement credential').tickets.filter(t=>t.id===replacement.replacement.id);
@@ -541,8 +545,21 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await patchFinance(org.cookie,remittance),403,'organiser cannot reconcile platform receipt');
   assert.equal(expect(await patchFinance(adminCookie,remittance),200,'record mismatched settlement').status,'discrepancy');
   assert.equal(Number((await ledger(adminCookie)).totals.outstanding_ngn),15);
+  expect(await req('/api/platform/overview',{cookie:onsiteBuyer.cookie}),403,'only admin can see platform financial overview');
+  const platformFinance=expect(await req('/api/platform/overview',{cookie:adminCookie}),200,'platform finance aggregates independent source tables').stats;
+  const [expectedPaymentTotals]=await sql`select coalesce(sum(gross_ngn),0)::bigint as gross,coalesce(sum(commission_ngn),0)::bigint as commission from verified_order_payments`;
+  const [expectedOutstanding]=await sql`select coalesce(sum(greatest(p.commission_ngn-coalesce(c.received_ngn,0),0)),0)::bigint as outstanding from verified_order_payments p left join commission_reconciliations c on c.order_id=p.order_id`;
+  assert.equal(Number(platformFinance.verified_collections_ngn),Number(expectedPaymentTotals.gross),'all verified collections included once without offline duplication');
+  assert.equal(Number(platformFinance.verified_commissions_ngn),Number(expectedPaymentTotals.commission),'stored commission snapshots used');
+  assert.equal(Number(platformFinance.commission_outstanding_ngn),Number(expectedOutstanding.outstanding),'remittance discrepancy is not counted as paid');
+  assert.equal(Number(verified.gross_ngn),1001,'onsite transaction remains included in verified collections');
+  assert.equal(Number(platformFinance.manual_offline_sales_ngn),0,'reissued revoked sale is not counted as active inventory offline sales');
+  assert.equal(Number(platformFinance.refund_review_exposure_ngn)>=0,true,'refund review exposure remains a separately identified metric');
+
   assert.equal(expect(await patchFinance(adminCookie,{...remittance,receivedNgn:75}),200,'correct settlement from statement').status,'matched');
   assert.equal(Number((await ledger(org.cookie)).totals.outstanding_ngn),0);
+  const [matchedOutstanding]=await sql`select coalesce(sum(greatest(p.commission_ngn-coalesce(c.received_ngn,0),0)),0)::bigint as outstanding from verified_order_payments p left join commission_reconciliations c on c.order_id=p.order_id`;
+  assert.equal(Number(expect(await req('/api/platform/overview',{cookie:adminCookie}),200,'matched reconciliation').stats.commission_outstanding_ngn),Number(matchedOutstanding.outstanding));
   await patchFinance(adminCookie,{action:'commission',basisPoints:0});
   const [wrongOwnerEvent]=await sql`insert into events(organiser_id,title,slug,venue,starts_at,price_ngn,capacity,status,verification_status,visibility)
    values(${admin.id},'E2E admin-owned legacy event',${'admin-owned-'+tag},'Test',now()+interval '1 hour',0,1,'published','verified','public') returning id`;

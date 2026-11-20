@@ -14,7 +14,13 @@ const actions:[Section,string,string,string][]=[
  ['settings','Platform settings','Configure approved platform policies','⚙']
 ];
 const featuredKeys=['organisers','events','tickets','admissions','orders','revenue'];
-function displayName(key:string){return key.replace(/_/g,' ').replace(/\b\w/g,letter=>letter.toUpperCase())}
+const financialMetricLabels:Record<string,string>={
+ verified_collections_ngn:'Verified collections',verified_commissions_ngn:'Verified platform commissions',
+ commission_outstanding_ngn:'Outstanding commission remittance',manual_offline_sales_ngn:'Manually recorded offline sales',
+ refund_review_exposure_ngn:'Unresolved refund exposure'
+};
+function displayName(key:string){return financialMetricLabels[key]||key.replace(/_/g,' ').replace(/\b\w/g,letter=>letter.toUpperCase())}
+function formatMetric(key:string,value:number){return key.endsWith('_ngn')?'₦'+Number(value).toLocaleString('en-NG'):Number(value).toLocaleString('en-NG')}
 export default function PlatformOverview({fullName,summary,pendingOrganisers,pendingEvents,pendingRefunds,onNavigate,onRefresh,busy}:Props){
  const {width}=useWindowDimensions();
  const columns=width<380?2:width<780?2:3;
@@ -41,11 +47,11 @@ export default function PlatformOverview({fullName,summary,pendingOrganisers,pen
     </Pressable>)}
   </View>
   <Text style={styles.sectionTitle}>Platform performance</Text>
-  <Text style={styles.caption}>Counts below are live values from the platform overview API, not sample figures.</Text>
+  <Text style={styles.caption}>Database-backed totals. Verified collections exclude unconfirmed payments; manually recorded offline sales do not imply money received. Unresolved refund exposure is a review amount, not an authorised payout.</Text>
   {statEntries.length===0?<View style={styles.empty}><Text style={styles.caption}>Platform metrics are unavailable. Use Refresh to try again.</Text></View>:
    <View style={styles.stats}>{statEntries.map(([key,value])=><View key={key} style={[styles.metric,{width:`${100/columns-2}%`}]}>
     <Text style={styles.metricLabel}>{displayName(key)}</Text>
-    <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit>{Number(value).toLocaleString('en-NG')}</Text>
+    <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit>{formatMetric(key,value)}</Text>
     <View style={styles.metricAccent}/>
    </View>)}</View>}
   <Text style={styles.sectionTitle}>Administration tools</Text>
