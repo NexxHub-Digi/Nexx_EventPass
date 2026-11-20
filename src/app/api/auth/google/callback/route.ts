@@ -37,9 +37,14 @@ export async function GET(req:NextRequest){
    // Gate login requires an explicit accepted invitation or direct authorised
    // assignment. Merely knowing the invitee email does not confer gate rights.
    const eligible=await db()`select exists(
-    select 1 from gate_assignments g join app_users operator on operator.id=g.user_id
-    join events e on e.id=g.event_id join app_users owner on owner.id=e.organiser_id
-    where lower(operator.email)=${profile.email} and owner.role='organiser' and owner.account_status='active'
+    select 1 from events e join app_users owner on owner.id=e.organiser_id
+    where e.status='published' and e.verification_status='verified'
+    and owner.role='organiser' and owner.account_status='active'
+    and (lower(owner.email)=${profile.email} or exists (
+      select 1 from gate_assignments g join app_users operator on operator.id=g.user_id
+      where g.event_id=e.id and lower(operator.email)=${profile.email}
+      and operator.account_status='active'
+    ))
    ) as permitted`;
    if(!eligible[0]?.permitted)throw new Error('gate_invitation_required');
   }

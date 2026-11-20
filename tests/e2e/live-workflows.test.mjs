@@ -154,6 +154,9 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await reviewBank(adminCookie,unrelated.id,'verified'),200,'verify unrelated organiser account');
   expect(await post('/api/events',org.cookie,{...paidDraft,paymentAccountId:unrelated.id}),409,'cannot use another organiser’s verified account');
   const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,paymentAccountId:bank.id,qrKeyword:'private-test-keyword',ticketTheme:'stj-royal-gold',admissionLabel:'ADMIT ONE — MASK COMPULSORY',posterTemplate:'stj-apartment-party'}),201,'create event').event;
+  assert.ok(!expect(await req('/api/auth/me',{cookie:org.cookie}),200,'draft event gate rights').portals.includes('gate'),'draft/unverified event must not grant gate access');
+  const draftGate=await fetch(base+'/gate',{headers:{Cookie:org.cookie},redirect:'manual'});
+  assert.equal(draftGate.status,307,'draft event cannot open protected gate workspace');
   const designEndpoint='/api/organiser/ticket-designs';
   const designFields={title:'',venue:'',startsAt:'',price:'',organiser:'',admission:'',holder:'',reference:'',notes:''};
   const designEnabled={title:true,venue:true,startsAt:true,price:true,organiser:true,admission:true,holder:false,reference:false,notes:false};
@@ -195,6 +198,9 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/events',{cookie:org.cookie,method:'PATCH',body:{action:'payment_account',eventId:event.id,paymentAccountId:bank.id}}),200,'assign verified account');
   expect(await post('/api/platform/events',adminCookie,{eventId:event.id,action:'verify'}),200,'admin verifies event listing');
   assert.ok(expect(await req('/api/events'),200,'post-verification discovery').events.some(x=>x.id===event.id),'verified event published');
+  assert.ok(expect(await req('/api/auth/me',{cookie:org.cookie}),200,'organiser gate rights after verification').portals.includes('gate'),'own published/verified event should grant organiser gate access');
+  const organiserGate=await fetch(base+'/gate',{headers:{Cookie:org.cookie},redirect:'manual'});
+  assert.equal(organiserGate.status,200,'organiser can open their own verified gate workspace');
   assert.equal(expect(await req('/api/events/media?eventId='+event.id),200,'approved gallery').media.length,2);
     expect(await post('/api/orders',buyer.cookie,{eventId:event.id,quantity:1,paymentReference:'E2E-TRANSFER-123'}),409,'checkout must identify shown bank account');
   expect(await post('/api/platform/organisers',adminCookie,{action:'configure',userId:org.id,fullName:'E2E Approved Organiser'}),200,'admin profile configuration');
@@ -358,6 +364,9 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(operatorGates.length,1);
   assert.ok(expect(await req('/api/gates',{cookie:org.cookie}),200,'organiser gate workspace').gates.length);
   assert.ok(expect(await req('/api/auth/me',{cookie:operator.cookie}),200,'gate portal').portals.includes('gate'));
+  const invitedGate=await fetch(base+'/gate',{headers:{Cookie:operator.cookie},redirect:'manual'});
+  assert.equal(invitedGate.status,200,'verified invited gate operator opens the gate workspace');
+  assert.ok(!expect(await req('/api/auth/me',{cookie:wrong.cookie}),200,'unassigned gate access').portals.includes('gate'),'unassigned user has no gate portal');
   const rehearsal=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.entry_code,testOnly:true}),200,'non-consuming manual rehearsal');
   assert.equal(rehearsal.outcome,'valid_test');
   assert.equal(rehearsal.testOnly,true);
