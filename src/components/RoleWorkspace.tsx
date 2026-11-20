@@ -16,7 +16,7 @@ type Event={payment_account_id?:string|null;onsite_payments_enabled?:boolean;id:
 type BankAccount={id:string;bank_name:string;account_name:string;account_number:string;status:'pending'|'verified'|'rejected';organiser_name?:string;review_note?:string};
 type Order={payment_method?:'manual'|'onsite'|'free';id:string;event_id:string;event_title:string;reservation_expires_at?:string;refund_status?:string;buyer_name?:string;buyer_email?:string;status:string;quantity:number;amount_ngn:number;payment_reference:string;receipt_uploaded_at?:string|null};
 type Ticket={id:string;event_id:string;title:string;venue:string;starts_at:string;status:string;qr:string|null;entry_code?:string|null;redeemed_at?:string|null;ticket_theme?:string;admission_label?:string;ticket_art_id?:string|null;design_version?:number|null;design_snapshot?:{schema:string;version:number;theme:string;mode:'ticket'|'qr'|'both';fields:Record<string,string>;enabled:Record<string,boolean>}|null};
-type Gate={event_id:string;title:string;gate_label:string;organiser_name?:string};
+type Gate={event_id:string;title:string;gate_label:string;starts_at?:string;organiser_name?:string};
 type Organiser={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null;event_count:number;pending_orders:number;tickets_issued:number;gate_operators:number;created_at:string;approved_at?:string|null;bank_name?:string|null;account_name?:string|null;account_number?:string|null;can_create_events?:boolean;can_invite_gates?:boolean;can_verify_payments?:boolean};
 type GateOperator={event_id:string;user_id:string;gate_label:string;email:string;full_name:string;account_status:string;scan_count:number;admitted_count:number;last_scan_at:string|null};
 type Invite={id:string;event_id:string;invitee_email:string;gate_label:string;status:string};
@@ -963,7 +963,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   <p>Only events assigned by your organiser appear here. Select one, start scanning and immediately verify entry.</p>
   {gates.length?<>
    <div className="rw-gate-event-list" aria-label="Assigned events">{gates.map(g=><button className={'rw-gate-event '+(eventId===g.event_id?'selected':'')} key={g.event_id} disabled={busy} aria-pressed={eventId===g.event_id} onClick={()=>{stopScan();setEventId(g.event_id);setScanOutcome('');setScanCode('');setScans([]);setMessage('')}}>
-    <strong>{g.title}</strong><small>{g.gate_label}</small></button>)}</div>
+    <strong>{g.title}</strong><small>{g.gate_label}</small>{g.starts_at&&<small>Gate: {nice(new Date(new Date(g.starts_at).getTime()-7200000).toISOString())} – {nice(new Date(new Date(g.starts_at).getTime()+14400000).toISOString())}</small>}</button>)}</div>
     {eventId&&<div className="rw-gate-stage">
     <div className="rw-scan-context"><span>Scanning for</span><strong>{gates.find(gate=>gate.event_id===eventId)?.title}</strong></div>
     {busy&&<p role="status" className="rw-scan-verifying">Verifying ticket…</p>}

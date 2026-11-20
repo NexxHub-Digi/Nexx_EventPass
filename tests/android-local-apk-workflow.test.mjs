@@ -7,7 +7,7 @@ test('local Android workflow provides four installable APK build targets',()=>{
  for(const app of ['user','organiser','gate','platform-admin'])assert.match(source,new RegExp('\\b'+app+'\\b'));
  assert.match(source,/expo prebuild --platform android --clean --no-install/);
  assert.match(source,/assembleRelease --no-daemon/);
- assert.match(source,/apksigner verify --print-certs/);
+ assert.match(source,/\$TOOL_DIR\/apksigner["']? verify --print-certs/);
  assert.match(source,/actions\/upload-artifact@v4/);
  assert.match(source,/EXPO_PUBLIC_RELEASE_CHANNEL: preview/);
  assert.match(source,/nexx-eventpass-git-staging-/);

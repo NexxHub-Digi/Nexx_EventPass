@@ -44,31 +44,40 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
     return ok({outcome:decoded?'wrong_event':'invalid',message:'Entry denied',entry_method:entryMethod,testOnly});
   }
   const startsAt=new Date(perm[0].starts_at).getTime();
-  const endsAt=perm[0].ends_at?new Date(perm[0].ends_at).getTime():startsAt+86400000;
-  const admissionOpensAt=new Date(startsAt-7200000).toISOString();
-  const admissionOpen=startsAt>=Date.now()-86400000&&startsAt<=Date.now()+7200000&&endsAt>Date.now();
+  // Gate times are anchored to the scheduled start, regardless of event duration.
+  const now=Date.now();
+  const admissionOpensAt=new Date(startsAt-2*60*60*1000).toISOString();
+  const admissionClosesAt=new Date(startsAt+4*60*60*1000).toISOString();
+  const admissionOpen=now>=startsAt-2*60*60*1000&&now<=startsAt+4*60*60*1000;
   if(testOnly){
     // Safe rehearsal: no ticket redemption, entry scan, or financial change.
     const rows=await db()`select id,status,redeemed_at,true as active from tickets
      where id=${decoded.ticketId} and event_id=${eventId}
+       and exists(select 1 from ticket_orders o join verified_order_payments p on p.order_id=o.id
+         where o.id=tickets.order_id and (o.status='approved' or (o.status='cancelled' and tickets.status='revoked')))
      union all select id,status,redeemed_at,active from offline_tickets
      where id=${decoded.ticketId} and event_id=${eventId}`;
     const ticket=rows[0];
     const outcome=!ticket?'invalid':ticket.status==='revoked'?'revoked':ticket.redeemed_at?'duplicate':
       ticket.status==='issued'&&ticket.active?'valid_test':'inactive_or_unavailable';
-    return ok({testOnly:true,outcome,entry_method:entryMethod,opensAt:admissionOpensAt,
+    return ok({testOnly:true,outcome,entry_method:entryMethod,opensAt:admissionOpensAt,closesAt:admissionClosesAt,admissionOpen,
       message:outcome==='valid_test'?'TEST ONLY — valid unused ticket. Entry was not recorded.':
       'TEST ONLY — ticket is not eligible. Entry was not recorded.'});
   }
   const result=await db().begin(async tx=>{
-    const updated=source==='offline'?[]:await tx`update tickets set redeemed_at=now(),redeemed_by=${u.id} where id=${decoded.ticketId} and event_id=${eventId} and status='issued' and redeemed_at is null and exists(select 1 from events where id=${eventId} and status='published' and starts_at between now() - interval '24 hours' and now() + interval '2 hours' and coalesce(ends_at, starts_at + interval '24 hours') > now()) returning id,redeemed_at`;
+    const updated=source==='offline'?[]:await tx`update tickets t set redeemed_at=now(),redeemed_by=${u.id}
+     where t.id=${decoded.ticketId} and t.event_id=${eventId} and t.status='issued' and t.redeemed_at is null
+      and exists(select 1 from ticket_orders o join verified_order_payments p on p.order_id=o.id
+        where o.id=t.order_id and o.status='approved')
+      and exists(select 1 from events e where e.id=${eventId} and e.status='published'
+        and e.verification_status='verified' and e.starts_at between now() - interval '4 hours' and now() + interval '2 hours')
+     returning t.id,t.redeemed_at`;
     // Offline tickets have no buyer account or payment order. Their security state is independent.
     const offlineUpdated=updated[0]||source==='online'?[]:await tx`update offline_tickets set redeemed_at=now(),redeemed_by=${u.id}
      where id=${decoded.ticketId} and event_id=${eventId} and status='issued' and active=true
       and redeemed_at is null and exists(select 1 from events where id=${eventId}
       and status='published' and verification_status='verified'
-      and starts_at between now() - interval '24 hours' and now() + interval '2 hours'
-      and coalesce(ends_at,starts_at+interval '24 hours') > now())
+      and starts_at between now() - interval '4 hours' and now() + interval '2 hours')
      returning id,redeemed_at`;
     let outcome='approved';let prior=null;
     let onlineTicketId=updated[0]?.id??null;
@@ -86,11 +95,13 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
         jsonb_build_object('gateLabel',${gateLabel}::text,'entryMethod',${entryMethod}::text) from offline_tickets where id=${decoded.ticketId}`;
     return {outcome,prior,admittedAt:updated[0]?.redeemed_at||offlineUpdated[0]?.redeemed_at||null};
   });
-  const early=result.outcome==='inactive_or_unavailable'&&!admissionOpen;
+  const outsideWindow=result.outcome==='inactive_or_unavailable'&&!admissionOpen;
   return ok({...result,testOnly:false,entry_method:entryMethod,
-   reason:early?'event_not_open':undefined,opensAt:early?admissionOpensAt:null,
+   reason:outsideWindow?'event_not_open':undefined,opensAt:admissionOpensAt,closesAt:admissionClosesAt,
    message:result.outcome==='approved'?'Entry approved — admit attendee':
     result.outcome==='duplicate'?'Ticket already admitted — do not admit again':
-    early?'Admission for this event has not opened. Use rehearsal mode to verify without redeeming tickets.':
+    outsideWindow?(now<startsAt-2*60*60*1000?
+      'Admission has not opened. Gates open two hours before the event starts.':
+      'Admission is closed. The four-hour post-start admission window has ended.'):
     'Entry denied — do not admit'});
 }catch(e){return handleError(e);}}
