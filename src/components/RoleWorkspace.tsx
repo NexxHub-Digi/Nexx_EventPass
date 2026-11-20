@@ -67,6 +67,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
  const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string;entryCode?:string|null}|null>(null);
  const [adminTab,setAdminTab]=useState('overview');
+ const [adminMenuOpen,setAdminMenuOpen]=useState(false),[adminNavCollapsed,setAdminNavCollapsed]=useState(false),[organiserMenuOpen,setOrganiserMenuOpen]=useState(false);
  const [showEventDesign,setShowEventDesign]=useState(false);
  const [organiserTab,setOrganiserTab]=useState<'dashboard'|'events'|'tickets'|'offline'|'payments'|'team'|'profile'|'settings'>('dashboard');
  const [gateOperators,setGateOperators]=useState<GateOperator[]>([]);
@@ -81,6 +82,22 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   document.addEventListener('visibilitychange',refresh);
   return ()=>{window.clearInterval(timer);document.removeEventListener('visibilitychange',refresh)};
  },[role,me?.id,me?.role,me?.account_status]);
+ useEffect(()=>{
+  if(!adminMenuOpen&&!organiserMenuOpen)return;
+  const onKeyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'){setAdminMenuOpen(false);setOrganiserMenuOpen(false)}};
+  document.addEventListener('keydown',onKeyDown);
+  return ()=>document.removeEventListener('keydown',onKeyDown);
+ },[adminMenuOpen,organiserMenuOpen]);
+ const adminMenuItems=[
+  ['overview','Dashboard','▦'],['organisers','Organisers','◉'],['users','Users & access','♙'],['moderation','Event moderation','◇'],['reports','Events & analytics','▥'],
+  ['refunds','Payments & refunds','₦'],['support','Support desk','♧'],['themes','Ticket themes','✧'],['audit','Audit logs','≡'],['settings','Settings','⚙']
+ ] as const;
+ function navigateAdmin(tab:string){
+  setAdminTab(tab);setAdminMenuOpen(false);setMessage('');window.scrollTo({top:0,behavior:'instant'});
+ }
+ function navigateOrganiser(tab:typeof organiserTab){
+  setOrganiserTab(tab);setOrganiserMenuOpen(false);setMessage('');window.scrollTo({top:0,behavior:'instant'});
+ }
  const cameraGeneration=useRef(0);
  const verificationInFlight=useRef(false);
  const lastDecoded=useRef({value:'',at:0});
@@ -320,8 +337,8 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  }
  function resetPortalHome(){
   setMessage('');
-  if(role==='platform-admin')setAdminTab('overview');
-  if(role==='organiser')setOrganiserTab('dashboard');
+  if(role==='platform-admin'){setAdminTab('overview');setAdminMenuOpen(false)}
+  if(role==='organiser'){setOrganiserTab('dashboard');setOrganiserMenuOpen(false)}
   if(role==='gate'){
    stopScan();setEventId('');setScanCode('');setScanOutcome('');setScans([]);
   }
@@ -347,9 +364,30 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   }}>◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title} · Nexx Future</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
  <nav className="rw-portal-switch" aria-label={`${title} workspace navigation`}><span aria-current="page">{title} workspace</span></nav>
  {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
- {role==='platform-admin'&&<header className="rw-panel ep-admin-hero" style={{marginBottom:16}}><div className="ep-admin-hero-copy"><div className="eyebrow">NEXX EVENTPASS / COMMAND CENTRE</div><h1>Platform administration</h1><p>Monitor operations, review critical decisions and manage your EventPass ecosystem from one control centre.</p></div><div className="ep-admin-hero-status"><span className="ep-admin-status-dot" aria-hidden="true"/> Administrator workspace <small>Authenticated operational view</small></div></header>}
- {role==='platform-admin'&&<div className="rw-workspace-shell ep-admin-workspace"><aside className="rw-panel ep-admin-sidebar" style={{alignSelf:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:12}}>OPERATIONS</div><nav aria-label="Platform administration" style={{display:'grid',gap:6}}>{([['overview','Overview'],['organisers','Organisers'],['moderation','Event moderation'],['reports','Analytics & events'],['refunds','Payments & refunds'],['users','Users & access'],['support','Support'],['themes','Ticket themes'],['audit','Audit logs'],['settings','Settings']] as const).map(([key,label])=><button type="button" key={key} className={adminTab===key?'primary':'ghost'} aria-current={adminTab===key?'page':undefined} onClick={()=>{setAdminTab(key);setMessage('')}} style={{textAlign:'left',padding:12}}>{label}</button>)}</nav></aside><div className="rw-layout" style={{minWidth:0}}>
-  <section className="rw-panel ep-admin-dashboard" style={{display:adminTab==='overview'?'':'none'}}><div className="ep-admin-section-heading"><div><div className="eyebrow">OPERATIONS AT A GLANCE</div><h2 id="admin-overview">Platform overview</h2><p>Live operational totals across organisers, reservations, tickets and admission activity.</p></div><span className="ep-admin-live-label">Database-backed</span></div><p className="ep-admin-metric-note">Verified collections are confirmed payments only. Offline sales are manually recorded, not necessarily received. Refund exposure reflects open review cases, not approved payouts.</p><div className="rw-stats ep-admin-kpis">{Object.entries(stats).map(([k,v])=><div className="rw-stat ep-admin-kpi" key={k}><small>{({verified_collections_ngn:'Verified collections',verified_commissions_ngn:'Verified platform commissions',commission_outstanding_ngn:'Outstanding commission remittance',manual_offline_sales_ngn:'Manually recorded offline sales',refund_review_exposure_ngn:'Unresolved refund exposure'} as Record<string,string>)[k]||k.replace(/_/g,' ')}</small><b>{k.endsWith('_ngn')?'₦'+Number(v).toLocaleString('en-NG'):Number(v).toLocaleString('en-NG')}</b><span className="ep-admin-kpi-rule" aria-hidden="true"/></div>)}</div>
+ 
+ {role==='platform-admin'&&<div className={['rw-workspace-shell','ep-admin-workspace',adminNavCollapsed?'is-collapsed':''].filter(Boolean).join(' ')}>
+  {adminMenuOpen&&<button type="button" className="ep-admin-drawer-scrim" aria-label="Close administrator menu" onClick={()=>setAdminMenuOpen(false)}/>}
+  <aside id="platform-admin-navigation" className={['rw-panel','ep-admin-sidebar',adminMenuOpen?'is-open':'',adminNavCollapsed?'is-collapsed':''].filter(Boolean).join(' ')}>
+   <div className="ep-admin-side-brand"><span className="ep-admin-side-symbol">◈</span><span className="ep-admin-side-label"><b>NEXX EVENTPASS</b><small>Administration</small></span><button type="button" className="ep-admin-side-close" aria-label="Close administrator menu" onClick={()=>setAdminMenuOpen(false)}>×</button></div>
+   <div className="eyebrow ep-admin-nav-caption">WORKSPACE</div>
+   <nav aria-label="Platform administration" style={{display:'grid',gap:6}}>{adminMenuItems.map(([key,label,glyph])=>
+    <button type="button" key={key} className={adminTab===key?'primary':'ghost'} aria-label={label} aria-current={adminTab===key?'page':undefined} title={label} onClick={()=>navigateAdmin(key)}>
+     <span className="ep-admin-nav-icon" aria-hidden="true">{glyph}</span><span className="ep-admin-nav-label">{label}</span>
+     {key==='support'&&cases.filter(c=>['open','in_progress'].includes(c.status)).length>0&&<span className="ep-admin-nav-count">{cases.filter(c=>['open','in_progress'].includes(c.status)).length}</span>}
+    </button>)}</nav>
+   <div className="ep-admin-side-footer"><small>Signed in securely</small><strong>{me.email}</strong></div>
+  </aside>
+  <div className="rw-layout ep-admin-main" style={{minWidth:0}}>
+   <header className="ep-admin-main-header">
+    <div className="ep-admin-main-leading">
+     <button type="button" className="ep-admin-menu-trigger" aria-controls="platform-admin-navigation" aria-expanded={adminMenuOpen} aria-label="Open or collapse administrator sidebar" onClick={()=>{
+      if(window.matchMedia('(max-width: 900px)').matches)setAdminMenuOpen(x=>!x);else setAdminNavCollapsed(x=>!x);
+     }}><span aria-hidden="true">☰</span> <span>Menu</span></button>
+     <div className="ep-admin-page-title"><div className="eyebrow">PLATFORM / {adminTab==='overview'?'DASHBOARD':'WORKSPACE'}</div><h1>{adminMenuItems.find(([key])=>key===adminTab)?.[1]||'Dashboard'}</h1></div>
+    </div>
+    <div className="ep-admin-header-status"><span className="ep-admin-status-dot" aria-hidden="true"/> Live database <small>{me.full_name}</small></div>
+   </header>
+  <section className="rw-panel ep-admin-dashboard" style={{display:adminTab==='overview'?'':'none'}}><div className="ep-admin-dashboard-welcome"><div><div className="eyebrow">WELCOME TO YOUR COMMAND CENTRE</div><h2>Good to see you, {me.full_name}</h2><p>Review live performance, resolve pending work and manage EventPass from the menu.</p></div><span className="ep-admin-live-label">Platform Administrator</span></div><div className="ep-admin-section-heading"><div><div className="eyebrow">OPERATIONS AT A GLANCE</div><h2 id="admin-overview">Platform overview</h2><p>Live operational totals across organisers, reservations, tickets and admission activity.</p></div><span className="ep-admin-live-label">Database-backed</span></div><p className="ep-admin-metric-note">Verified collections are confirmed payments only. Offline sales are manually recorded, not necessarily received. Refund exposure reflects open review cases, not approved payouts.</p><div className="rw-stats ep-admin-kpis">{Object.entries(stats).map(([k,v])=><div className="rw-stat ep-admin-kpi" key={k}><small>{({verified_collections_ngn:'Verified collections',verified_commissions_ngn:'Verified platform commissions',commission_outstanding_ngn:'Outstanding commission remittance',manual_offline_sales_ngn:'Manually recorded offline sales',refund_review_exposure_ngn:'Unresolved refund exposure'} as Record<string,string>)[k]||k.replace(/_/g,' ')}</small><b>{k.endsWith('_ngn')?'₦'+Number(v).toLocaleString('en-NG'):Number(v).toLocaleString('en-NG')}</b><span className="ep-admin-kpi-rule" aria-hidden="true"/></div>)}</div>
   <div className="ep-admin-section-heading"><div><div className="eyebrow">LIVE WORK QUEUE</div><h3>Requires administrator attention</h3><p>Open a section below to resolve records in the database. These are not demo tasks.</p></div>{btn('Refresh dashboard',()=>{void run(async()=>{await fetchAll();setMessage('Live administrator dashboard refreshed')})},true)}</div>
   <div className="ep-admin-queues">
    {([
