@@ -2,6 +2,7 @@ import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {AccessibilityInfo,Animated,Easing,Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import PlatformOverview from './PlatformOverview';
+import AdminFinanceLedger from './AdminFinanceLedger';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
 WebBrowser.maybeCompleteAuthSession();
@@ -276,7 +277,9 @@ export default function App(){
    {text:'Cancel',style:'cancel'},{text:'Reject',style:'destructive',onPress:()=>void moderate(media.event_id,'reject_media',media.id)}]),true)}
  </View>)}
  </>}
- {section==='finance'&&<><Text style={s.title}>Payments and refunds</Text>
+ {section==='finance'&&<><Text style={s.title}>Payments, commissions & refunds</Text>
+ <AdminFinanceLedger token={token} apiBase={BASE}/>
+ <Text style={s.title}>Refund cases</Text>
  <Text style={s.hint}>Verify settlement evidence before marking refunds completed.</Text>
  <Text style={s.hint}>Refunds must be reviewed, initiated and independently verified before settlement. Record evidence separately for each order.</Text>
  {!refundCases.length&&<Text style={s.hint}>No payment exceptions awaiting review.</Text>}
