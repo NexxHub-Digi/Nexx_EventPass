@@ -40,7 +40,7 @@ test('administrator native ticket theme publisher uses existing guarded API',()=
  assert.match(native,/Reactivate theme/);
  assert.match(native,/All themes/);
  assert.match(native,/Publish new ticket theme\?/);
- assert.match(themes,/u.role!=='platform_admin'/);
+ assert.match(themes,/activeAdmin\(u\)/);
  assert.match(themes,/\!\[a,c,accent\]\.every\(hex\)/);
 });
 test('native account search has role filters and bounded previous\/next pagination',()=>{
