@@ -28,3 +28,20 @@ test('organiser media deletion holds event lock while checking ticket deliveries
  assert.match(source,/ticket_deliveries d where d\.ticket_art_id=\$\{mediaId\}/);
  assert.match(source,/Artwork is attached to issued tickets/);
 });
+
+test('native gate exchange enforces verified event parity with web authorization',()=>{
+ const route=read('src/app/api/auth/mobile/route.ts');
+ assert.match(route,/e\.status='published' and e\.verification_status='verified'/);
+ assert.equal(route.match(/e\.verification_status='verified'/g)?.length,2);
+});
+
+test('payment gateway prevents collection outside the admission grace window',()=>{
+ const route=read('src/app/api/payments/paystack/initialize/route.ts');
+ assert.match(route,/new Date\(order\.starts_at\)\.getTime\(\)\+4\*60\*60\*1000<=Date\.now\(\)/);
+});
+
+test('QR keyword configuration cannot overwrite offline ticket credentials',()=>{
+ const route=read('src/app/api/events/qr/route.ts');
+ assert.match(route,/select id from offline_tickets where event_id=/);
+ assert.match(route,/if\(issued\[0\]\|\|offline\[0\]\)return false/);
+});
