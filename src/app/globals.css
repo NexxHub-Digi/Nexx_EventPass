@@ -273,3 +273,19 @@
 @media(max-width:550px){.ep-admin-shell .ep-admin-hero{flex-direction:column;align-items:flex-start;min-height:unset;padding:24px 19px}.ep-admin-shell .ep-admin-hero-status{width:100%}.ep-admin-shell .ep-admin-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ep-admin-shell .ep-admin-kpi{min-height:105px;padding:13px}.ep-admin-shell .ep-admin-sidebar nav button{font-size:12px;padding:9px 10px!important}.ep-admin-shell .ep-admin-section-heading{align-items:flex-start;flex-direction:column}.ep-admin-shell .rw-actions{justify-content:flex-start}}
 @media(max-width:340px){.ep-admin-shell .ep-admin-kpis{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.ep-admin-shell .ep-admin-sidebar nav button{transition:none}}
+
+
+/* Administrator operational controls: live queue and direct actions */
+.ep-admin-shell .ep-admin-queues{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:12px;margin:16px 0 24px}
+.ep-admin-shell .ep-admin-queue-item{display:flex;align-items:center;gap:12px;text-align:left;min-height:76px;padding:15px;border:1px solid #53638a;border-radius:14px;background:#202c4a;color:#edf1fc;cursor:pointer;font:inherit}
+.ep-admin-shell .ep-admin-queue-item:hover,.ep-admin-shell .ep-admin-recent-case:hover{background:#313e65;border-color:#bda0e9}
+.ep-admin-shell .ep-admin-queue-item:focus-visible,.ep-admin-shell .ep-admin-recent-case:focus-visible,.ep-admin-shell .ep-admin-shortcuts button:focus-visible{outline:3px solid #8be9d1;outline-offset:2px}
+.ep-admin-shell .ep-admin-queue-count{display:inline-flex;justify-content:center;align-items:center;min-width:44px;height:44px;border-radius:12px;background:#493876;color:#ffe2a4;font-weight:900;font-size:20px}
+.ep-admin-shell .ep-admin-queue-item strong{font-size:25px;margin-left:auto;color:#b9a7ee}
+.ep-admin-shell .ep-admin-shortcuts{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin:12px 0 25px}
+.ep-admin-shell .ep-admin-shortcuts button{min-height:46px;display:flex;justify-content:space-between;align-items:center;text-align:left;padding:10px 13px;border:1px solid #46567c;border-radius:12px;cursor:pointer}
+.ep-admin-shell .ep-admin-recent-case{width:100%;display:flex;gap:9px;align-items:center;justify-content:space-between;flex-wrap:wrap;text-align:left;min-height:56px;margin:8px 0;padding:12px 14px;border-radius:12px;border:1px solid #47567a;background:#1e2a44;color:#fff;font:inherit;cursor:pointer}
+.ep-admin-shell .ep-admin-recent-case small{color:#cbd6ea}
+.ep-admin-shell .ep-admin-recent-case span{color:#abf1da}
+.ep-admin-shell .ep-admin-support-case{flex-wrap:wrap}
+@media(max-width:550px){.ep-admin-shell .ep-admin-queues,.ep-admin-shell .ep-admin-shortcuts{grid-template-columns:1fr}.ep-admin-shell .ep-admin-queue-item{min-height:60px}}
