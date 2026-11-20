@@ -53,6 +53,7 @@ export default function App(){
  const [loadWarnings,setLoadWarnings]=useState<string[]>([]);
  const [moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<MediaReview[]>([]);
  const [auditHistory,setAuditHistory]=useState<AuditEntry[]>([]),[refundCases,setRefundCases]=useState<RefundCase[]>([]);
+ const [auditQuery,setAuditQuery]=useState(''),[auditAction,setAuditAction]=useState(''),[auditPage,setAuditPage]=useState(1),[auditCount,setAuditCount]=useState(0);
  const [issuedOrders,setIssuedOrders]=useState<IssuedOrder[]>([]),[issuedReasons,setIssuedReasons]=useState<Record<string,string>>({});
  const [eventMetrics,setEventMetrics]=useState<EventMetrics[]>([]),[eventQuery,setEventQuery]=useState('');
  const [themes,setThemes]=useState<Theme[]>([]),[themeName,setThemeName]=useState(''),[themeLabel,setThemeLabel]=useState(''),[themeA,setThemeA]=useState('#552AA8'),[themeB,setThemeB]=useState('#231A56'),[themeAccent,setThemeAccent]=useState('#FFFFFF');
@@ -96,7 +97,7 @@ export default function App(){
   const configuration=result(5);if(configuration){setSettings(configuration.settings||{});setSettingValue(String((configuration.settings||{})[settingKey]||''))}
   const overview=result(6);if(overview)setSummary(overview.stats||{});
   const moderation=result(7);if(moderation){setModerationEvents(moderation.events||[]);setModerationMedia(moderation.media||[])}
-  const audit=result(8);if(audit)setAuditHistory(audit.history||[]);
+  const audit=result(8);if(audit){setAuditHistory(audit.history||[]);setAuditPage(audit.page||1);setAuditCount(audit.count||0)}
   const refunds=result(9);if(refunds){setRefundCases(refunds.orders||[]);setIssuedOrders(refunds.issuedOrders||[])}
   const directory=result(10);if(directory)setEventMetrics(directory.events||[]);
   const themes=result(11);if(themes)setThemes(themes.themes||[]);
@@ -217,6 +218,11 @@ export default function App(){
   Alert.alert('Refund case updated','The action has been recorded in the payment audit.');
  })}
  async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null);setMenuOpen(false);setSection('overview')}}
+ async function searchAudit(page:number){await exec(async()=>{
+  const params=new URLSearchParams({q:auditQuery.trim(),action:auditAction.trim(),page:String(page)});
+  const result=await api('platform/audit?'+params.toString(),token);
+  setAuditHistory(result.history||[]);setAuditPage(result.page||page);setAuditCount(Number(result.count)||0);
+ })}
  function navigateAdmin(page:AdminPage){setSection(page);setMenuOpen(false);scroll.current?.scrollTo({y:0,animated:false})}
  useEffect(()=>{
   if(!menuOpen)return;
@@ -408,15 +414,34 @@ export default function App(){
   {refund.refund_status==='settled'&&<Text style={s.hint}>Settlement recorded — read only</Text>}
  </View>)}
  </>}
- {section==='audit'&&<><Text style={s.title}>Administrative audit trail</Text>
- <Text style={s.hint}>The most recent 100 administrator actions.</Text>
- {!auditHistory.length&&<Text style={s.hint}>No administrator actions recorded.</Text>}
+ {section==='audit'&&<><Text style={s.title}>Administrator audit history</Text>
+ <Text style={s.hint}>Search real account, payment, ticket and support actions with permission-scoped pagination.</Text>
+ {input('Search action, administrator or target',auditQuery,setAuditQuery)}
+ <Text style={s.hint}>Action type</Text>
+ <View style={{flexDirection:'row',flexWrap:'wrap',gap:7,marginVertical:10}}>
+  {['','organiser','support','refund','ticket_theme','commission','event','account','setting'].map(action=><Pressable
+   key={action} accessibilityRole="button" accessibilityState={{selected:auditAction===action}}
+   onPress={()=>setAuditAction(action)} style={[s.button,s.subButton,auditAction===action&&{borderColor:'#cbb6ed',backgroundColor:'#423269'}, {paddingHorizontal:10,minHeight:43}]}>
+    <Text style={s.buttonText}>{action?action.replaceAll('_',' '):'All actions'}</Text>
+   </Pressable>)}
+ </View>
+ {button('Search audit records',()=>void searchAudit(1))}
+ {button('Refresh audit results',()=>void searchAudit(auditPage),true)}
+ <Text style={s.hint}>{auditCount} matching actions · Page {auditPage} / {Math.max(1,Math.ceil(auditCount/30))}</Text>
+ {!auditHistory.length&&<Text style={s.hint}>No audit actions match the selected filters.</Text>}
  {auditHistory.map(item=><View key={item.id} style={s.card}>
-  <Text style={{color:'#fff',fontWeight:'800'}}>{item.action.replace(/_/g,' ')}</Text>
+  <Text style={{color:'#fff',fontWeight:'800'}}>{item.action.replaceAll('_',' ')}</Text>
   <Text style={s.hint}>{item.performed_by} · {new Date(item.created_at).toLocaleString('en-NG')}</Text>
   {!!item.target_email&&<Text style={s.hint}>{item.target_email}</Text>}
   {!!item.details?.reason&&<Text style={s.hint}>Reason: {item.details.reason}</Text>}
+  {!!item.details&&<Text style={s.hint} selectable>{JSON.stringify(item.details)}</Text>}
  </View>)}
+ <View style={{flexDirection:'row',gap:9}}>
+  <View style={{flex:1}}><Pressable accessibilityRole="button" disabled={busy||auditPage<=1} accessibilityState={{disabled:busy||auditPage<=1}}
+   style={[s.button,s.subButton,(busy||auditPage<=1)&&s.disabled]} onPress={()=>void searchAudit(auditPage-1)}><Text style={s.buttonText}>Previous</Text></Pressable></View>
+  <View style={{flex:1}}><Pressable accessibilityRole="button" disabled={busy||auditPage*30>=auditCount} accessibilityState={{disabled:busy||auditPage*30>=auditCount}}
+   style={[s.button,s.subButton,(busy||auditPage*30>=auditCount)&&s.disabled]} onPress={()=>void searchAudit(auditPage+1)}><Text style={s.buttonText}>Next</Text></Pressable></View>
+ </View>
  </>}
  {section==='organisers'&&<><Text style={s.title}>Organiser management</Text>{input('Existing Google-verified User email',organiserEmail,setOrganiserEmail)}{button('Create organiser',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'create',email:organiserEmail});await load(token)})})}
 <Text style={s.title}>Organiser bank account verification</Text>

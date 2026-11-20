@@ -63,6 +63,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [rejectOrganiserId,setRejectOrganiserId]=useState(''),[rejectOrganiserReason,setRejectOrganiserReason]=useState('');
  const [canCreate,setCanCreate]=useState(true),[canGates,setCanGates]=useState(true),[canPayments,setCanPayments]=useState(true);
  const [eventReports,setEventReports]=useState<EventReport[]>([]),[reportSearch,setReportSearch]=useState(''),[selectedReport,setSelectedReport]=useState(''),[auditHistory,setAuditHistory]=useState<AuditRecord[]>([]);
+ const [auditQuery,setAuditQuery]=useState(''),[auditAction,setAuditAction]=useState(''),[auditPage,setAuditPage]=useState(1),[auditCount,setAuditCount]=useState(0);
  const [refundCases,setRefundCases]=useState<RefundCase[]>([]),[refundNotes,setRefundNotes]=useState<Record<string,string>>({});
  const [issuedOrders,setIssuedOrders]=useState<IssuedOrder[]>([]),[issuedCancelReasons,setIssuedCancelReasons]=useState<Record<string,string>>({});
  const [allUsers,setAllUsers]=useState<AdminAccount[]>([]),[userSearch,setUserSearch]=useState(''),[userFilter,setUserFilter]=useState(''),[userPage,setUserPage]=useState(1),[usersCount,setUsersCount]=useState(0),[selectedUser,setSelectedUser]=useState(''),[userEditName,setUserEditName]=useState(''),[accountReason,setAccountReason]=useState('');
@@ -175,7 +176,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    const configuration=loaded(6);if(configuration){setPlatformSettings(configuration.settings||{});setSettingValue(String((configuration.settings||{})[settingKey]||''))}
    const report=loaded(7);if(report)setEventReports(report.events||[]);
    const refunds=loaded(8);if(refunds){setRefundCases(refunds.orders||[]);setIssuedOrders(refunds.issuedOrders||[])}
-   const audit=loaded(9);if(audit)setAuditHistory(audit.history||[]);
+   const audit=loaded(9);if(audit){setAuditHistory(audit.history||[]);setAuditCount(audit.count||0);setAuditPage(audit.page||1)}
    setAdminLoadIssues(adminIssues);
 
   }
@@ -340,6 +341,12 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   const a=await api('platform/organisers');setOrganisers(a.organisers||[]);setMessage('Organiser permissions saved and audited');
  })}
  async function refreshReports(){await run(async()=>{const r=await api('platform/event-directory?q='+encodeURIComponent(reportSearch));setEventReports(r.events||[]);setMessage('Reports updated')})}
+ async function searchAudit(page:number){await run(async()=>{
+  const q=new URLSearchParams({q:auditQuery.trim(),action:auditAction.trim(),page:String(page)});
+  const r=await api('platform/audit?'+q.toString());
+  setAuditHistory(r.history||[]);setAuditPage(Number(r.page)||page);setAuditCount(Number(r.count)||0);
+  setMessage('Audit records refreshed from PostgreSQL');
+ })}
  async function cancelIssuedOrder(order:IssuedOrder){
   const reason=(issuedCancelReasons[order.id]||'').trim();
   if(reason.length<15){setMessage('Document a cancellation reason of at least 15 characters for '+order.buyer_email);return}
@@ -670,12 +677,21 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    </div>
   </div>
  </section>
- <section className="rw-panel rw-wide" style={{display:adminTab==='audit'?'':'none'}}><div className="eyebrow">AUDIT TRAIL</div><h2>Recent administrator actions</h2>
+ <section className="rw-panel rw-wide" style={{display:adminTab==='audit'?'':'none'}}><div className="eyebrow">AUDIT TRAIL</div><h2>Search administrator actions</h2>
+    <p>Search persisted administrative decisions by action, actor or target. Results come directly from the permission-checked audit API.</p>
+    <div className="rw-market-filters">{input('Search action, administrator or target email',auditQuery,setAuditQuery)}
+     <label className="rw-field">Action filter<select value={auditAction} onChange={e=>setAuditAction(e.target.value)}>
+      <option value="">All actions</option>{['organiser','support','refund','ticket_theme','commission','event','account','setting'].map(k=><option key={k} value={k}>{k.replace('_',' ')}</option>)}
+     </select></label>
+     {btn('Search audit history',()=>{void searchAudit(1)})}{btn('Refresh results',()=>{void searchAudit(auditPage)},true)}</div>
+    <p>{auditCount.toLocaleString('en-NG')} matching actions · Page {auditPage} of {Math.max(1,Math.ceil(auditCount/30))}</p>
     {auditHistory.map(h=><div key={h.id} className="rw-list-item"><div><b>{h.action.replaceAll('_',' ')}</b>
       <p>{h.performed_by} · {nice(h.created_at)}</p><small>{h.target_email||'Platform event or setting'} · {JSON.stringify(h.details||{})}</small></div></div>)}
-    {!auditHistory.length&&<p>No administrator actions logged.</p>}
-  </section>
-  <section className="rw-panel rw-wide" style={{display:adminTab==='moderation'?'':'none'}}><div className="eyebrow">EVENT AUTHENTICITY</div><h2>Review organiser listings and media</h2>
+    {!auditHistory.length&&<p>No administrator actions match the selected filters.</p>}
+    <div className="rw-actions"><button className="ghost" type="button" disabled={busy||auditPage<=1} onClick={()=>{void searchAudit(auditPage-1)}}>Previous page</button>
+      <button className="ghost" type="button" disabled={busy||auditPage*30>=auditCount} onClick={()=>{void searchAudit(auditPage+1)}}>Next page</button></div>
+   </section>
+   <section className="rw-panel rw-wide" style={{display:adminTab==='moderation'?'':'none'}}><div className="eyebrow">EVENT AUTHENTICITY</div><h2>Review organiser listings and media</h2>
    <p>Verify the identity, location, date, marketing materials and ticket promises before publishing an event to the public marketplace.</p>
    {moderationEvents.map(ev=><div className="rw-review-card" key={ev.id}>
      <div><strong>{ev.title}</strong><p>{ev.venue} · {nice(ev.starts_at)}</p><small>Submitted by {ev.organiser_name} ({ev.organiser_email})</small><p>Listing: {ev.verification_status} · {ev.pending_media} unreviewed assets</p></div>
