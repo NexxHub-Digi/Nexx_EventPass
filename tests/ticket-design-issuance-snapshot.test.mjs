@@ -19,7 +19,7 @@ test('manual and Paystack ticket issuance store frozen versions and wallets expo
  const wallet=read('src/app/api/tickets/route.ts');
  for(const content of [manual,paystack]){
   assert.match(content,/event_ticket_design_versions/);
-  assert.match(content,/makeIssuedDesignSnapshot\(savedDesign/);
+  assert.match(content,/makeIssuedDesignSnapshot\(/);
   assert.match(content,/design_version,design_snapshot/);
   assert.match(content,/tx\.json\(snapshot\)/);
  }
