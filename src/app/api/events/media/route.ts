@@ -64,9 +64,17 @@ export async function DELETE(req:Request){
   const u=await currentUser();if(!u||u.role!=='organiser'||u.account_status!=='active')return fail('Active organiser required',403);
   const body=await req.json(),mediaId=String(body.id||'');
   if(!uuid(mediaId))return fail('Invalid media',400);
-  const referenced=await db()`select exists(select 1 from ticket_deliveries d where d.ticket_art_id=${mediaId}) as in_use`;
-  if(referenced[0]?.in_use)return fail('Artwork is attached to issued tickets and must remain available for those customers',409);
-  const deleted=await db()`delete from event_media m using events e where m.id=${mediaId} and e.id=m.event_id and e.organiser_id=${u.id} returning m.id`;
-  return deleted[0]?ok({success:true}):fail('Media not found',404);
+  const result=await db().begin(async tx=>{
+   // The event lock serializes uploads/removals with payment approval, which
+   // snapshots ticket artwork while holding the same event lock.
+   const [media]=await tx`select m.id from event_media m join events e on e.id=m.event_id
+    where m.id=${mediaId} and e.organiser_id=${u.id} for update of e,m`;
+   if(!media)return {error:'Media not found',status:404};
+   const [referenced]=await tx`select exists(select 1 from ticket_deliveries d where d.ticket_art_id=${mediaId}) as in_use`;
+   if(referenced.in_use)return {error:'Artwork is attached to issued tickets and must remain available for those customers',status:409};
+   await tx`delete from event_media where id=${mediaId}`;
+   return {success:true};
+  });
+  return 'error' in result?fail(String(result.error),Number(result.status)):ok(result);
  }catch(e){return handleError(e)}
 }
