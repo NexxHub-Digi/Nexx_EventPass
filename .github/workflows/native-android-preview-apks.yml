@@ -109,7 +109,9 @@ jobs:
         run: |
           APK="apps/${{ matrix.app }}/android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
-          apksigner verify --print-certs "$APK" | grep -i "Android Debug"
+          TOOL_DIR="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          test -x "$TOOL_DIR/apksigner"
+          "$TOOL_DIR/apksigner" verify --print-certs "$APK" | grep -i "Android Debug"
       - name: Inspect Android target, package ID and 16 KiB APK alignment
         run: |
           set -euo pipefail
