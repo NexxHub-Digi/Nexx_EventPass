@@ -20,7 +20,15 @@ export async function GET() {
       (select count(*)::int from offline_tickets where redeemed_at is not null) as offline_checkins,
       (select count(*)::int from ticket_orders where status='pending' and reservation_expires_at > now()) as active_reservations,
       (select count(*)::int from organiser_bank_accounts where status='pending') as pending_bank_reviews,
-      (select count(*)::int from ticket_orders where refund_status in ('review_required','initiated')) as unresolved_refunds`;
+      (select count(*)::int from ticket_orders where refund_status in ('review_required','initiated')) as unresolved_refunds,
+      (select coalesce(sum(p.gross_ngn),0)::bigint from verified_order_payments p) as verified_collections_ngn,
+      (select coalesce(sum(p.commission_ngn),0)::bigint from verified_order_payments p) as verified_commissions_ngn,
+      (select coalesce(sum(greatest(p.commission_ngn-coalesce(c.received_ngn,0),0)),0)::bigint
+       from verified_order_payments p left join commission_reconciliations c on c.order_id=p.order_id) as commission_outstanding_ngn,
+      (select coalesce(sum(coalesce(t.sale_amount_ngn,0)),0)::bigint from offline_tickets t
+       where t.distribution='sold' and t.status='issued') as manual_offline_sales_ngn,
+      (select coalesce(sum(o.amount_ngn),0)::bigint from ticket_orders o
+       where o.refund_status in ('review_required','initiated')) as refund_review_exposure_ngn`;
     return ok({stats:rows[0]});
   }catch(e){return handleError(e)}
 }
