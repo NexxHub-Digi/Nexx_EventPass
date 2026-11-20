@@ -237,3 +237,39 @@
 .rw-panel h2[id^="admin-"]{scroll-margin-top:20px}
 @media(max-width:750px){.admin-command-head{flex-direction:column}.admin-command-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-command-nav{padding:17px}.admin-command-links a{padding:10px 12px}}
 @media(prefers-reduced-motion:reduce){.admin-command-links a{transition:none}}
+
+
+/* Nexx Future — dedicated Platform Administrator visual system */
+.ep-admin-shell{--admin-surface:#121a2e;--admin-border:#344264;--admin-glow:#8f74ff;--admin-mint:#6ae8cc;--admin-gold:#f4d18e}
+.ep-admin-shell .ep-admin-hero{position:relative;overflow:hidden;display:flex;justify-content:space-between;align-items:center;gap:24px;padding:clamp(24px,3vw,40px);min-height:190px;background:radial-gradient(circle at 92% 10%,#5e46a270,transparent 37%),linear-gradient(123deg,#201a40,#111f39 75%);border-color:#63579e;box-shadow:0 18px 50px #070b1e35}
+.ep-admin-shell .ep-admin-hero:before{content:'';position:absolute;inset:0 0 auto;height:3px;background:linear-gradient(90deg,#d5b46c,#b691f2,#70e8cf)}
+.ep-admin-shell .ep-admin-hero .eyebrow{font-size:11px;font-weight:800;letter-spacing:.17em;color:#c8b8ff}
+.ep-admin-shell .ep-admin-hero h1{font-size:clamp(27px,3.2vw,42px);letter-spacing:-.045em;line-height:1.15;margin:9px 0 12px;color:#fff}
+.ep-admin-shell .ep-admin-hero p{max-width:620px;font-size:14px;color:#d5d9f0;margin:0}
+.ep-admin-shell .ep-admin-hero-status{flex-shrink:0;border:1px solid #8673b0;background:#221f43b8;border-radius:16px;padding:16px 19px;color:#f4eaff;font-size:12px;font-weight:800;min-width:184px}
+.ep-admin-shell .ep-admin-hero-status small{display:block;color:#b9c2dc;font-size:11px;font-weight:500;padding:7px 0 0 16px}
+.ep-admin-shell .ep-admin-status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#77e5c6;box-shadow:0 0 0 4px #77e5c626;margin-right:7px}
+.ep-admin-shell .ep-admin-workspace{grid-template-columns:minmax(218px,245px) minmax(0,1fr);gap:20px}
+.ep-admin-shell .ep-admin-sidebar{background:#121b31;border-color:#344467;border-radius:20px;box-shadow:0 12px 38px #0002}
+.ep-admin-shell .ep-admin-sidebar nav{max-height:calc(100vh - 145px);overflow-y:auto}
+.ep-admin-shell .ep-admin-sidebar nav button{font-size:13px;font-weight:700;min-height:45px;text-align:left!important;border-radius:11px;margin:0;padding:10px 13px!important;transition:background .16s ease,border-color .16s ease}
+.ep-admin-shell .ep-admin-sidebar nav button.primary{background:linear-gradient(100deg,#5541a9,#35255e);color:#fff;border:1px solid #a494db;box-shadow:inset 3px 0 0 #f0cb80}
+.ep-admin-shell .ep-admin-sidebar nav button.ghost{background:transparent;color:#c6d0ea;border:1px solid transparent}
+.ep-admin-shell .ep-admin-sidebar nav button.ghost:hover{background:#293755;border-color:#53638c}
+.ep-admin-shell .ep-admin-sidebar nav button:focus-visible{outline:2px solid #8be9d1;outline-offset:2px}
+.ep-admin-shell .ep-admin-workspace .rw-panel{border-radius:18px}
+.ep-admin-shell .ep-admin-dashboard{background:linear-gradient(160deg,#18233e,#111b30);border:1px solid #475279}
+.ep-admin-shell .ep-admin-section-heading{display:flex;gap:16px;justify-content:space-between;align-items:center}
+.ep-admin-shell .ep-admin-section-heading h2{margin:6px 0 4px;font-size:25px;letter-spacing:-.03em}
+.ep-admin-shell .ep-admin-live-label{font-size:11px;color:#aceada;border:1px solid #376959;background:#19423b;padding:8px 11px;border-radius:999px;white-space:nowrap}
+.ep-admin-shell .ep-admin-kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
+.ep-admin-shell .ep-admin-kpi{border:1px solid #455375;background:linear-gradient(145deg,#202e4b,#18233c);padding:19px 17px;min-height:119px;border-radius:15px;gap:12px;justify-content:space-between}
+.ep-admin-shell .ep-admin-kpi small{order:0;letter-spacing:.035em;text-transform:capitalize;color:#c1cbe1;font-size:12px}
+.ep-admin-shell .ep-admin-kpi b{order:1;color:#fff;font-size:clamp(24px,2.3vw,34px);line-height:1.1;letter-spacing:-.025em}
+.ep-admin-shell .ep-admin-kpi-rule{order:2;display:block;height:3px;width:48px;border-radius:99px;background:linear-gradient(90deg,#e5bb77,#8465dd)}
+.ep-admin-shell .rw-list-item{background:#1a2640;border:1px solid #374967;border-radius:14px;padding:14px;gap:12px}
+.ep-admin-shell .rw-panel input,.ep-admin-shell .rw-panel select,.ep-admin-shell .rw-panel textarea{border-radius:12px;min-height:44px;border-color:#526081}
+@media(max-width:900px){.ep-admin-shell .ep-admin-workspace{grid-template-columns:1fr}.ep-admin-shell .ep-admin-sidebar{position:static!important}.ep-admin-shell .ep-admin-sidebar nav{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));max-height:none;gap:6px!important}.ep-admin-shell .ep-admin-sidebar nav .eyebrow{grid-column:1/-1}}
+@media(max-width:550px){.ep-admin-shell .ep-admin-hero{flex-direction:column;align-items:flex-start;min-height:unset;padding:24px 19px}.ep-admin-shell .ep-admin-hero-status{width:100%}.ep-admin-shell .ep-admin-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ep-admin-shell .ep-admin-kpi{min-height:105px;padding:13px}.ep-admin-shell .ep-admin-sidebar nav button{font-size:12px;padding:9px 10px!important}.ep-admin-shell .ep-admin-section-heading{align-items:flex-start;flex-direction:column}.ep-admin-shell .rw-actions{justify-content:flex-start}}
+@media(max-width:340px){.ep-admin-shell .ep-admin-kpis{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.ep-admin-shell .ep-admin-sidebar nav button{transition:none}}
