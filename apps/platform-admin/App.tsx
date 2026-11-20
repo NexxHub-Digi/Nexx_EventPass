@@ -21,7 +21,7 @@ type ModerationEvent={id:string;title:string;venue:string;organiser_id:string;or
 type MediaReview={id:string;event_id:string;file_name:string;media_type:string};
 type RefundCase={id:string;event_title:string;buyer_email:string;status:string;refund_status:string;amount_ngn:number;refund_note?:string|null};
 type AuditEntry={id:string;action:string;created_at:string;performed_by:string;target_email?:string|null;details?:{reason?:string}|null};
-type Theme={id:string;name:string;label:string;color_a:string;color_b:string;accent:string};
+type Theme={id:string;name:string;label:string;color_a:string;color_b:string;accent:string;active:boolean};
 type EventMetrics={id:string;title:string;organiser_name:string;status:string;verification_status:string;tickets_issued:number;external_tickets_issued:number;checked_in:number;pending_orders:number;reserved_seats:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number;capacity:number};
 async function api(p:string,t:string,method='GET',data?:unknown){const multi=data instanceof FormData;const r=await fetch(BASE+'/api/'+p,{method,headers:{...(multi?{}:{'Content-Type':'application/json'}),...(t?{Authorization:'Bearer '+t}:{})},body:multi?data: data?JSON.stringify(data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error||'Request failed');return v}
 export default function App(){
@@ -54,6 +54,7 @@ export default function App(){
  const [auditHistory,setAuditHistory]=useState<AuditEntry[]>([]),[refundCases,setRefundCases]=useState<RefundCase[]>([]);
  const [eventMetrics,setEventMetrics]=useState<EventMetrics[]>([]),[eventQuery,setEventQuery]=useState('');
  const [themes,setThemes]=useState<Theme[]>([]),[themeName,setThemeName]=useState(''),[themeLabel,setThemeLabel]=useState(''),[themeA,setThemeA]=useState('#552AA8'),[themeB,setThemeB]=useState('#231A56'),[themeAccent,setThemeAccent]=useState('#FFFFFF');
+ const [editingThemeId,setEditingThemeId]=useState('');
  const [accountPage,setAccountPage]=useState(1),[accountCount,setAccountCount]=useState(0),[accountRole,setAccountRole]=useState('');
  const [refundNotes,setRefundNotes]=useState<Record<string,string>>({}),[ownerFixEvent,setOwnerFixEvent]=useState(''),[ownerFixEmail,setOwnerFixEmail]=useState(''),[ownerFixReason,setOwnerFixReason]=useState('');
  async function load(t:string){
@@ -76,7 +77,7 @@ export default function App(){
    ['Audit logs',api('platform/audit',t)],
    ['Payments & refunds',api('refunds',t)],
    ['Events & analytics',api('platform/event-directory',t)],
-   ['Ticket themes',api('ticket-themes',t)]
+   ['Ticket themes',api('ticket-themes?includeInactive=true',t)]
   ] as const;
   const settled=await Promise.allSettled(services.map(([,promise])=>promise));
   const warnings:string[]=[];
@@ -138,9 +139,22 @@ export default function App(){
  }
  async function createTheme(){await exec(async()=>{
   const result=await api('ticket-themes',token,'POST',{name:themeName.trim(),label:themeLabel.trim(),colorA:themeA,colorB:themeB,accent:themeAccent});
-  const updated=await api('ticket-themes',token);setThemes(updated.themes||[]);
+  const updated=await api('ticket-themes?includeInactive=true',token);setThemes(updated.themes||[]);
   setThemeName('');setThemeLabel('');Alert.alert('Ticket theme created',result.theme.name+' is now available in the organiser design catalogue.');
  })}
+ function chooseThemeForEdit(theme:Theme){
+  setEditingThemeId(theme.id);setThemeName(theme.name);setThemeLabel(theme.label);
+  setThemeA(theme.color_a);setThemeB(theme.color_b);setThemeAccent(theme.accent);
+ }
+ async function saveThemeChange(action:'edit'|'archive'|'reactivate'){
+  if(!editingThemeId){setError('Select an existing theme first');return}
+  await exec(async()=>{
+   await api('ticket-themes',token,'PATCH',{action,id:editingThemeId,name:themeName.trim(),label:themeLabel.trim(),colorA:themeA,colorB:themeB,accent:themeAccent});
+   const result=await api('ticket-themes?includeInactive=true',token);setThemes(result.themes||[]);
+   setEditingThemeId('');setThemeName('');setThemeLabel('');
+   Alert.alert('Catalogue updated','The theme '+action+' was saved and audited.');
+  });
+ }
  async function changeAccount(action:'configure'|'suspend'|'restore'|'deactivate'){await exec(async()=>{
   if(!selectedAccount)throw Error('Select an account');
   if(action==='deactivate'&&!deactivateReason.trim())throw Error('Provide a deactivation reason');
@@ -275,30 +289,46 @@ export default function App(){
   {button('Open moderation',()=>setSection('events'),true)}
  </View>)}
  </>}
- {section==='themes'&&<><Text style={s.title}>Ticket themes</Text>
- <Text style={s.hint}>Create reusable ticket themes for organisers. Each colour must be a six-digit HEX value.</Text>
- {input('New theme name',themeName,setThemeName)}
- {input('Theme category or label',themeLabel,setThemeLabel)}
- {input('Background colour A (e.g. #552AA8)',themeA,setThemeA)}
- {input('Background colour B (e.g. #231A56)',themeB,setThemeB)}
- {input('Accent colour (e.g. #FFFFFF)',themeAccent,setThemeAccent)}
- <View accessibilityLabel="New ticket theme preview" style={[s.card,{backgroundColor:/^#[A-Fa-f0-9]{6}$/.test(themeA)?themeA:'#253251',borderColor:/^#[A-Fa-f0-9]{6}$/.test(themeAccent)?themeAccent:'#506180',borderWidth:2}]}>
-  <Text style={{color:'#fff',fontWeight:'900'}}>{themeName.trim()||'New ticket theme'}</Text>
-  <Text style={{color:'#fff'}}>{themeLabel.trim()||'Preview only — not published'}</Text>
-  <View style={{backgroundColor:/^#[A-Fa-f0-9]{6}$/.test(themeB)?themeB:'#231A56',height:16,borderRadius:8,marginTop:8}}/>
- </View>
- {button('Create ticket theme',()=>Alert.alert('Publish new ticket theme?','Organisers will be able to select this design. Review its name and colours before publishing.',[
-  {text:'Cancel',style:'cancel'},{text:'Create theme',onPress:()=>void createTheme()}
- ]))}
- <Text style={s.title}>Available themes ({themes.length})</Text>
- {themes.map(theme=><View key={theme.id} style={s.card}>
-  <View style={{height:10,backgroundColor:theme.color_a,borderRadius:5,marginBottom:8}}/>
-  <Text style={s.title}>{theme.name}</Text>
-  <Text style={s.hint}>{theme.label} · {theme.id}</Text>
-  <Text style={s.hint}>{theme.color_a} / {theme.color_b} · Accent: {theme.accent}</Text>
- </View>)}
- </>}
- {section==='events'&&<><Text style={s.title}>Event moderation</Text>
+ {section==='themes'&&<><Text style={s.title}>Ticket Theme Management</Text>
+   <Text style={s.hint}>Themes are stored on the server. Designs linked to existing events, drafts or issued tickets cannot be edited or archived; publish a new version instead.</Text>
+   {button('Create a new theme',()=>{setEditingThemeId('');setThemeName('');setThemeLabel('');setThemeA('#552AA8');setThemeB('#231A56');setThemeAccent('#FFFFFF')},true)}
+   {button('Refresh theme catalogue',()=>void exec(async()=>{const data=await api('ticket-themes?includeInactive=true',token);setThemes(data.themes||[])}),true)}
+   <Text style={s.title}>All themes ({themes.length})</Text>
+   {themes.map(theme=><View key={theme.id} style={[s.card,{borderColor:editingThemeId===theme.id?'#c9aa72':'#374b6f'}]}>
+    <View style={{height:12,backgroundColor:theme.color_a,borderRadius:7,marginBottom:8,opacity:theme.active?.9:.45}}/>
+    <Text style={s.title}>{theme.name}</Text>
+    <Text style={s.hint}>{theme.label} · {theme.active?'Published':'Archived'} · {theme.id}</Text>
+    <Text style={s.hint}>{theme.color_a} / {theme.color_b} · Accent: {theme.accent}</Text>
+    {button(editingThemeId===theme.id?'Selected for editing':'View / edit theme',()=>chooseThemeForEdit(theme),true)}
+   </View>)}
+   <View style={s.card}>
+    <Text style={s.title}>{editingThemeId?'Editing '+editingThemeId:'Create catalogue theme'}</Text>
+    {input('Theme display name',themeName,setThemeName)}
+    {input('Theme label',themeLabel,setThemeLabel)}
+    {input('Background colour A (#552AA8)',themeA,setThemeA)}
+    {input('Background colour B (#231A56)',themeB,setThemeB)}
+    {input('Accent colour (#FFFFFF)',themeAccent,setThemeAccent)}
+    <View accessibilityLabel="Ticket theme visual preview" style={[s.card,{backgroundColor:/^#[A-Fa-f0-9]{6}$/.test(themeA)?themeA:'#253251',borderColor:/^#[A-Fa-f0-9]{6}$/.test(themeAccent)?themeAccent:'#506180',borderWidth:2}]}>
+     <Text style={{color:'#fff',fontWeight:'900'}}>{themeName.trim()||'Theme preview'}</Text>
+     <Text style={{color:'#fff'}}>{themeLabel.trim()||'Enter a label'}</Text>
+     <View style={{backgroundColor:/^#[A-Fa-f0-9]{6}$/.test(themeB)?themeB:'#231A56',height:16,borderRadius:8,marginTop:8}}/>
+    </View>
+    {editingThemeId?themes.find(theme=>theme.id===editingThemeId)?.active===false?
+      button('Reactivate theme',()=>Alert.alert('Reactivate theme?','Make this archived theme available for new events?',[
+       {text:'Cancel',style:'cancel'},{text:'Reactivate',onPress:()=>void saveThemeChange('reactivate')}
+      ])):
+      <>{button('Save existing theme',()=>Alert.alert('Save theme edits?','Used themes cannot be edited; their issued history remains protected.',[
+        {text:'Cancel',style:'cancel'},{text:'Save edits',onPress:()=>void saveThemeChange('edit')}
+       ]))}
+       {button('Archive unused theme',()=>Alert.alert('Archive theme?','Remove this theme from new organiser selections? Existing tickets must remain unchanged.',[
+        {text:'Cancel',style:'cancel'},{text:'Archive',style:'destructive',onPress:()=>void saveThemeChange('archive')}
+       ]),true)}</>:
+      button('Publish new theme',()=>Alert.alert('Publish new ticket theme?','Make this design available in the organiser catalogue?',[
+       {text:'Cancel',style:'cancel'},{text:'Publish',onPress:()=>void createTheme()}
+      ]))}
+   </View>
+  </>}
+  {section==='events'&&<><Text style={s.title}>Event moderation</Text>
  <Text style={s.hint}>Review listing ownership, eligibility and pending media.</Text>
  {!moderationEvents.length&&<Text style={s.hint}>No events require moderation.</Text>}
  {moderationEvents.map(event=><View key={event.id} style={s.card}>
