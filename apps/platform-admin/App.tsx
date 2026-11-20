@@ -185,16 +185,20 @@ export default function App(){
  return <View style={s.root}>
   <StatusBar barStyle="light-content"/>
   <View style={s.head}>
-   <Pressable style={s.brandRow} accessibilityRole="button" accessibilityLabel="Platform Admin home" disabled={busy||!member} onPress={()=>{
-     setSection('overview');scroll.current?.scrollTo({y:0,animated:false});
-   }}>
+   {member&&<Pressable accessibilityRole="button" accessibilityLabel={desktopNavigation?(showDesktopSidebar?'Collapse sidebar':'Expand sidebar'):(menuOpen?'Close menu':'Open sidebar menu')} accessibilityState={{expanded:desktopNavigation?showDesktopSidebar:menuOpen}} onPress={()=>desktopNavigation?setShowDesktopSidebar(x=>!x):setMenuOpen(x=>!x)} style={s.menuTrigger}><Text style={s.menuTriggerIcon}>☰</Text></Pressable>}
+   <Pressable style={s.brandRow} accessibilityRole="button" accessibilityLabel="Platform Admin dashboard" disabled={busy||!member} onPress={()=>navigateAdmin('overview')}>
     <Image accessible={false} source={require('./assets/app-icon.png')} style={s.brandMark}/><View style={s.brandCopy}>
     <Text style={s.brand}>Nexx EventPass</Text><Text style={s.headLabel}>Platform Admin</Text>
    </View></Pressable>
    {member&&<Pressable accessibilityRole="button" accessibilityLabel="Sign out" disabled={busy} onPress={()=>void logout()} style={s.accountBadge}><Text style={s.headLabel}>Sign out</Text></Pressable>}
   </View>
-  <Animated.View style={[{flex:1},surfaceStyle]}>
-  <ScrollView ref={scroll} key={member?section:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
+  <View style={s.workspaceFrame}>
+    {member&&desktopNavigation&&showDesktopSidebar&&<AdminSidebar active={section} operatorName={member.full_name} onNavigate={navigateAdmin} onClose={()=>setShowDesktopSidebar(false)}
+      pendingSupport={cases.filter(c=>['open','in_progress'].includes(c.status)).length}
+      pendingOrganisers={applicants.filter(a=>a.role==='user'&&a.requested_role==='organiser').length}
+      pendingRefunds={refundCases.filter(r=>['review_required','initiated'].includes(r.refund_status)).length}/>}
+    <Animated.View style={[{flex:1},surfaceStyle]}>
+    <ScrollView ref={scroll} key={member?section:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
  {!member?<View style={s.welcome}>
    <View pointerEvents="none" style={s.welcomeGlow} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"/>
    <Text style={s.welcomeLabel}>Platform operations</Text><Text style={s.welcomeTitle}>Manage EventPass.</Text>
@@ -445,16 +449,28 @@ export default function App(){
  </>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
  </ScrollView>
-  </Animated.View>
- {member&&<View style={s.navigation}>{([['overview','Overview'],['organisers','Organisers'],['events','Events'],['more','More']] as const).map(([key,label])=>{
-  const selected=section===key||(key==='more'&&(['accounts','analytics','finance','audit','support','themes','settings'] as string[]).includes(section));
-  return <Pressable key={key} accessibilityRole="tab" accessibilityState={{selected}} disabled={busy}
-  style={({pressed})=>[s.navLink,selected&&s.navCurrent,pressed&&(reduceMotion?s.pressedStill:s.pressed)]} onPress={()=>setSection(key)}>
-  <Text style={[s.navIcon,selected&&s.navTextCurrent]}>{key==='overview'?'▦':key==='organisers'?'♧':key==='events'?'◇':'☰'}</Text><Text style={[s.navText,selected&&s.navTextCurrent]}>{label}</Text></Pressable>})}</View>}
+    </Animated.View>
+   </View>
+   {member&&!desktopNavigation&&menuOpen&&<View style={s.drawerOverlay}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Dismiss navigation drawer" onPress={()=>setMenuOpen(false)} style={s.drawerBackdrop}/>
+    <View style={[s.drawerPanel,{width:Math.min(334,viewportWidth*.86)}]}>
+     <AdminSidebar active={section} operatorName={member.full_name} onNavigate={navigateAdmin} onClose={()=>setMenuOpen(false)} isDrawer
+      pendingSupport={cases.filter(c=>['open','in_progress'].includes(c.status)).length}
+      pendingOrganisers={applicants.filter(a=>a.role==='user'&&a.requested_role==='organiser').length}
+      pendingRefunds={refundCases.filter(r=>['review_required','initiated'].includes(r.refund_status)).length}/>
+    </View>
+   </View>
  </View>
 }
 const s=StyleSheet.create({
  root:{flex:1,backgroundColor:'#0b1020'},
+ workspaceFrame:{flex:1,flexDirection:'row',minHeight:0},
+ menuTrigger:{width:44,height:44,borderRadius:12,borderWidth:1,borderColor:'#5a668a',backgroundColor:'#272a52',alignItems:'center',justifyContent:'center'},
+ menuTriggerIcon:{color:'#fff',fontWeight:'900',fontSize:23},
+ drawerOverlay:{position:'absolute',top:0,bottom:0,left:0,right:0,zIndex:90,flexDirection:'row'},
+ drawerBackdrop:{position:'absolute',top:0,bottom:0,left:0,right:0,backgroundColor:'#020615cc'},
+ drawerPanel:{height:'100%',paddingTop:Platform.OS==='android'?(StatusBar.currentHeight||24):Platform.OS==='ios'?45:0},
+
  head:{backgroundColor:'#111a31',borderBottomWidth:1,borderColor:'#334362',paddingHorizontal:18,paddingTop:(Platform.OS==='android'?(StatusBar.currentHeight||0):Platform.OS==='ios'?54:14)+8,paddingBottom:15,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},
  brandRow:{flexDirection:'row',alignItems:'center',gap:10,flexShrink:1},brandCopy:{flexShrink:1},
  brandMark:{width:44,height:44,borderRadius:12},
