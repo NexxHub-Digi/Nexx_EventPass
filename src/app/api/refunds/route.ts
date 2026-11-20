@@ -66,9 +66,9 @@ export async function PATCH(req:Request){
       refund_updated_at=now(),refund_updated_by=${u.id} where id=${orderId}`;
     await tx`insert into ticket_payment_audit(order_id,actor_id,action,details)
       values(${orderId},${u.id},'issued_tickets_cancelled',
-       ${JSON.stringify({reason:note,revoked:tickets.length,refundStatus:nextRefund,paymentMethod:order.payment_method})}::jsonb)`;
+       ${tx.json({reason:note,revoked:tickets.length,refundStatus:nextRefund,paymentMethod:order.payment_method})})`;
     await tx`insert into platform_admin_actions(admin_id,target_user_id,action,details)
-      select ${u.id},o.buyer_id,'cancel_issued_order',${JSON.stringify({orderId,reason:note,revoked:tickets.length,refundStatus:nextRefund})}::jsonb
+      select ${u.id},o.buyer_id,'cancel_issued_order',${tx.json({orderId,reason:note,revoked:tickets.length,refundStatus:nextRefund})}
       from ticket_orders o where o.id=${orderId}`;
     return {success:true,order_status:'cancelled',refund_status:nextRefund,revoked:tickets.length};
    }
