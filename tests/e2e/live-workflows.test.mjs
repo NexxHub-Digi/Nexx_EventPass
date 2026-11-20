@@ -156,7 +156,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,paymentAccountId:bank.id,qrKeyword:'private-test-keyword',ticketTheme:'stj-royal-gold',admissionLabel:'ADMIT ONE — MASK COMPULSORY',posterTemplate:'stj-apartment-party'}),201,'create event').event;
   assert.ok(!expect(await req('/api/auth/me',{cookie:org.cookie}),200,'draft event gate rights').portals.includes('gate'),'draft/unverified event must not grant gate access');
   const draftGate=await fetch(base+'/gate',{headers:{Cookie:org.cookie},redirect:'manual'});
-  assert.equal(draftGate.status,307,'draft event cannot open protected gate workspace');
+  const draftGateBody=await draftGate.text();
+  // Next.js can carry a server-component redirect in a streamed HTTP 200 response.
+  const deniedByHttp=draftGate.status===307&&new URL(draftGate.headers.get('location'),base).pathname==='/login/gate';
+  const deniedByStream=draftGate.status===200&&draftGateBody.includes('NEXT_REDIRECT')&&draftGateBody.includes('/login/gate');
+  assert.ok(deniedByHttp||deniedByStream,'draft event must redirect away from protected gate workspace');
   const designEndpoint='/api/organiser/ticket-designs';
   const designFields={title:'',venue:'',startsAt:'',price:'',organiser:'',admission:'',holder:'',reference:'',notes:''};
   const designEnabled={title:true,venue:true,startsAt:true,price:true,organiser:true,admission:true,holder:false,reference:false,notes:false};
