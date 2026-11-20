@@ -49,6 +49,7 @@ export default function App(){
  const [bankAccounts,setBankAccounts]=useState<{id:string;bank_name:string;account_name:string;account_number:string;status:string;organiser_name:string}[]>([]);
  const [bankReviewId,setBankReviewId]=useState(''),[bankReviewNote,setBankReviewNote]=useState('');
  const [summary,setSummary]=useState<Record<string,number>>({});
+ const [loadWarnings,setLoadWarnings]=useState<string[]>([]);
  const [moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<MediaReview[]>([]);
  const [auditHistory,setAuditHistory]=useState<AuditEntry[]>([]),[refundCases,setRefundCases]=useState<RefundCase[]>([]);
  const [eventMetrics,setEventMetrics]=useState<EventMetrics[]>([]),[eventQuery,setEventQuery]=useState('');
@@ -56,19 +57,47 @@ export default function App(){
  const [accountPage,setAccountPage]=useState(1),[accountCount,setAccountCount]=useState(0),[accountRole,setAccountRole]=useState('');
  const [refundNotes,setRefundNotes]=useState<Record<string,string>>({}),[ownerFixEvent,setOwnerFixEvent]=useState(''),[ownerFixEmail,setOwnerFixEmail]=useState(''),[ownerFixReason,setOwnerFixReason]=useState('');
  async function load(t:string){
- const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
- if(!(PORTAL==='organiser'&&me.user.account_status==='pending') && !(me.portals||[]).includes(PORTAL)){await SecureStore.deleteItemAsync('eventpass_token');setMember(null);setToken('');throw Error('This account is not authorised for this app')}
- setMember(me.user);
- setBankAccounts((await api('organiser/payment-account',t)).accounts||[]);
- if(me.user.account_status==='pending')return;
- const ev=await api('events',t);setEvents(ev.events||[]);
- const [a,people,support,configuration,overview,moderation,audit,refunds,eventDirectory,themeCatalog]=await Promise.all([
-  api('platform/organisers',t),api('platform/users',t),api('support/cases',t),api('platform/settings',t),
-  api('platform/overview',t),api('platform/events',t),api('platform/audit',t),api('refunds',t),api('platform/event-directory',t),api('ticket-themes',t)]);
- setApplicants(a.organisers||[]);setAccounts(people.accounts||[]);setCases(support.cases||[]);setSettings(configuration.settings||{});setSettingValue(String((configuration.settings||{})[settingKey]||''));
- setSummary(overview.stats||{});setModerationEvents(moderation.events||[]);setModerationMedia(moderation.media||[]);
- setAuditHistory(audit.history||[]);setRefundCases(refunds.orders||[]);
- setEventMetrics(eventDirectory.events||[]);setThemes(themeCatalog.themes||[]);setAccountCount(people.count||0);setAccountPage(people.page||1);
+  const me=await api('auth/me',t);if(!me.user)throw Error('Please sign in again');
+  if(!(me.portals||[]).includes(PORTAL)){
+   await SecureStore.deleteItemAsync('eventpass_token');setMember(null);setToken('');
+   throw Error('This account is not authorised for Platform Administration');
+  }
+  setMember(me.user);
+  if(me.user.account_status!=='active'){setLoadWarnings([]);return}
+  const services=[
+   ['Bank verification',api('organiser/payment-account',t)],
+   ['Events',api('events',t)],
+   ['Organisers',api('platform/organisers',t)],
+   ['Users & access',api('platform/users',t)],
+   ['Support desk',api('support/cases',t)],
+   ['Settings',api('platform/settings',t)],
+   ['Dashboard',api('platform/overview',t)],
+   ['Event moderation',api('platform/events',t)],
+   ['Audit logs',api('platform/audit',t)],
+   ['Payments & refunds',api('refunds',t)],
+   ['Events & analytics',api('platform/event-directory',t)],
+   ['Ticket themes',api('ticket-themes',t)]
+  ] as const;
+  const settled=await Promise.allSettled(services.map(([,promise])=>promise));
+  const warnings:string[]=[];
+  const result=(i:number)=>{
+   const item=settled[i];if(item.status==='fulfilled')return item.value;
+   warnings.push(services[i][0]+' unavailable');
+   return null;
+  };
+  const banks=result(0);if(banks)setBankAccounts(banks.accounts||[]);
+  const ev=result(1);if(ev)setEvents(ev.events||[]);
+  const a=result(2);if(a)setApplicants(a.organisers||[]);
+  const people=result(3);if(people){setAccounts(people.accounts||[]);setAccountCount(people.count||0);setAccountPage(people.page||1)}
+  const support=result(4);if(support)setCases(support.cases||[]);
+  const configuration=result(5);if(configuration){setSettings(configuration.settings||{});setSettingValue(String((configuration.settings||{})[settingKey]||''))}
+  const overview=result(6);if(overview)setSummary(overview.stats||{});
+  const moderation=result(7);if(moderation){setModerationEvents(moderation.events||[]);setModerationMedia(moderation.media||[])}
+  const audit=result(8);if(audit)setAuditHistory(audit.history||[]);
+  const refunds=result(9);if(refunds)setRefundCases(refunds.orders||[]);
+  const directory=result(10);if(directory)setEventMetrics(directory.events||[]);
+  const themes=result(11);if(themes)setThemes(themes.themes||[]);
+  setLoadWarnings(warnings);
  }
  useEffect(()=>{
   let mounted=true;
@@ -207,7 +236,12 @@ export default function App(){
       pendingRefunds={refundCases.filter(r=>['review_required','initiated'].includes(r.refund_status)).length}/>}
     <Animated.View style={[{flex:1},surfaceStyle]}>
     <ScrollView ref={scroll} key={member?section:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
- {!member?<View style={s.welcome}>
+ {member&&loadWarnings.length>0&&<View style={s.loadNotice}>
+   <Text style={s.loadNoticeTitle}>Some workspaces could not load</Text>
+   <Text style={s.hint}>{loadWarnings.join(' · ')}. Other sections remain available; missing data is not shown as confirmed zero.</Text>
+   {button('Retry loading affected modules',()=>void exec(async()=>load(token)),true)}
+  </View>}
+  {!member?<View style={s.welcome}>
    <View pointerEvents="none" style={s.welcomeGlow} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"/>
    <Text style={s.welcomeLabel}>Platform operations</Text><Text style={s.welcomeTitle}>Manage EventPass.</Text>
    <Text style={s.welcomeText}>Review accounts, verify bank details and resolve support cases.</Text>
@@ -499,6 +533,8 @@ const s=StyleSheet.create({
  drawerOverlay:{position:'absolute',top:0,bottom:0,left:0,right:0,zIndex:90,flexDirection:'row'},
  drawerBackdrop:{position:'absolute',top:0,bottom:0,left:0,right:0,backgroundColor:'#020615cc'},
  drawerPanel:{height:'100%',paddingTop:Platform.OS==='android'?(StatusBar.currentHeight||24):Platform.OS==='ios'?45:0},
+ loadNotice:{borderRadius:13,padding:14,backgroundColor:'#463821',borderWidth:1,borderColor:'#b69a5a',marginBottom:14},
+ loadNoticeTitle:{color:'#ffdf97',fontSize:14,fontWeight:'900'},
 
  head:{backgroundColor:'#111a31',borderBottomWidth:1,borderColor:'#334362',paddingHorizontal:18,paddingTop:(Platform.OS==='android'?(StatusBar.currentHeight||0):Platform.OS==='ios'?54:14)+8,paddingBottom:15,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},
  brandRow:{flexDirection:'row',alignItems:'center',gap:10,flexShrink:1},brandCopy:{flexShrink:1},
