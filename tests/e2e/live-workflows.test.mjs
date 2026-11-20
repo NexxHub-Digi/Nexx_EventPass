@@ -279,6 +279,12 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const bytes=new Uint8Array(90);bytes.set([137,80,78,71,13,10,26,10]);
   const form=new FormData();form.set('orderId',order.id);form.set('receipt',new Blob([bytes],{type:'image/png'}),'test.png');
   expect(await req('/api/orders/receipt',{cookie:buyer.cookie,method:'POST',form}),200,'receipt submission');
+  const awaitingApproval=expect(await req('/api/orders',{cookie:buyer.cookie}),200,'pending after receipt').orders.find(o=>o.id===order.id);
+  assert.equal(awaitingApproval.status,'pending','receipt does not approve the order');
+  assert.ok(!expect(await req('/api/tickets',{cookie:buyer.cookie}),200,'wallet before approval').tickets.some(t=>t.event_id===event.id),
+    'no admission ticket or QR can be delivered before organiser approval');
+  assert.equal(Number((await sql`select count(*)::int as total from tickets where order_id=${order.id}`)[0].total),0,
+    'manual checkout and receipt upload do not create ticket rows');
   expect(await req('/api/orders/receipt?orderId='+order.id,{cookie:wrong.cookie}),404,'receipt privacy');
   const approved=expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),200,'organiser payment verification');
   assert.ok(!expect(await req(inboxPath,{cookie:org.cookie}),200,'approved order leaves inbox').payments.some(item=>item.id===order.id));
@@ -375,11 +381,29 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(rehearsal.outcome,'valid_test');
   assert.equal(rehearsal.testOnly,true);
   assert.deepEqual(expect(await req('/api/gate-history?eventId='+event.id,{cookie:operator.cookie}),200,'rehearsal creates no entry audit').scans,[]);
+  // Exercise the time boundaries in the isolated E2E database.
+  await sql`update events set starts_at=now()+interval '2 hours 1 minute' where id=${event.id}`;
+  const tooEarly=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),200,'gate before opening');
+  assert.equal(tooEarly.outcome,'inactive_or_unavailable');
+  assert.equal(tooEarly.reason,'event_not_open');
+  await sql`update events set starts_at=now()-interval '4 hours 1 minute' where id=${event.id}`;
+  const tooLate=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),200,'gate after closing');
+  assert.equal(tooLate.outcome,'inactive_or_unavailable');
+  assert.match(tooLate.message,/closed/i);
+  await sql`update events set starts_at=now()-interval '2 hours' where id=${event.id}`;
   const scans=await Promise.all([post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr})]);
   assert.deepEqual(scans.map((r,i)=>expect(r,200,'concurrent scan '+i).outcome).sort(),['approved','duplicate']);
   const duplicateManual=expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.entry_code.toLowerCase().replaceAll('-',' ')}),200,'manual backup reuse');
   assert.equal(duplicateManual.outcome,'duplicate','same ticket cannot be admitted again by backup code');
   assert.equal(duplicateManual.entry_method,'manual');
+  await sql`update events set starts_at=now()-interval '25 hours' where id=${event.id}`;
+  assert.ok(!expect(await req('/api/events',{cookie:buyer.cookie}),200,'current discover excludes past').events.some(e=>e.id===event.id));
+  assert.ok(expect(await req('/api/events?view=past',{cookie:buyer.cookie}),200,'past events archive').events.some(e=>e.id===event.id));
+  const archivedPass=expect(await req('/api/tickets',{cookie:buyer.cookie}),200,'archived wallet').tickets.find(t=>t.id===ticket.id);
+  assert.equal(archivedPass.event_phase,'past');
+  assert.equal(archivedPass.qr,null,'archived admission QR is not delivered');
+  assert.equal(archivedPass.entry_code,null,'archived backup entry code is not delivered');
+  await sql`update events set starts_at=${date} where id=${event.id}`;
   const history=expect(await req('/api/gates/activity?eventId='+event.id,{cookie:operator.cookie}),200,'gate log');
   const recordedHistory=expect(await req('/api/gate-history?eventId='+event.id,{cookie:operator.cookie}),200,'operator history after scanning');
   assert.ok(recordedHistory.scans.some(scan=>scan.outcome==='approved'&&scan.ticket_id===ticket.id&&scan.offline_ticket_id===null));
