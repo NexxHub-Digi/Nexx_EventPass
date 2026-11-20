@@ -626,5 +626,31 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/review',org.cookie,{orderId:firstVip.id,decision:'approved'}),409,'cancelled order cannot issue a ticket');
   expect(await post('/api/orders',wrong.cookie,{...vipOrder,unitPriceNgn:2500}),201,'cancellation releases category capacity');
 
+  const eligible=expect(await req('/api/refunds',{cookie:adminCookie}),200,'admin sees issued orders').issuedOrders;
+  const candidate=eligible.find(o=>o.id===onsite.id);
+  assert.ok(candidate&&candidate.ticket_count===1&&candidate.unused_count===1,'unused approved order is visible');
+  const beforeRefund=expect(await req('/api/tickets',{cookie:onsiteBuyer.cookie}),200,'onsite pass before cancellation').tickets.find(t=>t.event_id===onsiteEvent.id);
+  assert.ok(beforeRefund?.qr);
+  const cancelIssued={orderId:onsite.id,action:'cancel_issued',note:'Verified duplicate purchase, platform-supervised unused ticket cancellation.'};
+  expect(await req('/api/refunds',{cookie:wrong.cookie,method:'PATCH',body:cancelIssued}),403,'buyer cannot revoke issued tickets');
+  expect(await req('/api/refunds',{cookie:org.cookie,method:'PATCH',body:cancelIssued}),403,'organiser cannot revoke confirmed issued tickets');
+  expect(await req('/api/refunds',{cookie:adminCookie,method:'PATCH',body:{...cancelIssued,note:'short'}}),400,'admin reason required');
+  const cancelled=expect(await req('/api/refunds',{cookie:adminCookie,method:'PATCH',body:cancelIssued}),200,'admin atomically cancels issued paid order');
+  assert.equal(cancelled.revoked,1);assert.equal(cancelled.refund_status,'review_required');
+  const afterRefund=expect(await req('/api/tickets',{cookie:onsiteBuyer.cookie}),200,'revoked wallet').tickets.find(t=>t.id===beforeRefund.id);
+  assert.equal(afterRefund.status,'revoked');assert.equal(afterRefund.qr,null);assert.equal(afterRefund.entry_code,null);
+  assert.equal(expect(await post('/api/scan',org.cookie,{eventId:onsiteEvent.id,code:beforeRefund.qr,testOnly:true}),200,'revoked gate rehearsal').outcome,'revoked');
+  expect(await req('/api/refunds',{cookie:adminCookie,method:'PATCH',body:cancelIssued}),409,'cannot double cancel');
+  assert.equal(expect(await req('/api/refunds',{cookie:adminCookie}),200,'refund case after cancellation').orders.find(o=>o.id===onsite.id).refund_status,'review_required');
+  expect(await req('/api/refunds',{cookie:org.cookie,method:'PATCH',body:{orderId:onsite.id,action:'initiated',note:'Organiser bypass attempt'}}),403,'supervised refunds are admin only');
+  expect(await req('/api/refunds',{cookie:adminCookie,method:'PATCH',body:{orderId:onsite.id,action:'settled',note:'Missing initiation'}}),409,'cannot settle before initiation');
+  expect(await req('/api/refunds',{cookie:adminCookie,method:'PATCH',body:{orderId:onsite.id,action:'initiated',note:'Manual bank repayment initiated'}}),200,'initiate refund after revocation');
+  expect(await req('/api/refunds',{cookie:adminCookie,method:'PATCH',body:{orderId:onsite.id,action:'settled',note:'Independent bank statement refund reference REF-12345'}}),200,'settle verified manual refund');
+  const cancelAuditRows=await sql`select action,details from platform_admin_actions where action='cancel_issued_order' order by id desc limit 5`;
+  assert.ok(cancelAuditRows.length>0,'supervised cancellation must persist a platform action record');
+  assert.ok(cancelAuditRows.some(a=>a.details?.orderId===onsite.id),'audit record must reference cancelled order: '+JSON.stringify(cancelAuditRows.map(a=>a.details)));
+  assert.equal(Number(cancelAuditRows.find(a=>a.details?.orderId===onsite.id).details.revoked),1,'admin cancellation recorded in audit');
+
+
  }finally{await sql.end()}
 },{timeout:180000});

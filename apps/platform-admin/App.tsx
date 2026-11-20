@@ -20,6 +20,7 @@ type SupportCase={id:string;subject:string;description:string;organiser_name:str
 type ModerationEvent={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;owner_eligible:boolean;pending_media:number};
 type MediaReview={id:string;event_id:string;file_name:string;media_type:string};
 type RefundCase={id:string;event_title:string;buyer_email:string;status:string;refund_status:string;amount_ngn:number;refund_note?:string|null};
+type IssuedOrder={id:string;event_title:string;buyer_email:string;amount_ngn:number;payment_method:string;quantity:number;ticket_count:number;unused_count:number;admitted_count:number};
 type AuditEntry={id:string;action:string;created_at:string;performed_by:string;target_email?:string|null;details?:{reason?:string}|null};
 type Theme={id:string;name:string;label:string;color_a:string;color_b:string;accent:string};
 type EventMetrics={id:string;title:string;organiser_name:string;status:string;verification_status:string;tickets_issued:number;external_tickets_issued:number;checked_in:number;pending_orders:number;reserved_seats:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number;capacity:number};
@@ -52,6 +53,7 @@ export default function App(){
  const [loadWarnings,setLoadWarnings]=useState<string[]>([]);
  const [moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<MediaReview[]>([]);
  const [auditHistory,setAuditHistory]=useState<AuditEntry[]>([]),[refundCases,setRefundCases]=useState<RefundCase[]>([]);
+ const [issuedOrders,setIssuedOrders]=useState<IssuedOrder[]>([]),[issuedReasons,setIssuedReasons]=useState<Record<string,string>>({});
  const [eventMetrics,setEventMetrics]=useState<EventMetrics[]>([]),[eventQuery,setEventQuery]=useState('');
  const [themes,setThemes]=useState<Theme[]>([]),[themeName,setThemeName]=useState(''),[themeLabel,setThemeLabel]=useState(''),[themeA,setThemeA]=useState('#552AA8'),[themeB,setThemeB]=useState('#231A56'),[themeAccent,setThemeAccent]=useState('#FFFFFF');
  const [accountPage,setAccountPage]=useState(1),[accountCount,setAccountCount]=useState(0),[accountRole,setAccountRole]=useState('');
@@ -94,7 +96,7 @@ export default function App(){
   const overview=result(6);if(overview)setSummary(overview.stats||{});
   const moderation=result(7);if(moderation){setModerationEvents(moderation.events||[]);setModerationMedia(moderation.media||[])}
   const audit=result(8);if(audit)setAuditHistory(audit.history||[]);
-  const refunds=result(9);if(refunds)setRefundCases(refunds.orders||[]);
+  const refunds=result(9);if(refunds){setRefundCases(refunds.orders||[]);setIssuedOrders(refunds.issuedOrders||[])}
   const directory=result(10);if(directory)setEventMetrics(directory.events||[]);
   const themes=result(11);if(themes)setThemes(themes.themes||[]);
   setLoadWarnings(warnings);
@@ -181,11 +183,23 @@ export default function App(){
   setOwnerFixEvent('');setOwnerFixEmail('');setOwnerFixReason('');await load(token);
   Alert.alert('Ownership corrected','The listing returned to draft for a new review.');
  })}
+ async function cancelIssuedOrder(order:IssuedOrder){
+  const note=(issuedReasons[order.id]||'').trim();
+  if(note.length<15){setError('Enter a supervised cancellation reason of 15 or more characters.');return}
+  Alert.alert('Revoke all unused passes?','Revoke '+order.quantity+' passes for '+order.buyer_email+'? Entry will be denied immediately. Paid refunds need a separate verified settlement.',[
+   {text:'Keep tickets',style:'cancel'},{text:'Revoke tickets',style:'destructive',onPress:()=>void exec(async()=>{
+    const result=await api('refunds',token,'PATCH',{orderId:order.id,action:'cancel_issued',note});
+    const refreshed=await api('refunds',token);setIssuedOrders(refreshed.issuedOrders||[]);setRefundCases(refreshed.orders||[]);
+    setIssuedReasons(v=>({...v,[order.id]:''}));
+    Alert.alert('Tickets revoked',result.revoked+' admissions are now denied. '+(result.refund_status==='review_required'?'Refund review opened.':'No monetary refund required.'));
+   })}
+  ]);
+ }
  async function updateRefund(orderId:string,action:'review_required'|'initiated'|'settled'){await exec(async()=>{
   const note=(refundNotes[orderId]||'').trim();
   if(action==='settled'&&note.length<10)throw Error('Enter a verified settlement reference for this order (10+ characters).');
   await api('refunds',token,'PATCH',{orderId,action,note});
-  setRefundCases((await api('refunds',token)).orders||[]);setRefundNotes(previous=>({...previous,[orderId]:''}));
+  const updated=await api('refunds',token);setRefundCases(updated.orders||[]);setIssuedOrders(updated.issuedOrders||[]);setRefundNotes(previous=>({...previous,[orderId]:''}));
   Alert.alert('Refund case updated','The action has been recorded in the payment audit.');
  })}
  async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null);setMenuOpen(false);setSection('overview')}}
@@ -326,6 +340,21 @@ export default function App(){
  </View>)}
  </>}
  {section==='finance'&&<><Text style={s.title}>Payments, commissions & refunds</Text>
+  <View style={s.card}><Text style={s.title}>Issued tickets — supervised cancellation</Text>
+   <Text style={s.hint}>Only unused tickets can be revoked. Cancelling a paid order opens a separate audited refund review. Gate QR and backup code are denied after revocation.</Text>
+   {!issuedOrders.length&&<Text style={s.hint}>No approved orders available for cancellation review.</Text>}
+   {issuedOrders.map(order=><View style={s.card} key={order.id}>
+    <Text style={s.title}>{order.event_title}</Text>
+    <Text style={s.hint}>{order.buyer_email} · ₦{Number(order.amount_ngn).toLocaleString('en-NG')} · {order.payment_method}</Text>
+    <Text style={s.hint}>{order.unused_count}/{order.quantity} unused · {order.admitted_count} admitted</Text>
+    {order.ticket_count===order.quantity&&order.unused_count===order.quantity?<>
+     <TextInput style={[s.input,{minHeight:85}]} accessibilityLabel={'Cancellation reason for '+order.buyer_email}
+       placeholder="Document verified reason (15+ characters)" placeholderTextColor="#94a3b8" multiline maxLength={500}
+       value={issuedReasons[order.id]||''} onChangeText={v=>setIssuedReasons(p=>({...p,[order.id]:v}))}/>
+     {button('Revoke unused passes and open refund review',()=>cancelIssuedOrder(order))}
+    </>:<Text style={s.hint}>Cancellation blocked: a ticket is already admitted or no longer issued.</Text>}
+   </View>)}
+  </View>
  <AdminFinanceLedger token={token} apiBase={BASE}/>
  <Text style={s.title}>Refund cases</Text>
  <Text style={s.hint}>Verify settlement evidence before marking refunds completed.</Text>
