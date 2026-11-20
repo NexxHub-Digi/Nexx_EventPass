@@ -98,20 +98,6 @@ jobs:
           test -s "$MANIFEST"
           grep -q 'android:allowBackup="false"' "$MANIFEST"
           grep -q 'android:usesCleartextTraffic="false"' "$MANIFEST"
-          if [ "${{ matrix.app }}" = "gate" ]; then
-            grep -q 'android.permission.CAMERA' "$MANIFEST"
-          else
-            if grep -q 'android.permission.CAMERA' "$MANIFEST"; then
-              echo "Only Gate Operator may request the camera" >&2
-              exit 1
-            fi
-          fi
-          for PERM in READ_SMS READ_CONTACTS READ_CALL_LOG READ_PHONE_STATE ACCESS_FINE_LOCATION ACCESS_BACKGROUND_LOCATION REQUEST_INSTALL_PACKAGES SYSTEM_ALERT_WINDOW RECORD_AUDIO; do
-            if grep -q "android.permission.$PERM" "$MANIFEST"; then
-              echo "Unexpected sensitive permission in Android manifest: $PERM" >&2
-              exit 1
-            fi
-          done
       - name: Build self-contained release variant for internal testing
         working-directory: apps/${{ matrix.app }}/android
         run: |
@@ -130,6 +116,21 @@ jobs:
           test -x "$TOOL_DIR/aapt"
           test -x "$TOOL_DIR/zipalign"
           "$TOOL_DIR/aapt" dump badging "$APK" > /tmp/eventpass-badging.txt
+          "$TOOL_DIR/aapt" dump permissions "$APK" > /tmp/eventpass-permissions.txt
+          if [ "${{ matrix.app }}" = "gate" ]; then
+            grep -Eq "uses-permission.*name='android.permission.CAMERA'" /tmp/eventpass-permissions.txt
+          else
+            if grep -Eq "uses-permission.*name='android.permission.CAMERA'" /tmp/eventpass-permissions.txt; then
+              echo "Unexpected camera permission in release APK" >&2
+              exit 1
+            fi
+          fi
+          for PERM in READ_SMS READ_CONTACTS READ_CALL_LOG READ_PHONE_STATE ACCESS_FINE_LOCATION ACCESS_BACKGROUND_LOCATION REQUEST_INSTALL_PACKAGES SYSTEM_ALERT_WINDOW RECORD_AUDIO; do
+            if grep -Eq "uses-permission.*name='android.permission.$PERM'" /tmp/eventpass-permissions.txt; then
+              echo "Unexpected sensitive permission in APK: $PERM" >&2
+              exit 1
+            fi
+          done
           grep -q "targetSdkVersion:'36'" /tmp/eventpass-badging.txt
           ROLE="${{ matrix.app }}"
           if [ "$ROLE" = "platform-admin" ]; then ROLE="admin"; fi
