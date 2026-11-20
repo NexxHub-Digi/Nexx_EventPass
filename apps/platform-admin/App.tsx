@@ -1,8 +1,9 @@
 import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,Animated,Easing,Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
+import {AccessibilityInfo,Animated,Easing,Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image,useWindowDimensions,BackHandler} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import PlatformOverview from './PlatformOverview';
 import AdminFinanceLedger from './AdminFinanceLedger';
+import AdminSidebar,{type AdminPage} from './AdminSidebar';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
 WebBrowser.maybeCompleteAuthSession();
@@ -33,7 +34,10 @@ export default function App(){
   return ()=>{mounted=false;listener.remove()};
  },[]);
  const [booting,setBooting]=useState(true);
- const [section,setSection]=useState<'overview'|'organisers'|'accounts'|'events'|'analytics'|'finance'|'support'|'themes'|'audit'|'settings'|'more'>('overview');
+ const [section,setSection]=useState<AdminPage>('overview');
+ const [menuOpen,setMenuOpen]=useState(false),[showDesktopSidebar,setShowDesktopSidebar]=useState(true);
+ const {width:viewportWidth}=useWindowDimensions();
+ const desktopNavigation=viewportWidth>=900;
  const [token,setToken]=useState(''),[member,setMember]=useState<Member|null>(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[register,setRegister]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[orders,setOrders]=useState<Order[]>([]),[gates,setGates]=useState<Gate[]>([]),[eventId,setEventId]=useState('');
  const [applicants,setApplicants]=useState<Applicant[]>([]),[organiserEmail,setOrganiserEmail]=useState('');
@@ -84,7 +88,7 @@ export default function App(){
    if(!code)throw Error('Google did not return a valid sign-in code');
    const data=await api('auth/mobile','','POST',{code,client:PORTAL,codeVerifier:verifier});
    await SecureStore.setItemAsync('eventpass_token',data.token);
-   setToken(data.token);await load(data.token);
+   setToken(data.token);await load(data.token);setSection('overview');setMenuOpen(false);
  })}
  async function searchUsers(page=1,role=accountRole){await exec(async()=>{const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(role)+'&page='+page,token);setAccounts(r.accounts||[]);setAccountPage(r.page||page);setAccountCount(r.count||0)})}
  async function searchEvents(){await exec(async()=>{const data=await api('platform/event-directory?q='+encodeURIComponent(eventQuery),token);setEventMetrics(data.events||[])})}
@@ -147,7 +151,13 @@ export default function App(){
   setRefundCases((await api('refunds',token)).orders||[]);setRefundNotes(previous=>({...previous,[orderId]:''}));
   Alert.alert('Refund case updated','The action has been recorded in the payment audit.');
  })}
- async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null)}}
+ async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null);setMenuOpen(false);setSection('overview')}}
+ function navigateAdmin(page:AdminPage){setSection(page);setMenuOpen(false);scroll.current?.scrollTo({y:0,animated:false})}
+ useEffect(()=>{
+  if(!menuOpen)return;
+  const listener=BackHandler.addEventListener('hardwareBackPress',()=>{setMenuOpen(false);return true});
+  return ()=>listener.remove();
+ },[menuOpen]);
  const input=(hint:string,value:string,update:(x:string)=>void,secret=false)=><TextInput style={s.input} placeholder={hint} placeholderTextColor="#94a3b8" value={value} onChangeText={update} autoCapitalize="none" secureTextEntry={secret}/>;
  const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&(reduceMotion?s.pressedStill:s.pressed),busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
  const surfaceMotion=useRef(new Animated.Value(1)).current;
@@ -203,16 +213,7 @@ export default function App(){
  pendingRefunds={refundCases.filter(r=>r.refund_status!=='settled').length}
  pendingSupport={cases.filter(c=>['open','in_progress'].includes(c.status)).length}
  pendingBanks={bankAccounts.filter(b=>b.status==='pending').length}
- onNavigate={target=>setSection(target)} onRefresh={()=>void exec(async()=>load(token))} busy={busy}/>}
- {section==='more'&&<><Text style={s.title}>More tools</Text>
- {button('Users & access',()=>setSection('accounts'))}
- {button('Events & analytics',()=>setSection('analytics'),true)}
-  {button('Payments & refunds',()=>setSection('finance'),true)}
- {button('Audit logs',()=>setSection('audit'),true)}
- {button('Support cases',()=>setSection('support'),true)}
-  {button('Ticket themes',()=>setSection('themes'),true)}
- {button('Platform settings',()=>setSection('settings'),true)}
- </>}
+ onNavigate={navigateAdmin} onRefresh={()=>void exec(async()=>load(token))} busy={busy}/>}
  {section==='analytics'&&<><Text style={s.title}>Events & analytics</Text>
  <Text style={s.hint}>Confirmed revenue excludes pending orders and manually tracked offline sales.</Text>
  {input('Search event or organiser',eventQuery,setEventQuery)}
