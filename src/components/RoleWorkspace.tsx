@@ -160,7 +160,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    const reviews=loaded(3);if(reviews){setModerationEvents(reviews.events||[]);setModerationMedia(reviews.media||[])}
    const people=loaded(4);if(people){setAllUsers(people.accounts||[]);setUsersCount(people.count||0)}
    const support=loaded(5);if(support)setCases(support.cases||[]);
-   const configuration=loaded(6);if(configuration)setPlatformSettings(configuration.settings||{});
+   const configuration=loaded(6);if(configuration){setPlatformSettings(configuration.settings||{});setSettingValue(String((configuration.settings||{})[settingKey]||''))}
    const report=loaded(7);if(report)setEventReports(report.events||[]);
    const refunds=loaded(8);if(refunds)setRefundCases(refunds.orders||[]);
    const audit=loaded(9);if(audit)setAuditHistory(audit.history||[]);
@@ -305,7 +305,13 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    const x=await api('support/cases');setCases(x.cases||[]);setMessage('Support case '+status.replace('_',' ')+' and audit updated');
   });
  }
- async function saveSetting(){await run(async()=>{await api('platform/settings','PATCH',{key:settingKey,value:settingValue});setPlatformSettings({...platformSettings,[settingKey]:settingValue});setMessage('Platform setting saved')})}
+ async function saveSetting(){await run(async()=>{
+  const value=settingValue.trim();if(!value)throw Error('Enter a value for the selected platform setting.');
+  if(settingKey==='support_email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))throw Error('Enter a valid support email address.');
+  await api('platform/settings','PATCH',{key:settingKey,value});
+  const result=await api('platform/settings');setPlatformSettings(result.settings||{});
+  setSettingValue(String(result.settings?.[settingKey]||''));setMessage('Platform setting saved and reloaded from the server');
+ })}
  async function saveCapabilities(){await run(async()=>{
   await api('platform/organisers','POST',{action:'capabilities',userId:selectedOrganiser,canCreateEvents:canCreate,canInviteGates:canGates,canVerifyPayments:canPayments});
   const a=await api('platform/organisers');setOrganisers(a.organisers||[]);setMessage('Organiser permissions saved and audited');
@@ -549,7 +555,9 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    <label className="rw-field">Setting<select value={settingKey} onChange={e=>{setSettingKey(e.target.value);setSettingValue(platformSettings[e.target.value]||'')}}>
     <option value="support_email">Support contact email</option><option value="organiser_approval_policy">Organiser approval checklist</option>
     <option value="event_verification_policy">Event authenticity checklist</option><option value="help_text">Help text</option></select></label>
-   <label className="rw-field">Value<textarea rows={3} value={settingValue} onChange={e=>setSettingValue(e.target.value)}/></label>{btn('Save settings',()=>{void saveSetting()})}
+   <p className="ep-admin-current-value"><strong>Currently stored:</strong> {platformSettings[settingKey]||'Not configured yet'}</p>
+   <label className="rw-field">Value<textarea rows={4} maxLength={750} value={settingValue} onChange={e=>setSettingValue(e.target.value)} placeholder="Enter the actual policy or support contact information"/></label>
+   <div className="rw-actions">{btn('Save & verify settings',()=>{void saveSetting()})}{btn('Reload saved value',()=>{void run(async()=>{const data=await api('platform/settings');setPlatformSettings(data.settings||{});setSettingValue(String(data.settings?.[settingKey]||''));setMessage('Saved settings refreshed')})},true)}</div>
   </section>
   <section className="rw-panel" style={{display:adminTab==='organisers'?'':'none'}}><h2>Organiser directory and access control</h2><div className="rw-profile" style={{margin:'12px 0 20px'}}>
    <h3>Approve verified organiser onboarding</h3><p>Only a previously registered, Google-verified User can become an organiser. This action uses the administrator approval API and never creates default passwords.</p>
