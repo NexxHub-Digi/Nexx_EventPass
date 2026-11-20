@@ -34,10 +34,13 @@ test('events analytics source is the permission-protected directory, with accura
 });
 test('administrator native ticket theme publisher uses existing guarded API',()=>{
  assert.match(native,/api\('ticket-themes',token,'POST'/);
- assert.match(native,/Create ticket theme/);
- assert.match(native,/Available themes/);
+ assert.match(native,/Publish new theme/);
+ assert.match(native,/Save existing theme/);
+ assert.match(native,/Archive unused theme/);
+ assert.match(native,/Reactivate theme/);
+ assert.match(native,/All themes/);
  assert.match(native,/Publish new ticket theme\?/);
- assert.match(themes,/u.role!=='platform_admin'/);
+ assert.match(themes,/activeAdmin\(u\)/);
  assert.match(themes,/\!\[a,c,accent\]\.every\(hex\)/);
 });
 test('native account search has role filters and bounded previous\/next pagination',()=>{

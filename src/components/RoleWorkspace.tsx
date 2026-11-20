@@ -44,8 +44,9 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [me,setMe]=useState<Member|null>(null),[portals,setPortals]=useState<string[]>([]),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const [events,setEvents]=useState<Event[]>([]),[orders,setOrders]=useState<Order[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[gates,setGates]=useState<Gate[]>([]),[invites,setInvites]=useState<Invite[]>([]);
  const [search,setSearch]=useState(''),[filterCategory,setFilterCategory]=useState('All'),[sortBy,setSortBy]=useState('soonest');
- const [themeCatalog,setThemeCatalog]=useState<{id:string;name:string;label:string;gradient:string;accent:string}[]>(ticketThemes.map(t=>({...t})));
+ const [themeCatalog,setThemeCatalog]=useState<{id:string;name:string;label:string;gradient:string;accent:string;active?:boolean}[]>(ticketThemes.map(t=>({...t,active:true})));
  const [newThemeName,setNewThemeName]=useState(''),[newThemeLabel,setNewThemeLabel]=useState(''),[themeColorA,setThemeColorA]=useState('#3d2683'),[themeColorB,setThemeColorB]=useState('#12a59c'),[themeAccent,setThemeAccent]=useState('#ffffff');
+ const [editingThemeId,setEditingThemeId]=useState('');
  const [eventDescription,setEventDescription]=useState(''),[eventCategory,setEventCategory]=useState('Music'),[ticketTheme,setTicketTheme]=useState('aurora'),[admissionLabel,setAdmissionLabel]=useState('ADMIT ONE'),[posterTemplate,setPosterTemplate]=useState('none');
  const [eventMedia,setEventMedia]=useState<EventMedia[]>([]),[moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<EventMedia[]>([]);
  const [organisers,setOrganisers]=useState<Organiser[]>([]),[stats,setStats]=useState<Record<string,number>>({});
@@ -116,7 +117,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   if(!m.user)return;
   const adminIssues:string[]=[];
   if(role==='platform-admin'){
-   const common=await Promise.allSettled([api('events'),api('ticket-themes')]);
+   const common=await Promise.allSettled([api('events'),api('ticket-themes?includeInactive=true')]);
    if(common[0].status==='fulfilled')setEvents(common[0].value.events||[]);else adminIssues.push('Event catalogue unavailable');
    if(common[1].status==='fulfilled'){if(common[1].value.themes?.length)setThemeCatalog(common[1].value.themes)}
    else adminIssues.push('Ticket theme catalogue unavailable');
@@ -186,9 +187,20 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   const result=await api('events','POST',{title:eventTitle,venue,description:eventDescription,category:eventCategory,ticketTheme,admissionLabel,posterTemplate,visibility:eventVisibility,startsAt:date.toISOString(),capacity:Number(capacity),priceNgn:Number(ticketPrice),paymentAccountId:eventBankId,qrKeyword:keyword});
   setEventTitle('');setKeyword('');await fetchAll();setEventId(result.event.id);setMessage('Event created! Add promotional media and send your listing for Platform Admin verification.');
  })}
+ async function changeTicketTheme(action:'edit'|'archive'|'reactivate'){
+  const theme=themeCatalog.find(x=>x.id===editingThemeId);if(!theme)throw Error('Select a theme');
+  if(action==='archive'&&!window.confirm('Archive '+theme.name+'? Organisers will no longer be able to select it. Designs already in use must be preserved.'))return;
+  if(action==='edit'&&!window.confirm('Update unused theme '+theme.name+'? Existing ticket designs are protected against edits.'))return;
+  await run(async()=>{
+   await api('ticket-themes','PATCH',{action,id:theme.id,name:newThemeName,label:newThemeLabel,colorA:themeColorA,colorB:themeColorB,accent:themeAccent});
+   const catalog=await api('ticket-themes?includeInactive=true');setThemeCatalog(catalog.themes||[]);
+   setEditingThemeId('');setNewThemeName('');setNewThemeLabel('');
+   setMessage('Theme '+action+' saved and audited');
+  });
+ }
  async function addNewTicketTheme(){await run(async()=>{
   await api('ticket-themes','POST',{name:newThemeName,label:newThemeLabel,colorA:themeColorA,colorB:themeColorB,accent:themeAccent});
-  const r=await api('ticket-themes');setThemeCatalog(r.themes||[]);setNewThemeName('');setNewThemeLabel('');
+  const r=await api('ticket-themes?includeInactive=true');setThemeCatalog(r.themes||[]);setNewThemeName('');setNewThemeLabel('');setEditingThemeId('');
   setMessage('New ticket theme is available to organisers');
  })}
  async function saveEventDesign(){await run(async()=>{
@@ -626,16 +638,30 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
       {btn('Save organiser configuration',()=>{void configureOrganiser()})}
     </>:<p>This applicant is not approved. Approve before configuring the organiser profile.</p>}
    </div>)}
-  </section>  <section className="rw-panel rw-wide" style={{display:adminTab==='themes'?'':'none'}}><div className="eyebrow">TICKET DESIGN SERVICE</div><h2>Publish new ticket themes</h2>
-   <p>Approved designs appear in every organiser's theme selector without requiring an application update. Custom artwork remains available.</p>
+  </section>  <section className="rw-panel rw-wide" style={{display:adminTab==='themes'?'':'none'}}><div className="eyebrow">TICKET DESIGN SERVICE</div><h2>Ticket Theme Management</h2>
+  <p>Create, inspect, edit or archive catalogue themes with backend persistence. Historical issued passes and drafts are protected: themes already in use cannot be changed or archived.</p>
+  <div className="rw-actions">{btn('Create new theme',()=>{setEditingThemeId('');setNewThemeName('');setNewThemeLabel('');setThemeColorA('#3d2683');setThemeColorB('#12a59c');setThemeAccent('#ffffff')},true)}
+   {btn('Refresh catalogue',()=>{void run(async()=>{const r=await api('ticket-themes?includeInactive=true');setThemeCatalog(r.themes||[]);setMessage('Catalogue refreshed')})},true)}</div>
+  <div className="rw-theme-grid">{themeCatalog.map(t=><button type="button" key={t.id} className={'rw-theme-option '+(editingThemeId===t.id?'selected':'')} 
+   style={{background:t.gradient,opacity:t.active===false?.65:1,border:editingThemeId===t.id?'3px solid #d8b77b':undefined}}
+   aria-pressed={editingThemeId===t.id} onClick={()=>{setEditingThemeId(t.id);setNewThemeName(t.name);setNewThemeLabel(t.label);
+    const colors=String(t.gradient||'').match(/#[0-9a-fA-F]{6}/g)||[];
+    setThemeColorA(colors[0]||'#3d2683');setThemeColorB(colors[1]||'#12a59c');setThemeAccent(t.accent||'#ffffff')}}><strong>{t.name}</strong><small>{t.label} · {t.active===false?'Archived':'Active'}</small><small>View / edit</small></button>)}</div>
+  <div className="rw-profile"><h3>{editingThemeId?'Edit theme '+editingThemeId:'Create catalogue theme'}</h3>
    {input('Theme name',newThemeName,setNewThemeName)}{input('Theme label',newThemeLabel,setNewThemeLabel)}
    <div className="rw-media-inputs"><label className="rw-field">First colour<input type="color" value={themeColorA} onChange={e=>setThemeColorA(e.target.value)}/></label>
     <label className="rw-field">Second colour<input type="color" value={themeColorB} onChange={e=>setThemeColorB(e.target.value)}/></label>
     <label className="rw-field">Accent colour<input type="color" value={themeAccent} onChange={e=>setThemeAccent(e.target.value)}/></label></div>
-   <div className="rw-theme-grid">{themeCatalog.map(t=><div key={t.id} className="rw-theme-option" style={{background:t.gradient}}><strong>{t.name}</strong><small>{t.label}</small></div>)}</div>
-   {btn('Add theme to catalogue',()=>{void addNewTicketTheme()})}
-  </section>
-  <section className="rw-panel rw-wide" style={{display:adminTab==='audit'?'':'none'}}><div className="eyebrow">AUDIT TRAIL</div><h2>Recent administrator actions</h2>
+   <div className="rw-actions">
+    {editingThemeId?<>{themeCatalog.find(t=>t.id===editingThemeId)?.active===false?
+      btn('Reactivate archived theme',()=>{void changeTicketTheme('reactivate')}):
+      <>{btn('Save theme changes',()=>{void changeTicketTheme('edit')})}
+        {btn('Archive unused theme',()=>{void changeTicketTheme('archive')},true)}</>}</>:
+     btn('Publish new theme',()=>{void addNewTicketTheme()})}
+   </div>
+  </div>
+ </section>
+ <section className="rw-panel rw-wide" style={{display:adminTab==='audit'?'':'none'}}><div className="eyebrow">AUDIT TRAIL</div><h2>Recent administrator actions</h2>
     {auditHistory.map(h=><div key={h.id} className="rw-list-item"><div><b>{h.action.replaceAll('_',' ')}</b>
       <p>{h.performed_by} · {nice(h.created_at)}</p><small>{h.target_email||'Platform event or setting'} · {JSON.stringify(h.details||{})}</small></div></div>)}
     {!auditHistory.length&&<p>No administrator actions logged.</p>}
