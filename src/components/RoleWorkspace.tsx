@@ -54,7 +54,8 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [eventReports,setEventReports]=useState<EventReport[]>([]),[reportSearch,setReportSearch]=useState(''),[selectedReport,setSelectedReport]=useState(''),[auditHistory,setAuditHistory]=useState<AuditRecord[]>([]);
  const [refundCases,setRefundCases]=useState<RefundCase[]>([]),[refundNotes,setRefundNotes]=useState<Record<string,string>>({});
  const [allUsers,setAllUsers]=useState<AdminAccount[]>([]),[userSearch,setUserSearch]=useState(''),[userFilter,setUserFilter]=useState(''),[userPage,setUserPage]=useState(1),[usersCount,setUsersCount]=useState(0),[selectedUser,setSelectedUser]=useState(''),[userEditName,setUserEditName]=useState(''),[accountReason,setAccountReason]=useState('');
- const [cases,setCases]=useState<SupportCase[]>([]),[caseSubject,setCaseSubject]=useState(''),[caseDescription,setCaseDescription]=useState(''),[casePriority,setCasePriority]=useState('normal'),[caseResolution,setCaseResolution]=useState('');
+ const [cases,setCases]=useState<SupportCase[]>([]),[caseSubject,setCaseSubject]=useState(''),[caseDescription,setCaseDescription]=useState(''),[casePriority,setCasePriority]=useState('normal');
+ const [selectedSupportId,setSelectedSupportId]=useState(''),[supportDrafts,setSupportDrafts]=useState<Record<string,{resolution:string;priority:string}>>({});
  const [platformSettings,setPlatformSettings]=useState<Record<string,string>>({}),[settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
  const [bankName,setBankName]=useState(''),[accountName,setAccountName]=useState(''),[accountNumber,setAccountNumber]=useState('');
  const [bankAccounts,setBankAccounts]=useState<BankAccount[]>([]);
@@ -243,7 +244,16 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(userFilter)+'&page='+userPage);setAllUsers(r.accounts||[]);setUsersCount(r.count||0);setMessage('Account updated and audited')})}
  async function openSupportCase(){await run(async()=>{const r=await api('support/cases','POST',{subject:caseSubject,description:caseDescription,priority:casePriority});
   setCaseSubject('');setCaseDescription('');setMessage('Support request sent: '+r.case.id);const x=await api('support/cases');setCases(x.cases||[])})}
- async function updateCase(id:string,status:string,priority:string){await run(async()=>{await api('support/cases','PATCH',{id,status,priority,resolution:caseResolution});const x=await api('support/cases');setCases(x.cases||[]);setMessage('Support case updated')})}
+ function openSupportCaseEditor(c:SupportCase){setSelectedSupportId(current=>current===c.id?'':c.id);setSupportDrafts(p=>({...p,[c.id]:p[c.id]||{priority:c.priority,resolution:c.resolution||''}}))}
+ async function updateCase(c:SupportCase,status:'open'|'in_progress'|'resolved'|'closed'){
+  const draft=supportDrafts[c.id]||{priority:c.priority,resolution:c.resolution||''};
+  if(['resolved','closed'].includes(status)&&draft.resolution.trim().length<10){setMessage('Enter a case-specific resolution of at least 10 characters');return}
+  if(['resolved','closed'].includes(status)&&!window.confirm('Confirm '+status+' for '+c.subject+'? This action is recorded in the administrator audit.'))return;
+  await run(async()=>{
+   await api('support/cases','PATCH',{id:c.id,status,priority:draft.priority,resolution:draft.resolution.trim()});
+   const x=await api('support/cases');setCases(x.cases||[]);setMessage('Support case '+status.replace('_',' ')+' and audit updated');
+  });
+ }
  async function saveSetting(){await run(async()=>{await api('platform/settings','PATCH',{key:settingKey,value:settingValue});setPlatformSettings({...platformSettings,[settingKey]:settingValue});setMessage('Platform setting saved')})}
  async function saveCapabilities(){await run(async()=>{
   await api('platform/organisers','POST',{action:'capabilities',userId:selectedOrganiser,canCreateEvents:canCreate,canInviteGates:canGates,canVerifyPayments:canPayments});
@@ -414,12 +424,35 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     {input('Reason for deactivation',accountReason,setAccountReason)}{btn('Deactivate account',()=>{void changeUser('deactivate')},true)}
     </>}</div>)}
   </section>
-  <section className="rw-panel rw-wide" style={{display:adminTab==='support'?'':'none'}}><div className="eyebrow">ORGANISER SUCCESS</div><h2>Support cases and assistance</h2>
-   <p>Support cases are tenant-scoped. Review organiser problems, assign case status and record the resolution.</p>
-   {cases.map(c=><div className="rw-list-item" key={c.id}><div><b>{c.subject}</b><p>{c.organiser_name} · {c.status} · {c.priority}</p><small> {c.description}{c.payment_order_id&&<> · <a href={'/api/orders/receipt?orderId='+c.payment_order_id} target="_blank" rel="noreferrer">View payment evidence</a></>}</small>{c.resolution&&<p>Resolution: {c.resolution}</p>}</div>
-     <div className="rw-actions">{btn('Investigate',()=>{void updateCase(c.id,'in_progress',c.priority)},true)}{btn('Resolve',()=>{void updateCase(c.id,'resolved',c.priority)})}</div></div>)}
-   {!cases.length&&<p>No open support requests.</p>}
-   <label className="rw-field">Support resolution / guidance<textarea rows={3} value={caseResolution} onChange={e=>setCaseResolution(e.target.value)}/></label>
+  <section className="rw-panel rw-wide ep-admin-support" style={{display:adminTab==='support'?'':'none'}}><div className="eyebrow">SUPPORT OPERATIONS</div><h2>Support cases & resolutions</h2>
+   <p>Every decision is tied to an individual case, saved to PostgreSQL and audited. Open a case to inspect its details and update priority or status.</p>
+   <div className="rw-stats">
+    <div className="rw-stat"><b>{cases.filter(c=>['open','in_progress'].includes(c.status)).length}</b><small>Needs attention</small></div>
+    <div className="rw-stat"><b>{cases.filter(c=>c.priority==='urgent'&&c.status!=='closed'&&c.status!=='resolved').length}</b><small>Urgent</small></div>
+    <div className="rw-stat"><b>{cases.filter(c=>c.status==='resolved').length}</b><small>Resolved</small></div>
+   </div>
+   {btn('Refresh support cases',()=>{void run(async()=>{const r=await api('support/cases');setCases(r.cases||[]);setMessage('Support inbox refreshed')})},true)}
+   {cases.map(c=><div className="rw-list-item ep-admin-support-case" key={c.id}>
+    <div><b>{c.subject}</b><p>{c.organiser_name} · <strong>{c.status.replace('_',' ')}</strong> · {c.priority} priority</p>
+     <small>{c.description}</small>{c.payment_order_id&&<p><a href={'/api/orders/receipt?orderId='+c.payment_order_id} target="_blank" rel="noreferrer">Review linked payment evidence</a></p>}
+     {c.resolution&&<p>Latest resolution: {c.resolution}</p>}
+    </div>
+    {btn(selectedSupportId===c.id?'Close case details':'Open case / take action',()=>openSupportCaseEditor(c),true)}
+    {selectedSupportId===c.id&&<div className="rw-profile" style={{width:'100%'}}>
+     <h3>Case: {c.subject}</h3><p>Assigned status: {c.status} · Case reference: <code>{c.id}</code></p>
+     <label className="rw-field">Case priority<select aria-label={'Priority for '+c.subject} value={(supportDrafts[c.id]||{priority:c.priority}).priority} onChange={e=>setSupportDrafts(p=>({...p,[c.id]:{priority:e.target.value,resolution:p[c.id]?.resolution||c.resolution||''}}))}>
+      {['low','normal','high','urgent'].map(level=><option key={level} value={level}>{level}</option>)}</select></label>
+     <label className="rw-field">Resolution / guidance for this case<textarea rows={4} minLength={10} maxLength={1500} value={(supportDrafts[c.id]||{resolution:c.resolution||''}).resolution} onChange={e=>setSupportDrafts(p=>({...p,[c.id]:{priority:p[c.id]?.priority||c.priority,resolution:e.target.value}}))} placeholder="Record actions taken, the outcome and any next steps"/></label>
+     <div className="rw-actions">
+      {c.status!=='in_progress'&&c.status!=='closed'&&btn('Start investigation',()=>{void updateCase(c,'in_progress')},true)}
+      {c.status!=='resolved'&&c.status!=='closed'&&btn('Resolve case',()=>{void updateCase(c,'resolved')})}
+      {c.status==='resolved'&&btn('Close resolved case',()=>{void updateCase(c,'closed')},true)}
+      {['resolved','closed'].includes(c.status)&&btn('Reopen case',()=>{void updateCase(c,'open')},true)}
+      {btn('Save priority / notes',()=>{void updateCase(c,c.status as 'open'|'in_progress'|'resolved'|'closed')},true)}
+     </div>
+    </div>}
+   </div>)}
+   {!cases.length&&<p>No support requests are currently recorded.</p>}
   </section>
   <section className="rw-panel rw-wide" style={{display:adminTab==='settings'?'':'none'}}><div className="eyebrow">PLATFORM CONFIGURATION</div><h2>Operational settings</h2>
    <p>Set organiser onboarding policy, event authenticity checks, support email, and help instructions. API credentials are managed in hosting environment variables.</p>
