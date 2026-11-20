@@ -33,7 +33,7 @@ export async function reconcilePaystackReference(reference:string):Promise<Recon
   }
   const valid=order.status==='pending'&&order.payment_method==='paystack'&&
    new Date(order.reservation_expires_at).getTime()>Date.now()&&
-   new Date(event.starts_at).getTime()>Date.now()&&
+   new Date(event.starts_at).getTime()+4*60*60*1000>Date.now()&&
    event.status==='published'&&event.verification_status==='verified'&&
    event.owner_role==='organiser'&&event.owner_status==='active'&&
    payment.order_id===order.id&&payment.buyer_id===order.buyer_id&&
