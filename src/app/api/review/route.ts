@@ -2,6 +2,7 @@ import { currentUser } from '@/lib/security';
 import { db } from '@/lib/db';
 import { issueTicketCredential } from '@/lib/ticket-credentials';
 import {registerEntryCode} from '@/lib/ticket-entry-code';
+import {makeIssuedDesignSnapshot} from '@/lib/ticket-design-snapshot';
 import { fail, handleError, ok, payload, str } from '@/lib/http';
 export const runtime='nodejs';
 export async function POST(req: Request) {
@@ -49,6 +50,10 @@ export async function POST(req: Request) {
         const design=await tx`select ticket_theme,admission_label,qr_keyword_ciphertext,
           (select m.id from event_media m where m.event_id=e.id and m.media_type='ticket_art' and m.approved order by m.created_at asc limit 1) as ticket_art_id
           from events e where e.id=${order.event_id}`;
+        const [savedDesign]=await tx`select version,theme_id,mode,fields,enabled from event_ticket_design_versions
+          where event_id=${order.event_id} order by version desc limit 1`;
+        const snapshot=makeIssuedDesignSnapshot(savedDesign||null,order.ticket_category_id||null);
+        const issuedTheme=snapshot?.theme||design[0].ticket_theme;
         // Existing legacy events use signed EVP1 tickets; new configured events use encrypted EVP2.
         // Never mark a payment approved without issuing every ticket inside this same transaction.
         for(let i=0;i<Number(order.quantity);i++){
@@ -57,8 +62,8 @@ export async function POST(req: Request) {
           const ticket=await tx`insert into tickets(id,event_id,order_id,owner_id,qr_credential)
            values(${ticketId},${order.event_id},${id},${order.buyer_id},${credential}) returning id,event_id,status,created_at`;
           await registerEntryCode(tx,order.event_id,ticketId,'online');
-          await tx`insert into ticket_deliveries(ticket_id,order_id,recipient_id,event_id,ticket_theme,ticket_art_id,admission_label)
-           values(${ticket[0].id},${id},${order.buyer_id},${order.event_id},${design[0].ticket_theme},${design[0].ticket_art_id},${design[0].admission_label})`;
+          await tx`insert into ticket_deliveries(ticket_id,order_id,recipient_id,event_id,ticket_theme,ticket_art_id,admission_label,design_version,design_snapshot)
+           values(${ticket[0].id},${id},${order.buyer_id},${order.event_id},${issuedTheme},${design[0].ticket_art_id},${design[0].admission_label},${snapshot?.version||null},${snapshot?tx.json(snapshot):null})`;
           issued.push({id:ticket[0].id});
         }
       }
