@@ -1,7 +1,7 @@
 import React from 'react';
 import {Pressable,Text,View,StyleSheet,useWindowDimensions} from 'react-native';
 type Section='organisers'|'accounts'|'events'|'analytics'|'finance'|'support'|'themes'|'audit'|'settings';
-type Props={fullName:string;summary:Record<string,number>;pendingOrganisers:number;pendingEvents:number;pendingRefunds:number;onNavigate:(section:Section)=>void;onRefresh:()=>void;busy:boolean};
+type Props={fullName:string;summary:Record<string,number>;pendingOrganisers:number;pendingEvents:number;pendingRefunds:number;pendingSupport:number;pendingBanks:number;onNavigate:(section:Section)=>void;onRefresh:()=>void;busy:boolean};
 const actions:[Section,string,string,string][]=[
  ['organisers','Organisers','Review applications and permissions','◎'],
  ['events','Event moderation','Verify listings and submitted media','◈'],
@@ -21,7 +21,7 @@ const financialMetricLabels:Record<string,string>={
 };
 function displayName(key:string){return financialMetricLabels[key]||key.replace(/_/g,' ').replace(/\b\w/g,letter=>letter.toUpperCase())}
 function formatMetric(key:string,value:number){return key.endsWith('_ngn')?'₦'+Number(value).toLocaleString('en-NG'):Number(value).toLocaleString('en-NG')}
-export default function PlatformOverview({fullName,summary,pendingOrganisers,pendingEvents,pendingRefunds,onNavigate,onRefresh,busy}:Props){
+export default function PlatformOverview({fullName,summary,pendingOrganisers,pendingEvents,pendingRefunds,pendingSupport,pendingBanks,onNavigate,onRefresh,busy}:Props){
  const {width}=useWindowDimensions();
  const columns=width<380?2:width<780?2:3;
  const statEntries=Object.entries(summary).sort(([a],[b])=>{
@@ -40,7 +40,7 @@ export default function PlatformOverview({fullName,summary,pendingOrganisers,pen
   </View>
   <Text style={styles.sectionTitle}>Operations requiring attention</Text>
   <View style={styles.alerts}>
-   {([['Pending organiser reviews',pendingOrganisers,'organisers'],['Events needing review',pendingEvents,'events'],['Payment exceptions',pendingRefunds,'finance']] as const).map(([title,count,target])=>
+   {([['Pending organiser reviews',pendingOrganisers,'organisers'],['Events needing review',pendingEvents,'events'],['Payment exceptions',pendingRefunds,'finance'],['Support needing action',pendingSupport,'support'],['Bank verification requests',pendingBanks,'organisers']] as const).map(([title,count,target])=>
     <Pressable key={target} accessibilityRole="button" accessibilityLabel={title+', '+count+', open '+target} style={styles.alertRow} onPress={()=>onNavigate(target)}>
      <View style={styles.alertLeft}><Text style={styles.alertCount}>{count}</Text><Text style={styles.alertLabel}>{title}</Text></View>
      <Text style={styles.chevron}>›</Text>
