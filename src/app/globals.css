@@ -394,3 +394,11 @@
 }
 @media(max-width:370px){.ep-admin-header-status{display:none}}
 @media(prefers-reduced-motion:reduce){.ep-admin-shell .ep-admin-sidebar,.ep-organiser-workspace .ep-organiser-sidebar{transition:none}}
+
+/* Operational load failure is visible instead of silently showing zero data */
+.ep-admin-shell .ep-admin-load-warning{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;padding:17px 19px;
+ border:1px solid #bd9b62;background:#41331e;border-radius:14px;color:#fff2d5}
+.ep-admin-shell .ep-admin-load-warning strong{font-size:14px}
+.ep-admin-shell .ep-admin-load-warning p{font-size:12px;color:#ffe6b5;margin:7px 0}
+.ep-admin-shell .ep-admin-load-warning small{color:#e2cb9c}
+.ep-admin-shell .ep-admin-load-warning button{flex-shrink:0;min-height:44px;background:#453b2b;border-color:#cab17a}
