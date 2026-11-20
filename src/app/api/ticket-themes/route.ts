@@ -28,7 +28,7 @@ export async function POST(req:Request){
     values(${slug+'-'+crypto.randomUUID().slice(0,5)},${name},${label},${a},${c},${accent},${u!.id})
     returning id,name,label,color_a,color_b,accent,active`;
    await tx`insert into platform_admin_actions(admin_id,action,details)
-    values(${u!.id},'ticket_theme_created',${JSON.stringify({themeId:row.id,name})}::jsonb)`;
+    values(${u!.id},'ticket_theme_created',${tx.json({themeId:row.id,name})})`;
    return row;
   });
   return ok({theme:format(created)},201);
@@ -63,7 +63,7 @@ export async function PATCH(req:Request){
      returning id,name,label,color_a,color_b,accent,active`;
    await tx`insert into platform_admin_actions(admin_id,action,details)
     values(${u!.id},${'ticket_theme_'+action},
-      ${JSON.stringify({themeId:id,action,previous:{name:previous.name,label:previous.label,colors:[previous.color_a,previous.color_b,previous.accent],active:previous.active},next:action==='edit'?{name,label,colors:[a,c,accent]}:{active:row.active}})}::jsonb)`;
+      ${tx.json({themeId:id,action,previous:{name:previous.name,label:previous.label,colors:[previous.color_a,previous.color_b,previous.accent],active:previous.active},next:action==='edit'?{name,label,colors:[a,c,accent]}:{active:row.active}})})`;
    return {theme:format(row)};
   });
   return 'error' in result?fail(String(result.error),Number(result.status)):ok(result);
