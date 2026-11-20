@@ -104,9 +104,22 @@ async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');
    const verifier=Array.from(Crypto.getRandomBytes(32)).map(b=>b.toString(16).padStart(2,'0')).join('');
    const challenge=await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256,verifier);
    const result=await WebBrowser.openAuthSessionAsync(BASE+'/api/auth/google?portal='+encodeURIComponent(PORTAL)+'&client=native&challenge='+challenge,redirect);
-   if(result.type!=='success')throw Error('Google sign-in was cancelled');
-   const code=new URL(result.url).searchParams.get('code');
-   if(!code)throw Error('Google did not return a valid sign-in code');
+   if(result.type==='cancel')throw Error('Google sign-in was cancelled');
+   if(result.type!=='success')throw Error('Google did not return to the Gate Operator app ('+result.type+'). Confirm that Android opens eventpassgate://oauth.');
+   const returned=new URL(result.url);
+   const authError=returned.searchParams.get('error');
+   if(authError){
+    const reasons:Record<string,string>={
+     gate_invitation_required:'Your Google account is not assigned to an active, verified event gate.',
+     google_exchange_failed:'Google token exchange failed. Check the Gate OAuth credentials.',
+     invalid_oauth_state:'Google session expired or the browser lost its login state.',
+     link_existing_account_first:'This Google identity must be linked to the existing EventPass account.',
+     account_inactive:'The Gate account is inactive.'
+    };
+    throw Error((reasons[authError]||'Gate Google authentication failed')+' ('+authError+')');
+   }
+   const code=returned.searchParams.get('code');
+   if(!code)throw Error('Google returned to the app without an authentication code');
    const data=await api('auth/mobile','','POST',{code,client:PORTAL,codeVerifier:verifier});
    await SecureStore.setItemAsync('eventpass_token',data.token);
    setToken(data.token);await load(data.token);
@@ -155,6 +168,7 @@ async function openCamera(){if(!eventId||scanLock.current)return;setTab('scan');
    <Text style={s.welcomeText}>Select an assigned event, scan a ticket and see the admission decision.</Text>
    {button('Continue with Google',()=>{void login()})}
    <Text style={s.hint}>Sign in with the Google account invited by your organiser.</Text>
+   <Text selectable style={[s.hint,{fontSize:11,opacity:0.7}]}>Auth server: {BASE.replace('https://','')} · {process.env.EXPO_PUBLIC_RELEASE_CHANNEL||'unspecified'} build</Text>
   </View>:<>
  {tab==='home'&&<><Text style={s.eyebrow}>OPERATOR WORKSPACE</Text><Text style={s.heroTitle}>Hello, {member.full_name?.split(' ')[0]||'Operator'} 👋</Text><Text style={s.hint}>Select your assigned event to begin secure admissions.</Text>
  <View style={s.metrics}><View style={s.metric}><Text style={s.metricValue}>{counts.approved}</Text><Text style={s.hint}>Approved scans</Text></View><View style={s.metric}><Text style={s.metricValue}>{counts.denied}</Text><Text style={s.hint}>Denied scans</Text></View></View>

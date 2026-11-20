@@ -15,7 +15,8 @@ Each portal uses a **Google Web application OAuth client**:
 
 Each client must register the exact same callback on every intended deployed origin:
 - Vercel production: `https://nexx-eventpass.vercel.app/api/auth/google/callback` **only if that hostname is actually attached/serving the project**.
-- Vercel team alias: `https://nexx-eventpass-nexxs-projects-903f5c1d.vercel.app/api/auth/google/callback` **if this is the actual active domain**.
+- Production Vercel team/deployment aliases are routed to the canonical production host **before OAuth state is created**; they do not need separate Google callbacks after the routing change is deployed.
+- Isolated staging: `https://nexx-eventpass-git-staging-nexxs-projects-903f5c1d.vercel.app/api/auth/google/callback` for the Expo preview APK. Register this on the actual Gate **Web application** OAuth client, not an Android client.
 - Netlify: `https://YOUR-ASSIGNED-SITE.netlify.app/api/auth/google/callback` — replace only after connecting the site.
 
 Google Cloud Console → Google Auth Platform → Clients:

@@ -6,19 +6,26 @@ import { currentUser, issueSession } from '@/lib/security';
 import { callbackUrl, oauthCredentials, portalDestination, readState, verifyGoogleIdToken, type OAuthPortal } from '@/lib/google-oauth';
 export const runtime='nodejs';
 const compare=(a:string,b:string)=>{const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length && timingSafeEqual(x,y)};
-function back(origin:string,portal:OAuthPortal,code:string){
+const nativeSchemes:Record<OAuthPortal,string>={user:'eventpassuser',organiser:'eventpassorganiser',gate:'eventpassgate',platform_admin:'eventpassplatformadmin'};
+function back(origin:string,portal:OAuthPortal,code:string,native=false){
+ if(native){
+  const u=new URL(nativeSchemes[portal]+'://oauth');
+  u.searchParams.set('error',code);
+  return NextResponse.redirect(u);
+ }
  const path=portal==='platform_admin'?'platform-admin':portal;
  const u=new URL('/login/'+path,origin);u.searchParams.set('oauth_error',code);return NextResponse.redirect(u);
 }
 export async function GET(req:NextRequest){
  let portal:OAuthPortal='user';
+ let nativeFlow=false;
  // Redirect on the callback host itself. Environment site URLs may point to an older deployment.
  const origin=req.nextUrl.origin;
  const stateCookie=req.cookies.get('eventpass_google_state')?.value;
  let response:NextResponse;
  try {
   if(!stateCookie) throw new Error('state_missing');
-  const st=await readState(stateCookie);portal=st.portal;
+  const st=await readState(stateCookie);portal=st.portal;nativeFlow=st.native===true;
   const code=req.nextUrl.searchParams.get('code'),state=req.nextUrl.searchParams.get('state');
   if(req.nextUrl.searchParams.has('error')) throw new Error('google_cancelled');
   if(!code||!state||!compare(state,st.state)) throw new Error('invalid_oauth_state');
@@ -113,14 +120,13 @@ export async function GET(req:NextRequest){
 
   const session=await issueSession(user.id);
   if(st.native===true){
-   const schemes:Record<OAuthPortal,string>={user:'eventpassuser',organiser:'eventpassorganiser',gate:'eventpassgate',platform_admin:'eventpassplatformadmin'};
    const nativeChallenge=st.nativeChallenge;
    if(!nativeChallenge||!/^[a-f0-9]{64}$/.test(nativeChallenge))throw new Error('invalid_native_challenge');
    const exchangeCode=randomBytes(32).toString('base64url');
    const hashed=createHash('sha256').update(exchangeCode).digest('hex');
    await db()`insert into mobile_auth_codes(code_hash,user_id,client,expires_at,code_challenge)
      values(${hashed},${user.id},${portal},now()+interval '2 minutes',${nativeChallenge})`;
-   const deeplink=new URL(schemes[portal]+'://oauth');
+   const deeplink=new URL(nativeSchemes[portal]+'://oauth');
    deeplink.searchParams.set('code',exchangeCode);
    response=NextResponse.redirect(deeplink);
    response.cookies.delete('eventpass_google_state');
@@ -140,7 +146,9 @@ export async function GET(req:NextRequest){
   'google_exchange_failed','google_id_token_missing','link_session_expired','link_email_mismatch',
   'google_account_already_linked','link_existing_account_first','privileged_account_required',
   'account_not_found','organiser_access_required','admin_access_required','gate_assignment_required','gate_invitation_required'];
-  response=back(origin,portal,allowed.includes(reason)?reason:'google_sign_in_failed');
+  const safeReason=allowed.includes(reason)?reason:'google_sign_in_failed';
+  console.warn('EventPass OAuth callback rejected', {portal,native:nativeFlow,reason:safeReason});
+  response=back(origin,portal,safeReason,nativeFlow);
  }
  response.cookies.delete('eventpass_google_state');
  return response;

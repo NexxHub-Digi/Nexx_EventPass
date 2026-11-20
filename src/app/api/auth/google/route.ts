@@ -3,6 +3,22 @@ import { currentUser } from '@/lib/security';
 import { callbackUrl, challenge, isPortal, oauthCredentials, randomValue, sealState } from '@/lib/google-oauth';
 export const runtime='nodejs';
 export async function GET(req:NextRequest) {
+ // Production must never start OAuth on an unregistered Vercel team/deployment alias.
+ // Redirect before minting state so the OAuth cookie and HTTPS callback share a host.
+ // Preview uses its own staging host and isolated database; do not canonicalize it.
+ if (process.env.VERCEL_ENV === 'production') {
+  const configured=process.env.NEXT_PUBLIC_SITE_URL || 'https://nexx-eventpass.vercel.app';
+  let canonical:URL;
+  try { canonical=new URL(configured); }
+  catch { return NextResponse.json({error:'Canonical OAuth origin is not configured'},{status:503}); }
+  if(canonical.protocol!=='https:' || canonical.username || canonical.password || canonical.pathname!=='/' || canonical.search || canonical.hash)
+   return NextResponse.json({error:'Canonical OAuth origin must be a bare HTTPS origin'},{status:503});
+  if(req.nextUrl.origin!==canonical.origin){
+   const target=new URL('/api/auth/google',canonical);
+   target.search=req.nextUrl.search;
+   return NextResponse.redirect(target,{status:307});
+  }
+ }
  const portal=req.nextUrl.searchParams.get('portal')||'user';
  const intent=req.nextUrl.searchParams.get('intent')==='link'?'link':'signin';
  if(!isPortal(portal)) return NextResponse.json({error:'Invalid portal'},{status:400});
