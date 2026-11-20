@@ -99,6 +99,24 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/ticket-themes',wrong.cookie,{name:'Unauthorized Glow',label:'No',colorA:'#123456',colorB:'#456789',accent:'#ffffff'}),403,'only Admin may publish ticket themes');
   const dynamicTheme=expect(await post('/api/ticket-themes',adminCookie,{name:'E2E Ocean Glow',label:'Concert',colorA:'#1450aa',colorB:'#00baa1',accent:'#ffffff'}),201,'Admin adds ticket theme').theme;
   assert.ok(expect(await req('/api/ticket-themes'),200,'public ticket theme catalogue').themes.some(t=>t.id===dynamicTheme.id));
+
+  const themeAdmin='/api/ticket-themes?includeInactive=true';
+  expect(await req(themeAdmin,{cookie:wrong.cookie}),403,'public cannot inspect archived themes');
+  const themeForEdit=expect(await post('/api/ticket-themes',adminCookie,{name:'E2E Editable Theme',label:'Initial',colorA:'#224466',colorB:'#446688',accent:'#eeeeee'}),201,'create editable catalog theme').theme;
+  expect(await req('/api/ticket-themes',{cookie:wrong.cookie,method:'PATCH',body:{id:themeForEdit.id,action:'archive'}}),403,'non-admin cannot archive theme');
+  const themeEdit={id:themeForEdit.id,action:'edit',name:'E2E Edited Theme',label:'Updated',colorA:'#125599',colorB:'#227799',accent:'#ffffff'};
+  expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:{...themeEdit,colorA:'invalid'}}),400,'invalid HEX is denied');
+  const editedTheme=expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:themeEdit}),200,'edit unused theme').theme;
+  assert.equal(editedTheme.name,'E2E Edited Theme');
+  expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:{id:themeForEdit.id,action:'archive'}}),200,'archive unused theme');
+  assert.ok(!expect(await req('/api/ticket-themes'),200,'public catalogue after archive').themes.some(t=>t.id===themeForEdit.id));
+  assert.ok(expect(await req(themeAdmin,{cookie:adminCookie}),200,'admin sees archived theme').themes.some(t=>t.id===themeForEdit.id&&t.active===false));
+  expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:themeEdit}),409,'archived themes cannot be edited');
+  expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:{id:themeForEdit.id,action:'reactivate'}}),200,'reactivate theme');
+  assert.ok(expect(await req('/api/ticket-themes'),200,'reactivated theme in public catalogue').themes.some(t=>t.id===themeForEdit.id));
+  const [themeAudit]=await sql`select action from platform_admin_actions where action='ticket_theme_archive' and details->>'themeId'=${themeForEdit.id}`;
+  assert.equal(themeAudit.action,'ticket_theme_archive');
+
   const masks=expect(await req('/api/ticket-themes'),200,'masquerade templates included').themes.filter(t=>t.id.startsWith('stj-'));
   assert.equal(masks.length,5,'all five masquerade layout templates appear in Organiser theme catalogue');
   for(const [portal,key] of [['user','GOOGLE_USER'],['organiser','GOOGLE_ORGANISER'],['gate','GOOGLE_GATE'],['platform_admin','GOOGLE_PLATFORM']]){
@@ -335,6 +353,8 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(recordedHistory.scans.length&&recordedHistory.scans.every(scan=>scan.created_at));
   assert.equal(Number(history.stats.admitted),1);assert.equal(Number(history.stats.duplicates),2,'QR and manual attempts are both audited as duplicates');
   const otherEvent=expect(await post('/api/events',org.cookie,{title:'E2E Other Event',venue:'E2E Other Venue',startsAt:date,capacity:3,priceNgn:0,qrKeyword:'other-private-keyword',ticketTheme:dynamicTheme.id}),201,'second event').event;
+  expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:{id:dynamicTheme.id,action:'archive'}}),409,'event-linked theme cannot be archived or mutate historical tickets');
+  expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:{...themeEdit,id:dynamicTheme.id}}),409,'event-linked theme cannot be edited');
   expect(await post('/api/platform/events',adminCookie,{eventId:otherEvent.id,action:'verify'}),200,'verify second event');
   expect(await post('/api/gates',org.cookie,{eventId:otherEvent.id,email:wrong.email,gateLabel:'Other Gate',mode:'add'}),409,'unverified direct addition rejected');
   expect(await post('/api/gates',org.cookie,{eventId:otherEvent.id,email:operator.email,gateLabel:'Other Gate',mode:'add'}),200,'existing verified operator added');
