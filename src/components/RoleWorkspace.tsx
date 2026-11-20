@@ -26,6 +26,7 @@ type AdminAccount={id:string;email:string;full_name:string;role:string;account_s
 type SupportCase={payment_order_id?:string|null;id:string;organiser_id:string;organiser_name:string;subject:string;description:string;status:string;priority:string;resolution:string};
 type EventReport={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;status:string;verification_status:string;capacity:number;tickets_issued:number;external_tickets_issued:number;reserved_seats:number;pending_orders:number;checked_in:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number};
 type RefundCase={id:string;event_id:string;event_title:string;buyer_email:string;organiser_name:string;amount_ngn:number;status:string;refund_status:string;refund_note:string;reservation_expires_at:string};
+type IssuedOrder={id:string;event_id:string;event_title:string;buyer_email:string;amount_ngn:number;payment_method:string;quantity:number;ticket_count:number;unused_count:number;admitted_count:number};
 type AuditRecord={id:string;action:string;performed_by:string;target_email?:string;created_at:string;details:Record<string,unknown>};
 type ModerationEvent={id:string;organiser_id:string;owner_eligible:boolean;title:string;venue:string;starts_at:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;pending_media:number};
 const roles={user:'User',organiser:'Event Organiser',gate:'Gate Operator','platform-admin':'Platform Administrator'} as const;
@@ -53,6 +54,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [canCreate,setCanCreate]=useState(true),[canGates,setCanGates]=useState(true),[canPayments,setCanPayments]=useState(true);
  const [eventReports,setEventReports]=useState<EventReport[]>([]),[reportSearch,setReportSearch]=useState(''),[selectedReport,setSelectedReport]=useState(''),[auditHistory,setAuditHistory]=useState<AuditRecord[]>([]);
  const [refundCases,setRefundCases]=useState<RefundCase[]>([]),[refundNotes,setRefundNotes]=useState<Record<string,string>>({});
+ const [issuedOrders,setIssuedOrders]=useState<IssuedOrder[]>([]),[issuedCancelReasons,setIssuedCancelReasons]=useState<Record<string,string>>({});
  const [allUsers,setAllUsers]=useState<AdminAccount[]>([]),[userSearch,setUserSearch]=useState(''),[userFilter,setUserFilter]=useState(''),[userPage,setUserPage]=useState(1),[usersCount,setUsersCount]=useState(0),[selectedUser,setSelectedUser]=useState(''),[userEditName,setUserEditName]=useState(''),[accountReason,setAccountReason]=useState('');
  const [cases,setCases]=useState<SupportCase[]>([]),[caseSubject,setCaseSubject]=useState(''),[caseDescription,setCaseDescription]=useState(''),[casePriority,setCasePriority]=useState('normal');
  const [selectedSupportId,setSelectedSupportId]=useState(''),[supportDrafts,setSupportDrafts]=useState<Record<string,{resolution:string;priority:string}>>({});
@@ -162,7 +164,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    const support=loaded(5);if(support)setCases(support.cases||[]);
    const configuration=loaded(6);if(configuration){setPlatformSettings(configuration.settings||{});setSettingValue(String((configuration.settings||{})[settingKey]||''))}
    const report=loaded(7);if(report)setEventReports(report.events||[]);
-   const refunds=loaded(8);if(refunds)setRefundCases(refunds.orders||[]);
+   const refunds=loaded(8);if(refunds){setRefundCases(refunds.orders||[]);setIssuedOrders(refunds.issuedOrders||[])}
    const audit=loaded(9);if(audit)setAuditHistory(audit.history||[]);
    setAdminLoadIssues(adminIssues);
 
@@ -317,10 +319,21 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   const a=await api('platform/organisers');setOrganisers(a.organisers||[]);setMessage('Organiser permissions saved and audited');
  })}
  async function refreshReports(){await run(async()=>{const r=await api('platform/event-directory?q='+encodeURIComponent(reportSearch));setEventReports(r.events||[]);setMessage('Reports updated')})}
+ async function cancelIssuedOrder(order:IssuedOrder){
+  const reason=(issuedCancelReasons[order.id]||'').trim();
+  if(reason.length<15){setMessage('Document a cancellation reason of at least 15 characters for '+order.buyer_email);return}
+  if(!window.confirm('Revoke '+order.quantity+' unused tickets for '+order.buyer_email+'? This stops their QR/backup-code admission. Financial refunds remain separately supervised.'))return;
+  await run(async()=>{
+   const result=await api('refunds','PATCH',{orderId:order.id,action:'cancel_issued',note:reason});
+   const all=await api('refunds');setRefundCases(all.orders||[]);setIssuedOrders(all.issuedOrders||[]);
+   setIssuedCancelReasons(p=>({...p,[order.id]:''}));
+   setMessage('Revoked '+result.revoked+' unused tickets. '+(result.refund_status==='review_required'?'Payment refund review is now open.':'No refund required.'));
+  });
+ }
  async function updateRefund(orderId:string,action:'review_required'|'initiated'|'settled'){await run(async()=>{
   const note=(refundNotes[orderId]||'').trim();
   if(action==='settled'&&note.length<10)throw Error('Enter settlement evidence for this specific order (minimum 10 characters).');
-  await api('refunds','PATCH',{orderId,action,note});const r=await api('refunds');setRefundCases(r.orders||[]);
+  await api('refunds','PATCH',{orderId,action,note});const r=await api('refunds');setRefundCases(r.orders||[]);setIssuedOrders(r.issuedOrders||[]);
   setRefundNotes(p=>({...p,[orderId]:''}));setMessage('Refund status updated in the payment audit.');
  })}
  function stopScan(){
@@ -488,7 +501,22 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
       </form>}
     </div>)}
   </section><FinanceLedger admin/></>}
-  <section className="rw-panel rw-wide" style={{display:adminTab==='refunds'?'':'none'}}><div className="eyebrow">PAYMENT EXCEPTIONS</div><h2>Refund and reconciliation desk</h2>
+  <section className="rw-panel rw-wide" style={{display:adminTab==='refunds'?'':'none'}}><div className="eyebrow">SUPERVISED TICKET CANCELLATION</div><h2>Issued orders & admission revocation</h2>
+    <p>Only Platform Administrator can cancel an approved order. Every ticket must be unused. A cancellation immediately blocks all QR and backup-code admissions; any paid refund is a separate audited settlement workflow.</p>
+    {issuedOrders.map(order=><div className="rw-list-item" key={order.id}>
+     <div><strong>{order.event_title} · {money(order.amount_ngn)}</strong><p>{order.buyer_email} · {order.payment_method} · {order.quantity} tickets</p>
+      <small>{order.unused_count} unused · {order.admitted_count} admitted · {order.ticket_count} issued</small></div>
+     {order.ticket_count===order.quantity&&order.unused_count===order.quantity
+      ?<div className="rw-actions"><label className="rw-field">Supervised cancellation reason for {order.buyer_email}
+        <textarea rows={2} minLength={15} maxLength={500} value={issuedCancelReasons[order.id]||''}
+        onChange={e=>setIssuedCancelReasons(p=>({...p,[order.id]:e.target.value}))}/></label>
+        {btn('Revoke unused tickets / open refund review',()=>{void cancelIssuedOrder(order)})}
+       </div>
+      :<span role="status">Cancellation blocked: ticket admitted or missing / already revoked</span>}
+    </div>)}
+    {!issuedOrders.length&&<p>No approved ticket orders are currently eligible for supervision.</p>}
+   </section>
+   <section className="rw-panel rw-wide" style={{display:adminTab==='refunds'?'':'none'}}><div className="eyebrow">PAYMENT EXCEPTIONS</div><h2>Refund and reconciliation desk</h2>
    <p>Expired reservations with payment evidence and rejected paid orders require manual settlement checks. Mark refunded only after verifying the transfer back to the buyer.</p>
    <p>Use each order’s own settlement reference; review, initiate and verify settlement in sequence.</p>
    {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title} — {money(r.amount_ngn)}</b>
