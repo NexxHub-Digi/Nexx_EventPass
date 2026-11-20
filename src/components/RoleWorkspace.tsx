@@ -54,7 +54,8 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [eventReports,setEventReports]=useState<EventReport[]>([]),[reportSearch,setReportSearch]=useState(''),[selectedReport,setSelectedReport]=useState(''),[auditHistory,setAuditHistory]=useState<AuditRecord[]>([]);
  const [refundCases,setRefundCases]=useState<RefundCase[]>([]),[refundNotes,setRefundNotes]=useState<Record<string,string>>({});
  const [allUsers,setAllUsers]=useState<AdminAccount[]>([]),[userSearch,setUserSearch]=useState(''),[userFilter,setUserFilter]=useState(''),[userPage,setUserPage]=useState(1),[usersCount,setUsersCount]=useState(0),[selectedUser,setSelectedUser]=useState(''),[userEditName,setUserEditName]=useState(''),[accountReason,setAccountReason]=useState('');
- const [cases,setCases]=useState<SupportCase[]>([]),[caseSubject,setCaseSubject]=useState(''),[caseDescription,setCaseDescription]=useState(''),[casePriority,setCasePriority]=useState('normal'),[caseResolution,setCaseResolution]=useState('');
+ const [cases,setCases]=useState<SupportCase[]>([]),[caseSubject,setCaseSubject]=useState(''),[caseDescription,setCaseDescription]=useState(''),[casePriority,setCasePriority]=useState('normal');
+ const [selectedSupportId,setSelectedSupportId]=useState(''),[supportDrafts,setSupportDrafts]=useState<Record<string,{resolution:string;priority:string}>>({});
  const [platformSettings,setPlatformSettings]=useState<Record<string,string>>({}),[settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
  const [bankName,setBankName]=useState(''),[accountName,setAccountName]=useState(''),[accountNumber,setAccountNumber]=useState('');
  const [bankAccounts,setBankAccounts]=useState<BankAccount[]>([]);
@@ -243,7 +244,16 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(userFilter)+'&page='+userPage);setAllUsers(r.accounts||[]);setUsersCount(r.count||0);setMessage('Account updated and audited')})}
  async function openSupportCase(){await run(async()=>{const r=await api('support/cases','POST',{subject:caseSubject,description:caseDescription,priority:casePriority});
   setCaseSubject('');setCaseDescription('');setMessage('Support request sent: '+r.case.id);const x=await api('support/cases');setCases(x.cases||[])})}
- async function updateCase(id:string,status:string,priority:string){await run(async()=>{await api('support/cases','PATCH',{id,status,priority,resolution:caseResolution});const x=await api('support/cases');setCases(x.cases||[]);setMessage('Support case updated')})}
+ function openSupportCaseEditor(c:SupportCase){setSelectedSupportId(current=>current===c.id?'':c.id);setSupportDrafts(p=>({...p,[c.id]:p[c.id]||{priority:c.priority,resolution:c.resolution||''}}))}
+ async function updateCase(c:SupportCase,status:'open'|'in_progress'|'resolved'|'closed'){
+  const draft=supportDrafts[c.id]||{priority:c.priority,resolution:c.resolution||''};
+  if(['resolved','closed'].includes(status)&&draft.resolution.trim().length<10){setMessage('Enter a case-specific resolution of at least 10 characters');return}
+  if(['resolved','closed'].includes(status)&&!window.confirm('Confirm '+status+' for '+c.subject+'? This action is recorded in the administrator audit.'))return;
+  await run(async()=>{
+   await api('support/cases','PATCH',{id:c.id,status,priority:draft.priority,resolution:draft.resolution.trim()});
+   const x=await api('support/cases');setCases(x.cases||[]);setMessage('Support case '+status.replace('_',' ')+' and audit updated');
+  });
+ }
  async function saveSetting(){await run(async()=>{await api('platform/settings','PATCH',{key:settingKey,value:settingValue});setPlatformSettings({...platformSettings,[settingKey]:settingValue});setMessage('Platform setting saved')})}
  async function saveCapabilities(){await run(async()=>{
   await api('platform/organisers','POST',{action:'capabilities',userId:selectedOrganiser,canCreateEvents:canCreate,canInviteGates:canGates,canVerifyPayments:canPayments});
@@ -340,8 +350,26 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  {role==='platform-admin'&&<header className="rw-panel ep-admin-hero" style={{marginBottom:16}}><div className="ep-admin-hero-copy"><div className="eyebrow">NEXX EVENTPASS / COMMAND CENTRE</div><h1>Platform administration</h1><p>Monitor operations, review critical decisions and manage your EventPass ecosystem from one control centre.</p></div><div className="ep-admin-hero-status"><span className="ep-admin-status-dot" aria-hidden="true"/> Administrator workspace <small>Authenticated operational view</small></div></header>}
  {role==='platform-admin'&&<div className="rw-workspace-shell ep-admin-workspace"><aside className="rw-panel ep-admin-sidebar" style={{alignSelf:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:12}}>OPERATIONS</div><nav aria-label="Platform administration" style={{display:'grid',gap:6}}>{([['overview','Overview'],['organisers','Organisers'],['moderation','Event moderation'],['reports','Analytics & events'],['refunds','Payments & refunds'],['users','Users & access'],['support','Support'],['themes','Ticket themes'],['audit','Audit logs'],['settings','Settings']] as const).map(([key,label])=><button type="button" key={key} className={adminTab===key?'primary':'ghost'} aria-current={adminTab===key?'page':undefined} onClick={()=>{setAdminTab(key);setMessage('')}} style={{textAlign:'left',padding:12}}>{label}</button>)}</nav></aside><div className="rw-layout" style={{minWidth:0}}>
   <section className="rw-panel ep-admin-dashboard" style={{display:adminTab==='overview'?'':'none'}}><div className="ep-admin-section-heading"><div><div className="eyebrow">OPERATIONS AT A GLANCE</div><h2 id="admin-overview">Platform overview</h2><p>Live operational totals across organisers, reservations, tickets and admission activity.</p></div><span className="ep-admin-live-label">Database-backed</span></div><p className="ep-admin-metric-note">Verified collections are confirmed payments only. Offline sales are manually recorded, not necessarily received. Refund exposure reflects open review cases, not approved payouts.</p><div className="rw-stats ep-admin-kpis">{Object.entries(stats).map(([k,v])=><div className="rw-stat ep-admin-kpi" key={k}><small>{({verified_collections_ngn:'Verified collections',verified_commissions_ngn:'Verified platform commissions',commission_outstanding_ngn:'Outstanding commission remittance',manual_offline_sales_ngn:'Manually recorded offline sales',refund_review_exposure_ngn:'Unresolved refund exposure'} as Record<string,string>)[k]||k.replace(/_/g,' ')}</small><b>{k.endsWith('_ngn')?'₦'+Number(v).toLocaleString('en-NG'):Number(v).toLocaleString('en-NG')}</b><span className="ep-admin-kpi-rule" aria-hidden="true"/></div>)}</div>
-  <h3>Create organiser from verified User</h3><p>Only a Google-verified existing account can be promoted. No default password is created.</p>
-  {input('Verified User email',newOrganiser,setNewOrganiser,'email')}{btn('Create organiser',()=>{void adminAction('create')})}</section>
+  <div className="ep-admin-section-heading"><div><div className="eyebrow">LIVE WORK QUEUE</div><h3>Requires administrator attention</h3><p>Open a section below to resolve records in the database. These are not demo tasks.</p></div>{btn('Refresh dashboard',()=>{void run(async()=>{await fetchAll();setMessage('Live administrator dashboard refreshed')})},true)}</div>
+  <div className="ep-admin-queues">
+   {([
+    ['Organiser applications',organisers.filter(o=>o.role==='user'&&o.requested_role==='organiser').length,'organisers'],
+    ['Bank verification requests',Number(stats.pending_bank_reviews||0),'refunds'],
+    ['Event / media reviews',moderationEvents.length+moderationMedia.length,'moderation'],
+    ['Open support cases',cases.filter(c=>['open','in_progress'].includes(c.status)).length,'support'],
+    ['Unresolved refund cases',refundCases.filter(r=>['review_required','initiated'].includes(r.refund_status)).length,'refunds']
+   ] as [string,number,string][]).map(([label,count,tab])=><button type="button" key={label} className="ep-admin-queue-item" onClick={()=>setAdminTab(tab)}>
+    <span className="ep-admin-queue-count">{count}</span><span>{label}</span><strong aria-hidden="true">›</strong>
+   </button>)}
+  </div>
+  <div className="ep-admin-section-heading"><div><h3>Operational shortcuts</h3><p>All shortcuts open their connected administrative workspaces.</p></div></div>
+  <div className="ep-admin-shortcuts">
+   {([['Review organisers','organisers'],['Moderate events','moderation'],['Manage accounts','users'],['Payments & reconciliation','refunds'],['Support desk','support'],['Event analytics','reports'],['Audit history','audit'],['Platform settings','settings']] as [string,string][]).map(([label,tab])=><button type="button" key={tab} className="ghost" onClick={()=>setAdminTab(tab)}>{label} <span aria-hidden="true">›</span></button>)}
+  </div>
+  <h3>Recent support activity</h3>
+  {cases.slice(0,4).map(c=><button type="button" className="ep-admin-recent-case" key={c.id} onClick={()=>{setSelectedSupportId(c.id);setSupportDrafts(p=>({...p,[c.id]:p[c.id]||{priority:c.priority,resolution:c.resolution||''}}));setAdminTab('support')}}><strong>{c.subject}</strong><small>{c.organiser_name} · {c.status.replace('_',' ')} · {c.priority}</small><span>Review case</span></button>)}
+  {!cases.length&&<p>No support requests recorded.</p>}
+  </section>
   <section className="rw-panel rw-wide" style={{display:adminTab==='reports'?'':'none'}}><div className="eyebrow">MULTI-TENANT BUSINESS INTELLIGENCE</div><h2 id="admin-reports">All organiser events and revenue</h2>
    <p>Inspect any event's available capacity, live reservations, issued tickets, attendance, revenue, refunds and assigned operators.</p>
    <div className="rw-market-filters">{input('Search event or organiser',reportSearch,setReportSearch)}{btn('Search reports',()=>{void refreshReports()})}</div>
@@ -414,12 +442,35 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     {input('Reason for deactivation',accountReason,setAccountReason)}{btn('Deactivate account',()=>{void changeUser('deactivate')},true)}
     </>}</div>)}
   </section>
-  <section className="rw-panel rw-wide" style={{display:adminTab==='support'?'':'none'}}><div className="eyebrow">ORGANISER SUCCESS</div><h2>Support cases and assistance</h2>
-   <p>Support cases are tenant-scoped. Review organiser problems, assign case status and record the resolution.</p>
-   {cases.map(c=><div className="rw-list-item" key={c.id}><div><b>{c.subject}</b><p>{c.organiser_name} · {c.status} · {c.priority}</p><small> {c.description}{c.payment_order_id&&<> · <a href={'/api/orders/receipt?orderId='+c.payment_order_id} target="_blank" rel="noreferrer">View payment evidence</a></>}</small>{c.resolution&&<p>Resolution: {c.resolution}</p>}</div>
-     <div className="rw-actions">{btn('Investigate',()=>{void updateCase(c.id,'in_progress',c.priority)},true)}{btn('Resolve',()=>{void updateCase(c.id,'resolved',c.priority)})}</div></div>)}
-   {!cases.length&&<p>No open support requests.</p>}
-   <label className="rw-field">Support resolution / guidance<textarea rows={3} value={caseResolution} onChange={e=>setCaseResolution(e.target.value)}/></label>
+  <section className="rw-panel rw-wide ep-admin-support" style={{display:adminTab==='support'?'':'none'}}><div className="eyebrow">SUPPORT OPERATIONS</div><h2>Support cases & resolutions</h2>
+   <p>Every decision is tied to an individual case, saved to PostgreSQL and audited. Open a case to inspect its details and update priority or status.</p>
+   <div className="rw-stats">
+    <div className="rw-stat"><b>{cases.filter(c=>['open','in_progress'].includes(c.status)).length}</b><small>Needs attention</small></div>
+    <div className="rw-stat"><b>{cases.filter(c=>c.priority==='urgent'&&c.status!=='closed'&&c.status!=='resolved').length}</b><small>Urgent</small></div>
+    <div className="rw-stat"><b>{cases.filter(c=>c.status==='resolved').length}</b><small>Resolved</small></div>
+   </div>
+   {btn('Refresh support cases',()=>{void run(async()=>{const r=await api('support/cases');setCases(r.cases||[]);setMessage('Support inbox refreshed')})},true)}
+   {cases.map(c=><div className="rw-list-item ep-admin-support-case" key={c.id}>
+    <div><b>{c.subject}</b><p>{c.organiser_name} · <strong>{c.status.replace('_',' ')}</strong> · {c.priority} priority</p>
+     <small>{c.description}</small>{c.payment_order_id&&<p><a href={'/api/orders/receipt?orderId='+c.payment_order_id} target="_blank" rel="noreferrer">Review linked payment evidence</a></p>}
+     {c.resolution&&<p>Latest resolution: {c.resolution}</p>}
+    </div>
+    {btn(selectedSupportId===c.id?'Close case details':'Open case / take action',()=>openSupportCaseEditor(c),true)}
+    {selectedSupportId===c.id&&<div className="rw-profile" style={{width:'100%'}}>
+     <h3>Case: {c.subject}</h3><p>Assigned status: {c.status} · Case reference: <code>{c.id}</code></p>
+     <label className="rw-field">Case priority<select aria-label={'Priority for '+c.subject} value={(supportDrafts[c.id]||{priority:c.priority}).priority} onChange={e=>setSupportDrafts(p=>({...p,[c.id]:{priority:e.target.value,resolution:p[c.id]?.resolution||c.resolution||''}}))}>
+      {['low','normal','high','urgent'].map(level=><option key={level} value={level}>{level}</option>)}</select></label>
+     <label className="rw-field">Resolution / guidance for this case<textarea rows={4} minLength={10} maxLength={1500} value={(supportDrafts[c.id]||{resolution:c.resolution||''}).resolution} onChange={e=>setSupportDrafts(p=>({...p,[c.id]:{priority:p[c.id]?.priority||c.priority,resolution:e.target.value}}))} placeholder="Record actions taken, the outcome and any next steps"/></label>
+     <div className="rw-actions">
+      {c.status!=='in_progress'&&c.status!=='closed'&&btn('Start investigation',()=>{void updateCase(c,'in_progress')},true)}
+      {c.status!=='resolved'&&c.status!=='closed'&&btn('Resolve case',()=>{void updateCase(c,'resolved')})}
+      {c.status==='resolved'&&btn('Close resolved case',()=>{void updateCase(c,'closed')},true)}
+      {['resolved','closed'].includes(c.status)&&btn('Reopen case',()=>{void updateCase(c,'open')},true)}
+      {btn('Save priority / notes',()=>{void updateCase(c,c.status as 'open'|'in_progress'|'resolved'|'closed')},true)}
+     </div>
+    </div>}
+   </div>)}
+   {!cases.length&&<p>No support requests are currently recorded.</p>}
   </section>
   <section className="rw-panel rw-wide" style={{display:adminTab==='settings'?'':'none'}}><div className="eyebrow">PLATFORM CONFIGURATION</div><h2>Operational settings</h2>
    <p>Set organiser onboarding policy, event authenticity checks, support email, and help instructions. API credentials are managed in hosting environment variables.</p>
@@ -428,7 +479,11 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     <option value="event_verification_policy">Event authenticity checklist</option><option value="help_text">Help text</option></select></label>
    <label className="rw-field">Value<textarea rows={3} value={settingValue} onChange={e=>setSettingValue(e.target.value)}/></label>{btn('Save settings',()=>{void saveSetting()})}
   </section>
-  <section className="rw-panel" style={{display:adminTab==='organisers'?'':'none'}}><h2>Organiser directory and access control</h2>
+  <section className="rw-panel" style={{display:adminTab==='organisers'?'':'none'}}><h2>Organiser directory and access control</h2><div className="rw-profile" style={{margin:'12px 0 20px'}}>
+   <h3>Approve verified organiser onboarding</h3><p>Only a previously registered, Google-verified User can become an organiser. This action uses the administrator approval API and never creates default passwords.</p>
+   {input('Existing verified User email',newOrganiser,setNewOrganiser,'email')}
+   {btn('Create verified organiser',()=>{void adminAction('create')})}
+  </div>
    <p>Select <strong>View / edit profile</strong> to inspect an organiser, update their details, change permissions, or revoke access. Changes are saved through the administrator API and audited.</p><div className="rw-actions">{btn('Refresh organisers',()=>{void run(async()=>{const r=await api('platform/organisers');setOrganisers(r.organisers||[]);setMessage('Organiser directory refreshed')})},true)}{btn('Find users',()=>{setAdminTab('users');void searchAdminUsers(1)},true)}</div>
    {organisers.map(o=><div className="rw-list-item" key={o.id}>
     <div><b>{o.full_name}</b><p>{o.email}</p><small>{o.role==='user'&&o.requested_role==='organiser'?'PENDING APPROVAL':o.account_status.toUpperCase()} · {o.event_count} events · {o.tickets_issued} tickets · {o.gate_operators} operators</small></div>

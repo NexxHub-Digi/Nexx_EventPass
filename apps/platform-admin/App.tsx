@@ -14,7 +14,7 @@ type Order={id:string;event_id:string;event_title?:string;buyer_name?:string;buy
 type Gate={event_id:string;title:string;gate_label:string};
 type Applicant={id:string;email:string;full_name:string;role:string;account_status:string;requested_role?:string|null;event_count?:number;pending_orders?:number;tickets_issued?:number;gate_operators?:number;can_create_events?:boolean;can_invite_gates?:boolean;can_verify_payments?:boolean};
 type AdminAccount={id:string;email:string;full_name:string;role:string;account_status:string;google_verified:boolean;ticket_count:number;order_count:number;event_count:number;gate_event_count:number};
-type SupportCase={id:string;subject:string;description:string;organiser_name:string;status:string;priority:string;resolution:string};
+type SupportCase={id:string;subject:string;description:string;organiser_name:string;status:string;priority:string;resolution:string;payment_order_id?:string|null};
 type ModerationEvent={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;owner_eligible:boolean;pending_media:number};
 type MediaReview={id:string;event_id:string;file_name:string;media_type:string};
 type RefundCase={id:string;event_title:string;buyer_email:string;status:string;refund_status:string;amount_ngn:number;refund_note?:string|null};
@@ -39,7 +39,7 @@ export default function App(){
  const [selectedOrganiser,setSelectedOrganiser]=useState(''),[organiserName,setOrganiserName]=useState('');
  const [rejectApplicant,setRejectApplicant]=useState(''),[rejectReason,setRejectReason]=useState('');
  const [accounts,setAccounts]=useState<AdminAccount[]>([]),[userSearch,setUserSearch]=useState(''),[selectedAccount,setSelectedAccount]=useState(''),[userName,setUserName]=useState(''),[deactivateReason,setDeactivateReason]=useState('');
- const [cases,setCases]=useState<SupportCase[]>([]),[resolution,setResolution]=useState(''),[settings,setSettings]=useState<Record<string,string>>({});
+ const [cases,setCases]=useState<SupportCase[]>([]),[selectedSupportId,setSelectedSupportId]=useState(''),[supportDrafts,setSupportDrafts]=useState<Record<string,{resolution:string;priority:string}>>({}),[settings,setSettings]=useState<Record<string,string>>({});
  const [settingKey,setSettingKey]=useState('support_email'),[settingValue,setSettingValue]=useState('');
  const [bankAccounts,setBankAccounts]=useState<{id:string;bank_name:string;account_name:string;account_number:string;status:string;organiser_name:string}[]>([]);
  const [bankReviewId,setBankReviewId]=useState(''),[bankReviewNote,setBankReviewNote]=useState('');
@@ -114,10 +114,19 @@ export default function App(){
   const r=await api('platform/users?q='+encodeURIComponent(userSearch)+'&role='+encodeURIComponent(accountRole)+'&page='+accountPage,token);setAccounts(r.accounts||[]);setAccountCount(r.count||0);
   Alert.alert('Account updated','Change recorded in platform audit.');
  })}
- async function resolveCase(id:string,status:'in_progress'|'resolved'){await exec(async()=>{
-  await api('support/cases',token,'PATCH',{id,status,priority:'normal',resolution});
-  setCases((await api('support/cases',token)).cases||[]);Alert.alert('Support case',status);
+ async function resolveCase(c:SupportCase,status:'open'|'in_progress'|'resolved'|'closed'){await exec(async()=>{
+  const draft=supportDrafts[c.id]||{resolution:c.resolution||'',priority:c.priority};
+  if(['resolved','closed'].includes(status)&&draft.resolution.trim().length<10)throw Error('Enter a resolution of at least 10 characters for this case.');
+  await api('support/cases',token,'PATCH',{id:c.id,status,priority:draft.priority,resolution:draft.resolution.trim()});
+  setCases((await api('support/cases',token)).cases||[]);
+  Alert.alert('Case updated','The case status, priority and resolution were saved and audited.');
  })}
+ function confirmCase(c:SupportCase,status:'open'|'in_progress'|'resolved'|'closed'){
+  if(['resolved','closed'].includes(status)&&((supportDrafts[c.id]?.resolution??c.resolution??'').trim().length<10)){setError('Enter a case-specific resolution of at least 10 characters before closing.');return}
+  Alert.alert('Confirm support action','Update '+c.subject+' to '+status.replace('_',' ')+'? This action is audited.',[
+   {text:'Cancel',style:'cancel'},{text:'Confirm',onPress:()=>void resolveCase(c,status)}
+  ]);
+ }
  async function saveSetting(){await exec(async()=>{await api('platform/settings',token,'PATCH',{key:settingKey,value:settingValue});setSettings({...settings,[settingKey]:settingValue});Alert.alert('Configuration saved')})}
  async function moderate(eventId:string,action:'verify'|'reject'|'approve_media'|'reject_media',mediaId?:string){await exec(async()=>{
   await api('platform/events',token,'POST',{eventId,action,...(mediaId?{mediaId}:{})});
@@ -191,6 +200,8 @@ export default function App(){
  pendingOrganisers={applicants.filter(a=>a.role==='user'&&a.requested_role==='organiser').length}
  pendingEvents={moderationEvents.filter(e=>e.verification_status==='pending').length}
  pendingRefunds={refundCases.filter(r=>r.refund_status!=='settled').length}
+ pendingSupport={cases.filter(c=>['open','in_progress'].includes(c.status)).length}
+ pendingBanks={bankAccounts.filter(b=>b.status==='pending').length}
  onNavigate={target=>setSection(target)} onRefresh={()=>void exec(async()=>load(token))} busy={busy}/>}
  {section==='more'&&<><Text style={s.title}>More tools</Text>
  {button('Users & access',()=>setSection('accounts'))}
@@ -338,8 +349,12 @@ export default function App(){
    {button('Cancel rejection',()=>{setRejectApplicant('');setRejectReason('')},true)}
   </View>:button('Reject application',()=>{setRejectApplicant(a.id);setRejectReason('')},true)}
  </>}
-{a.role==='organiser'&&a.account_status==='active'&&button('Suspend',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'suspend',userId:a.id});await load(token)})},true)}
-{a.role==='organiser'&&a.account_status==='suspended'&&button('Restore',()=>{void exec(async()=>{await api('platform/organisers',token,'POST',{action:'restore',userId:a.id});await load(token)})})}</View>)}
+{a.role==='organiser'&&a.account_status==='active'&&button('Suspend organiser',()=>Alert.alert('Suspend organiser access?','This prevents organiser operations but preserves issued tickets, settlements and audit records for '+a.email+'.',[
+ {text:'Cancel',style:'cancel'},{text:'Suspend access',style:'destructive',onPress:()=>void exec(async()=>{await api('platform/organisers',token,'POST',{action:'suspend',userId:a.id});await load(token);Alert.alert('Access suspended','Organiser permissions have been revoked until restored.')})}
+]),true)}
+{a.role==='organiser'&&a.account_status==='suspended'&&button('Restore organiser',()=>Alert.alert('Restore organiser access?','Confirm '+a.email+' is authorised to resume organiser operations.',[
+ {text:'Cancel',style:'cancel'},{text:'Restore access',onPress:()=>void exec(async()=>{await api('platform/organisers',token,'POST',{action:'restore',userId:a.id});await load(token);Alert.alert('Access restored','Organiser account is active again.')})}
+]))}</View>)}
  </>}
  {section==='accounts'&&<><Text style={s.title}>All users and access</Text><Text style={s.hint}>Search user, organiser and gate identities. Open a profile to see ticket and event counts.</Text>
  {input('Search account by email or name',userSearch,setUserSearch)}
@@ -375,12 +390,48 @@ export default function App(){
   </>}
  </View>)}
  </>}
- {section==='support'&&<><Text style={s.title}>Organiser support desk</Text>
- {cases.map(c=><View style={s.card} key={c.id}><Text style={{color:'#fff',fontSize:16,fontWeight:'800'}}>{c.subject}</Text>
- <Text style={s.hint}>{c.organiser_name} · {c.status} · {c.priority}</Text><Text style={s.hint}>{c.description}</Text>
- {button('Investigate',()=>{void resolveCase(c.id,'in_progress')},true)}{button('Resolve',()=>{void resolveCase(c.id,'resolved')})}
+ {section==='support'&&<><Text style={s.title}>Support operations</Text>
+ <Text style={s.hint}>Real organiser and payment cases. Select a case to edit its own priority, resolution and status. Every saved action is audited.</Text>
+ <View style={s.card}><Text style={s.title}>{cases.filter(c=>['open','in_progress'].includes(c.status)).length} cases requiring attention</Text>
+  <Text style={s.hint}>{cases.filter(c=>c.priority==='urgent'&&!['closed','resolved'].includes(c.status)).length} urgent · {cases.filter(c=>c.status==='resolved').length} resolved</Text>
+ </View>
+ {button('Refresh support cases',()=>void exec(async()=>{const data=await api('support/cases',token);setCases(data.cases||[])}),true)}
+ {!cases.length&&<Text style={s.hint}>No support requests are currently recorded.</Text>}
+ {cases.map(c=><View style={s.card} key={c.id}>
+  <Text style={{color:'#fff',fontSize:16,fontWeight:'800'}}>{c.subject}</Text>
+  <Text style={s.hint}>{c.organiser_name} · {c.status.replace('_',' ')} · {c.priority}</Text>
+  <Text style={s.hint}>{c.description}</Text>
+  {!!c.payment_order_id&&<Text style={s.hint}>Linked payment order: {c.payment_order_id}</Text>}
+  {!!c.resolution&&<Text style={s.hint}>Last resolution: {c.resolution}</Text>}
+  {button(selectedSupportId===c.id?'Close case':'Open case / take action',()=>{
+   setSelectedSupportId(current=>current===c.id?'':c.id);
+   setSupportDrafts(p=>({...p,[c.id]:p[c.id]||{priority:c.priority,resolution:c.resolution||''}}));
+  },true)}
+  {selectedSupportId===c.id&&<View style={s.card}>
+   <Text style={s.title}>Case details</Text>
+   <Text style={s.hint} selectable>Reference: {c.id}</Text>
+   <Text style={s.hint}>Priority</Text>
+   <View style={{flexDirection:'row',flexWrap:'wrap',gap:6}}>
+    {(['low','normal','high','urgent'] as const).map(p=><Pressable key={p} accessibilityRole="button"
+     accessibilityLabel={'Set '+p+' priority for '+c.subject}
+     accessibilityState={{selected:(supportDrafts[c.id]?.priority||c.priority)===p}}
+     onPress={()=>setSupportDrafts(old=>({...old,[c.id]:{priority:p,resolution:old[c.id]?.resolution||c.resolution||''}}))}
+     style={[s.button,s.subButton,(supportDrafts[c.id]?.priority||c.priority)===p&&{borderColor:'#8AE7D0'}, {minWidth:78}]}>
+      <Text style={s.buttonText}>{p}</Text>
+    </Pressable>)}
+   </View>
+   <TextInput accessibilityLabel={'Resolution for '+c.subject} multiline textAlignVertical="top" maxLength={1500}
+    placeholder="Record investigation, resolution and next actions" placeholderTextColor="#94a3b8"
+    value={supportDrafts[c.id]?.resolution??c.resolution??''}
+    onChangeText={value=>setSupportDrafts(old=>({...old,[c.id]:{priority:old[c.id]?.priority||c.priority,resolution:value}}))}
+    style={[s.input,{minHeight:100}]}/>
+   {c.status==='open'&&button('Start investigation',()=>confirmCase(c,'in_progress'),true)}
+   {!['resolved','closed'].includes(c.status)&&button('Resolve case',()=>confirmCase(c,'resolved'))}
+   {c.status==='resolved'&&button('Close resolved case',()=>confirmCase(c,'closed'),true)}
+   {['closed','resolved'].includes(c.status)&&button('Reopen case',()=>confirmCase(c,'open'),true)}
+   {button('Save case details',()=>confirmCase(c,c.status as 'open'|'in_progress'|'resolved'|'closed'),true)}
+  </View>}
  </View>)}
- {input('Support case resolution',resolution,setResolution)}
  </>}
  {section==='settings'&&<><Text style={s.title}>Platform settings</Text>
  <Text style={s.hint}>Supported settings: support_email, organiser_approval_policy, event_verification_policy, help_text. Secrets are configured only on the server.</Text>
