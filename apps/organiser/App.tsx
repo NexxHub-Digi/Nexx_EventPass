@@ -1,10 +1,11 @@
 import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,Animated,Easing,AppState,Alert,Share,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
+import {AccessibilityInfo,Animated,Easing,AppState,Alert,Share,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image,useWindowDimensions,BackHandler} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
 import * as DocumentPicker from 'expo-document-picker';
 import TicketStudioPreview from './TicketStudioPreview';
+import OrganiserSidebar,{type OrganiserPage} from './OrganiserSidebar';
 WebBrowser.maybeCompleteAuthSession();
 
 const PORTAL: string="organiser",TITLE="Nexx EventPass Event Organiser",BASE=(process.env.EXPO_PUBLIC_API_URL||'https://nexx-eventpass.vercel.app').replace(/\/$/,'');
@@ -58,7 +59,12 @@ export default function App(){
  const [bankAccounts,setBankAccounts]=useState<BankAccount[]>([]),[eventBankId,setEventBankId]=useState('');
  const verifiedBanks=bankAccounts.filter(account=>account.status==='verified');
  const [onsiteOrder,setOnsiteOrder]=useState(''),[collected,setCollected]=useState(''),[collectionRef,setCollectionRef]=useState('');
- const [tab,setTab]=useState<'dashboard'|'events'|'tickets'|'payments'|'team'|'profile'>('dashboard');
+ const [tab,setTab]=useState<OrganiserPage>('dashboard');
+ const [menuOpen,setMenuOpen]=useState(false),[showDesktopSidebar,setShowDesktopSidebar]=useState(true);
+ const {width:viewportWidth}=useWindowDimensions();
+ const desktopNavigation=viewportWidth>=900;
+ useEffect(()=>{if(!menuOpen)return;const back=BackHandler.addEventListener('hardwareBackPress',()=>{setMenuOpen(false);return true});return ()=>back.remove()},[menuOpen]);
+ function navigateOrganiser(target:OrganiserPage){setTab(target);setMenuOpen(false);scroll.current?.scrollTo({y:0,animated:false})}
  const [themes,setThemes]=useState<[string,string][]>([['aurora','Aurora Glow'],['midnight','Midnight Gold'],['sunset','Sunset Social'],['neon','Neon Pulse'],['minimal','Minimal Ivory'],['custom','Custom Artwork']]);
  async function uploadEventFile(purpose=''){if(!eventId)throw Error('Select an event');
   const result=await DocumentPicker.getDocumentAsync({type:purpose==='ticket_art'?['image/jpeg','image/png','image/webp']:['image/jpeg','image/png','image/webp','video/mp4','video/webm']});
@@ -116,9 +122,9 @@ export default function App(){
    if(!code)throw Error('Google did not return a valid sign-in code');
    const data=await api('auth/mobile','','POST',{code,client:PORTAL,codeVerifier:verifier});
    await SecureStore.setItemAsync('eventpass_token',data.token);
-   setToken(data.token);await load(data.token);
+   setToken(data.token);await load(data.token);setTab('dashboard');setMenuOpen(false);
  })}
- async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null)}}
+ async function logout(){try{if(token)await api('auth/logout',token,'POST')}catch{setError('Server logout unavailable; session may remain active until expiry.')}finally{await SecureStore.deleteItemAsync('eventpass_token');setToken('');setMember(null);setTab('dashboard');setMenuOpen(false)}}
  const input=(hint:string,value:string,update:(x:string)=>void,secret=false)=><TextInput style={s.input} placeholder={hint} placeholderTextColor="#94a3b8" value={value} onChangeText={update} autoCapitalize="none" secureTextEntry={secret}/>;
  const button=(label:string,fn:()=>void,sub=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled:busy}} onPress={fn} disabled={busy} style={({pressed})=>[s.button,sub&&s.subButton,pressed&&(reduceMotion?s.pressedStill:s.pressed),busy&&s.disabled]}><Text style={s.buttonText}>{label}</Text></Pressable>;
  const surfaceMotion=useRef(new Animated.Value(1)).current;
@@ -146,42 +152,65 @@ export default function App(){
  return <View style={s.root}>
   <StatusBar barStyle="light-content"/>
   <View style={s.head}>
-   <Pressable style={s.brandRow} accessibilityRole="button" accessibilityLabel="Organiser home" disabled={busy||!member} onPress={()=>{
-     setTab('dashboard');scroll.current?.scrollTo({y:0,animated:false});
-   }}>
-    <Image accessible={false} source={require('./assets/app-icon.png')} style={s.brandMark}/><View style={s.brandCopy}>
+    {member?.role==='organiser'&&<Pressable accessibilityRole="button" accessibilityLabel={desktopNavigation?(showDesktopSidebar?'Collapse organiser sidebar':'Expand organiser sidebar'):(menuOpen?'Close organiser menu':'Open organiser menu')} accessibilityState={{expanded:desktopNavigation?showDesktopSidebar:menuOpen}}
+     onPress={()=>desktopNavigation?setShowDesktopSidebar(x=>!x):setMenuOpen(x=>!x)} style={s.menuTrigger}><Text style={s.menuIcon}>☰</Text></Pressable>}
+    <Pressable style={s.brandRow} accessibilityRole="button" accessibilityLabel="Organiser dashboard" disabled={busy||!member} onPress={()=>navigateOrganiser('dashboard')}>
+     <Image accessible={false} source={require('./assets/app-icon.png')} style={s.brandMark}/><View style={s.brandCopy}>
     <Text style={s.brand}>Nexx EventPass</Text><Text style={s.headLabel}>Organiser</Text>
    </View></Pressable>
    {member&&<Pressable accessibilityRole="button" accessibilityLabel="Sign out" disabled={busy} onPress={()=>void logout()} style={s.accountBadge}><Text style={s.headLabel}>Sign out</Text></Pressable>}
   </View>
-  <Animated.View style={[{flex:1},surfaceStyle]}>
-  <ScrollView ref={scroll} key={member?tab:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
+  <View style={s.workspaceFrame}>
+    {member?.role==='organiser'&&desktopNavigation&&showDesktopSidebar&&<View style={s.sidebarDesktop}>
+     <OrganiserSidebar active={tab} onSelect={navigateOrganiser} onClose={()=>setShowDesktopSidebar(false)} name={member.full_name}
+      pendingPayments={inbox.pending} eventCount={events.filter(e=>e.organiser_id===member.id).length}/>
+    </View>}
+    <Animated.View style={[{flex:1},surfaceStyle]}>
+   <ScrollView ref={scroll} key={member?tab:'signin'} keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
  {!member?<View style={s.welcome}>
    <View pointerEvents="none" style={s.welcomeGlow} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"/>
    <Text style={s.welcomeLabel}>Event studio</Text><Text style={s.welcomeTitle}>Run your events.</Text>
    <Text style={s.welcomeText}>Manage listings, issue tickets and confirm payments.</Text>
    {button('Continue with Google',()=>{void login()})}
   </View>:<>
- <Text style={s.title}>Welcome, {member.full_name}</Text><Text style={s.hint}>{member.email}</Text>
+ <View style={s.sectionHeader}><Text style={s.sectionOverline}>EVENTPASS / ORGANISER</Text>
+   <Text style={s.sectionHeading}>{tab==='dashboard'?'Dashboard':({events:'My events',tickets:'Ticket Studio',payments:'Payments & finance',team:'Gate management',profile:'My organiser profile'} as Record<string,string>)[tab]}</Text>
+   <Text style={s.hint}>{tab==='dashboard'?'Welcome, '+member.full_name+' · '+member.email:'Signed in as '+member.full_name}</Text>
+  </View>
  {inbox.unread>0&&member.role==='organiser'&&button(inbox.unread+' new payment receipt'+(inbox.unread===1?'':'s'),()=>setTab('payments'))}
  {(member.account_status==='pending'||member.requested_role==='organiser')?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
 
- {tab==='dashboard'&&<View style={s.card}><Text style={s.title}>Organiser dashboard</Text>
-  <Text style={s.hint}>Your events: {events.filter(e=>e.organiser_id===member.id).length} · Published: {events.filter(e=>e.organiser_id===member.id&&e.status==='published').length}</Text>
-  <Text style={s.hint}>Selected event: {events.find(e=>e.id===eventId)?.title||'None'}</Text>
-  <Text style={s.hint}>Pending payment reviews across your events: {inbox.pending}</Text>
-  <Text style={s.hint}>New payment notifications: {inbox.unread}</Text>
-  {finances?<View accessibilityLabel="Verified organiser financial totals" style={[s.card,{backgroundColor:'#1d2a49'}]}>
-   <Text style={s.hint}>Confirmed collections: ₦{Number(finances.gross_ngn).toLocaleString('en-NG')}</Text>
-   <Text style={s.hint}>Platform commissions: ₦{Number(finances.commission_ngn).toLocaleString('en-NG')}</Text>
-   <Text style={s.hint}>Organiser net: ₦{Number(finances.organiser_net_ngn).toLocaleString('en-NG')}</Text>
-   <Text style={s.hint}>Outstanding commission remittance: ₦{Number(finances.outstanding_ngn).toLocaleString('en-NG')}</Text>
-  </View>:<Text accessibilityRole="alert" style={s.hint}>{financeError||'Loading verified financial totals…'}</Text>}
-  {button('Refresh dashboard',()=>void exec(async()=>{await Promise.all([refreshInbox(),refreshFinances()])}),true)}
-  {button('Manage events',()=>setTab('events'))}{button('Review payments',()=>setTab('payments'),true)}
- </View>}
- {tab==='profile'&&<View style={s.card}><Text style={s.title}>My organiser profile</Text><Text style={s.hint}>Name: {member.full_name}</Text><Text style={s.hint}>Email: {member.email}</Text><Text style={s.hint}>Status: {member.account_status}</Text></View>}
- {events.some(e=>e.organiser_id===member.id)&&<View style={s.card}><Text style={s.hint}>ACTIVE EVENT · Choose an event for tickets, payments and gates</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8}}>{events.filter(e=>e.organiser_id===member.id).map(e=><Pressable key={e.id} onPress={()=>{setEventId(e.id);setOrders([]);setMedia([]);setDescription(e.description||'');setCategory(e.category||'Other');setTheme(e.ticket_theme||'aurora');setAdmissionLabel(e.admission_label||'ADMIT ONE');setPosterTemplate(e.poster_template||'none');void exec(async()=>{setOrders((await api('orders?eventId='+e.id,token)).orders||[]);setMedia((await api('events/media?eventId='+e.id,token)).media||[])})}} style={[s.navChip,eventId===e.id&&s.navSelected]}><Text style={s.buttonText}>{e.title}</Text></Pressable>)}</ScrollView></View>}
+ {tab==='dashboard'&&<View style={s.dashboard}>
+   <View style={s.dashboardHero}><Text style={s.dashboardOverline}>LIVE ORGANISER OVERVIEW</Text><Text style={s.dashboardHeading}>Your events. One workspace.</Text>
+    <Text style={s.hint}>Manage bookings, payments, designs and the gate team from the menu.</Text>
+   </View>
+   <View style={s.metricGrid}>
+    {([
+     ['My events',events.filter(e=>e.organiser_id===member.id).length],
+     ['Published',events.filter(e=>e.organiser_id===member.id&&e.status==='published').length],
+     ['Pending reviews',inbox.pending],
+     ['New receipts',inbox.unread]
+    ] as const).map(([label,value])=><View style={s.metricCard} key={label}><Text style={s.metricLabel}>{label}</Text><Text style={s.metricValue}>{value}</Text></View>)}
+   </View>
+   {finances?<View style={s.card}><Text style={s.title}>Verified financial performance</Text>
+    <View style={s.metricGrid}>
+     {([
+      ['Confirmed collections',finances.gross_ngn],
+      ['Platform commissions',finances.commission_ngn],
+      ['Organiser net',finances.organiser_net_ngn],
+      ['Commission outstanding',finances.outstanding_ngn]
+     ] as const).map(([label,value])=><View style={s.metricCard} key={label}><Text style={s.metricLabel}>{label}</Text><Text style={s.metricMoney} numberOfLines={1} adjustsFontSizeToFit>₦{Number(value).toLocaleString('en-NG')}</Text></View>)}
+    </View><Text style={s.hint}>Verified payments only; unconfirmed or manually tracked offline collections are excluded.</Text>
+   </View>:<Text accessibilityRole="alert" style={s.hint}>{financeError||'Loading verified financial totals…'}</Text>}
+   <View style={s.card}><Text style={s.title}>Next actions</Text>
+    {button('Refresh dashboard',()=>void exec(async()=>{await Promise.all([refreshInbox(),refreshFinances()])}),true)}
+    {button('Manage events',()=>navigateOrganiser('events'))}
+    {button('Review pending payments',()=>navigateOrganiser('payments'),true)}
+    {button('Open Ticket Studio',()=>navigateOrganiser('tickets'),true)}
+   </View>
+  </View>}
+  {tab==='profile'&&<View style={s.card}><Text style={s.title}>My organiser profile</Text><Text style={s.hint}>Name: {member.full_name}</Text><Text style={s.hint}>Email: {member.email}</Text><Text style={s.hint}>Status: {member.account_status}</Text></View>}
+ {(['events','tickets','payments','team'] as OrganiserPage[]).includes(tab)&&events.some(e=>e.organiser_id===member.id)&&<View style={s.card}><Text style={s.hint}>ACTIVE EVENT · Choose an event for tickets, payments and gates</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8}}>{events.filter(e=>e.organiser_id===member.id).map(e=><Pressable key={e.id} onPress={()=>{setEventId(e.id);setOrders([]);setMedia([]);setDescription(e.description||'');setCategory(e.category||'Other');setTheme(e.ticket_theme||'aurora');setAdmissionLabel(e.admission_label||'ADMIT ONE');setPosterTemplate(e.poster_template||'none');void exec(async()=>{setOrders((await api('orders?eventId='+e.id,token)).orders||[]);setMedia((await api('events/media?eventId='+e.id,token)).media||[])})}} style={[s.navChip,eventId===e.id&&s.navSelected]}><Text style={s.buttonText}>{e.title}</Text></Pressable>)}</ScrollView></View>}
  {tab==='payments'&&<>
  <Text style={s.title}>Pending payments ({inbox.pending})</Text>
  {button('Refresh pending payments',()=>void exec(async()=>refreshInbox()),true)}
@@ -305,19 +334,27 @@ export default function App(){
  {button('Sign out',()=>{void logout()},true)}</>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
  </ScrollView>
-  </Animated.View>
- {member?.role==='organiser'&&<View style={s.navigation}>
-  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7,paddingHorizontal:5}}>
-   {([['dashboard','Overview'],['events','Events'],['tickets','Ticket Studio'],['payments','Payments'],['team','Gate Team'],['profile','Profile']] as const).map(([id,label])=>
-    <Pressable key={id} accessibilityRole="tab" accessibilityState={{selected:tab===id}} disabled={busy} style={({pressed})=>[s.navChip,tab===id&&s.navSelected,pressed&&(reduceMotion?s.pressedStill:s.pressed)]} onPress={()=>setTab(id)}>
-     <Text style={[s.navText,tab===id&&s.navTextCurrent]}>{label}</Text>
-    </Pressable>)}
-  </ScrollView>
- </View>}
+    </Animated.View>
+   </View>
+   {member?.role==='organiser'&&!desktopNavigation&&menuOpen&&<View style={s.drawerOverlay}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Dismiss organiser menu" style={s.drawerBackdrop} onPress={()=>setMenuOpen(false)}/>
+    <View style={[s.drawerPanel,{width:Math.min(330,viewportWidth*.86)}]}>
+     <OrganiserSidebar active={tab} onSelect={navigateOrganiser} onClose={()=>setMenuOpen(false)} name={member.full_name} drawer
+      pendingPayments={inbox.pending} eventCount={events.filter(e=>e.organiser_id===member.id).length}/>
+    </View>
+   </View>}
  </View>
 }
 const s=StyleSheet.create({
  root:{flex:1,backgroundColor:'#0b1020'},
+ workspaceFrame:{flex:1,flexDirection:'row',minHeight:0},
+ sidebarDesktop:{width:250,height:'100%',flexShrink:0},
+ menuTrigger:{width:44,height:44,borderRadius:11,borderWidth:1,borderColor:'#5b6788',backgroundColor:'#2d3056',alignItems:'center',justifyContent:'center'},
+ menuIcon:{color:'#fff',fontWeight:'900',fontSize:23},
+ drawerOverlay:{position:'absolute',top:0,bottom:0,left:0,right:0,zIndex:90},
+ drawerBackdrop:{position:'absolute',top:0,bottom:0,left:0,right:0,backgroundColor:'#020615cc'},
+ drawerPanel:{height:'100%',paddingTop:Platform.OS==='android'?(StatusBar.currentHeight||24):Platform.OS==='ios'?45:0},
+
  head:{backgroundColor:'#111a31',borderBottomWidth:1,borderColor:'#334362',paddingHorizontal:18,paddingTop:(Platform.OS==='android'?(StatusBar.currentHeight||0):Platform.OS==='ios'?54:14)+8,paddingBottom:15,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10},
  brandRow:{flexDirection:'row',alignItems:'center',gap:10,flexShrink:1},brandCopy:{flexShrink:1},
  brandMark:{width:44,height:44,borderRadius:12},
@@ -325,6 +362,17 @@ const s=StyleSheet.create({
  headLabel:{fontSize:12,color:'#c6d3ec',fontWeight:'600',marginTop:3},
  accountBadge:{borderWidth:1,borderColor:'#46577a',paddingHorizontal:11,paddingVertical:9,borderRadius:11},
  body:{padding:18,paddingBottom:38,width:'100%',maxWidth:760,alignSelf:'center',flexGrow:1},
+ sectionHeader:{backgroundColor:'#1b2143',borderWidth:1,borderColor:'#60528a',borderRadius:18,padding:18,marginBottom:15,gap:4},
+ sectionOverline:{color:'#cbb8f7',letterSpacing:1.25,fontSize:10,fontWeight:'900'},
+ sectionHeading:{color:'#fff',fontSize:25,fontWeight:'900',letterSpacing:-.5},
+ dashboard:{gap:13},dashboardHero:{padding:19,backgroundColor:'#25234e',borderRadius:20,borderWidth:1,borderColor:'#695b9b',gap:7},
+ dashboardOverline:{fontSize:10,letterSpacing:1.2,fontWeight:'900',color:'#e5c68d'},
+ dashboardHeading:{fontWeight:'900',fontSize:26,color:'#fff',letterSpacing:-.6},
+ metricGrid:{flexDirection:'row',flexWrap:'wrap',gap:9},
+ metricCard:{width:'48%',minHeight:96,padding:13,backgroundColor:'#1c2a49',borderColor:'#465578',borderWidth:1,borderRadius:14,justifyContent:'space-between'},
+ metricLabel:{color:'#c1cfe5',fontSize:11,fontWeight:'700'},metricValue:{color:'#fff',fontSize:26,fontWeight:'900'},
+ metricMoney:{color:'#e4d5a7',fontSize:19,fontWeight:'900'},
+
  title:{color:'#f7f8ff',fontSize:22,fontWeight:'800',letterSpacing:-.45,marginTop:12,marginBottom:6},
  hint:{color:'#bac7e0',fontSize:14,lineHeight:21,marginVertical:5},
  input:{borderWidth:1,borderColor:'#455777',backgroundColor:'#192743',color:'#fff',minHeight:50,borderRadius:12,paddingHorizontal:14,marginVertical:7},
