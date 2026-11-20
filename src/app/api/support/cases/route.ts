@@ -58,11 +58,23 @@ export async function PATCH(req:Request){
   const u=await currentUser();if(!u||u.role!=='platform_admin'||u.account_status!=='active')return fail('Platform Admin only',403);
   const b=await payload(req),id=str(b.id,40),status=str(b.status,20),priority=str(b.priority,10),resolution=str(b.resolution,1500);
   if(!valid(id)||!['open','in_progress','resolved','closed'].includes(status)||!['low','normal','high','urgent'].includes(priority))return fail('Invalid case update',400);
-  const row=await db()`update platform_support_cases set status=${status},priority=${priority},resolution=${resolution},assigned_to=${u.id},updated_at=now()
-    where id=${id} returning id,organiser_id,status`;
-  if(!row[0])return fail('Case not found',404);
-  await db()`insert into platform_admin_actions(admin_id,target_user_id,action,details) values
-    (${u.id},${row[0].organiser_id},'resolve_support_case',${JSON.stringify({caseId:id,status,priority})}::jsonb)`;
-  return ok({case:row[0]});
+  const result=await db().begin(async tx=>{
+   const [previous]=await tx`select id,organiser_id,status,priority,resolution from platform_support_cases where id=${id} for update`;
+   if(!previous)return {error:'Support case not found',status:404};
+   const finalResolution=resolution||String(previous.resolution||'');
+   if(['resolved','closed'].includes(status)&&finalResolution.trim().length<10)
+    return {error:'Record a meaningful case-specific resolution (at least 10 characters) before closing support',status:400};
+   if(previous.status===status&&previous.priority===priority&&String(previous.resolution||'')===finalResolution)
+    return {error:'No changes to save for this support case',status:409};
+   const [updated]=await tx`update platform_support_cases
+    set status=${status},priority=${priority},resolution=${finalResolution},assigned_to=${u.id},updated_at=now()
+    where id=${id} returning id,organiser_id,status,priority,resolution,updated_at`;
+   await tx`insert into platform_admin_actions(admin_id,target_user_id,action,details) values
+    (${u.id},${previous.organiser_id},'resolve_support_case',
+     ${tx.json({caseId:id,fromStatus:previous.status,toStatus:status,fromPriority:previous.priority,toPriority:priority,hasResolution:finalResolution.trim().length>=10})})`;
+   return {case:updated};
+  });
+  if('error' in result)return fail(String(result.error),typeof result.status==='number'?result.status:400);
+  return ok({case:result.case});
  }catch(e){return handleError(e)}
 }
