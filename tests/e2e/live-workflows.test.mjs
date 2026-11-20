@@ -290,6 +290,13 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal((await sql`select count(*)::int as total from ticket_entry_codes where ticket_id=${ticket.id}`)[0].total,1,'online backup lookup indexed');
   assert.ok(ticket?.delivered_at,'ticket is immediately delivered into User wallet');
   assert.equal(ticket?.ticket_theme,'stj-royal-gold','issued ticket retains the selected luxurious STJ design');
+  assert.equal(ticket?.design_version,2,'latest saved Ticket Studio version is frozen at approval');
+  assert.equal(ticket?.design_snapshot?.version,2,'owner wallet exposes the exact approved design version');
+  assert.equal(ticket?.design_snapshot?.mode,'ticket','issuer preserves Ticket Studio QR / ticket delivery mode');
+  assert.equal(ticket?.design_snapshot?.fields?.holder,'Custom holder preview','saved editable fields are preserved by value');
+  const [savedDelivery]=await sql`select design_version,design_snapshot from ticket_deliveries where ticket_id=${ticket.id}`;
+  assert.equal(savedDelivery.design_version,2,'issuance writes immutable per-ticket design metadata');
+  assert.equal(savedDelivery.design_snapshot.theme,'stj-royal-gold');
   assert.equal(ticket?.ticket_art_id,ticketArtwork.id,'approved custom artwork is attached to each issued QR pass');
   const postIssueDraft=expect(await post(designEndpoint,org.cookie,{...updatedDraft,fields:{...updatedDraft.fields,notes:'New draft after first issuance'}}),201,'new draft after ticket issue').draft;
   assert.equal(postIssueDraft.version,3);
@@ -297,6 +304,8 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(issuedAfterDraft.qr,ticket.qr,'draft changes cannot change existing signed QR');
   assert.equal(issuedAfterDraft.ticket_theme,ticket.ticket_theme,'issued ticket theme snapshot remains unchanged');
   assert.equal(issuedAfterDraft.ticket_art_id,ticket.ticket_art_id,'issued ticket artwork snapshot remains unchanged');
+  assert.equal(issuedAfterDraft.design_version,2,'subsequent draft version does not mutate issued design');
+  assert.equal(issuedAfterDraft.design_snapshot?.fields?.holder,'Custom holder preview','historical issue retains prior editable field values');
   expect(await req('/api/events/media',{cookie:org.cookie,method:'DELETE',body:{id:ticketArtwork.id}}),409,'issued artwork cannot be removed');
   assert.equal(ticket?.admission_label,'ADMIT ONE — MASK COMPULSORY','issued ticket preserves approved admission wording');
   expect(await req('/api/events/media?id='+artworkId),200,'verified poster publicly accessible');
