@@ -54,7 +54,7 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
     const rows=await db()`select id,status,redeemed_at,true as active from tickets
      where id=${decoded.ticketId} and event_id=${eventId}
        and exists(select 1 from ticket_orders o join verified_order_payments p on p.order_id=o.id
-         where o.id=tickets.order_id and o.status='approved')
+         where o.id=tickets.order_id and (o.status='approved' or (o.status='cancelled' and tickets.status='revoked')))
      union all select id,status,redeemed_at,active from offline_tickets
      where id=${decoded.ticketId} and event_id=${eventId}`;
     const ticket=rows[0];
