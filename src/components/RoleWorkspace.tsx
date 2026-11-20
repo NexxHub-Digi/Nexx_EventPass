@@ -594,10 +594,19 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
   <span>{inbox.unread} new payment {inbox.unread===1?'receipt needs':'receipts need'} review.</span>
   <button type="button" onClick={()=>setOrganiserTab('payments')}>Open pending payments</button>
  </div>}
- {role==='organiser'&&<div className="rw-workspace-shell"><nav className="rw-panel" aria-label="Organiser navigation" style={{display:'grid',gap:8,alignContent:'start',position:'sticky',top:16,padding:12}}><div className="eyebrow" style={{padding:8}}>ORGANISER WORKSPACE</div>
-   {(['dashboard','events','tickets','offline','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>setOrganiserTab(tab)} style={{textTransform:'capitalize',textAlign:'left',padding:12}}>{tab==='tickets'?'Ticket Studio':tab==='offline'?'Offline Ticketing':tab==='team'?'Gate Management':tab==='payments'?'Payments & Bank Details':tab==='dashboard'?'Overview':tab}</button>)}
-  </nav><div className="rw-layout" style={{minWidth:0}}>
-  <section className="rw-panel rw-wide" aria-label="Active organiser event" style={{padding:16}}>
+ {role==='organiser'&&<div className="rw-workspace-shell ep-organiser-workspace">
+   {organiserMenuOpen&&<button type="button" className="ep-admin-drawer-scrim" aria-label="Close organiser menu" onClick={()=>setOrganiserMenuOpen(false)}/>}
+   <nav id="organiser-workspace-navigation" className={['rw-panel','ep-organiser-sidebar',organiserMenuOpen?'is-open':''].filter(Boolean).join(' ')} aria-label="Organiser navigation">
+    <div className="ep-admin-side-brand"><span className="ep-admin-side-symbol">◈</span><span className="ep-admin-side-label"><b>EVENTPASS</b><small>Organiser workspace</small></span><button type="button" className="ep-admin-side-close" aria-label="Close organiser menu" onClick={()=>setOrganiserMenuOpen(false)}>×</button></div>
+    {(['dashboard','events','tickets','offline','payments','team','profile','settings'] as const).map(tab=><button key={tab} type="button" className={organiserTab===tab?'primary':'ghost'} aria-current={organiserTab===tab?'page':undefined} onClick={()=>navigateOrganiser(tab)}>
+     <span className="ep-admin-nav-icon" aria-hidden="true">{({dashboard:'▦',events:'◇',tickets:'✧',offline:'▣',payments:'₦',team:'♙',profile:'◉',settings:'⚙'} as Record<string,string>)[tab]}</span>
+     <span>{tab==='tickets'?'Ticket Studio':tab==='offline'?'Offline ticketing':tab==='team'?'Gate management':tab==='payments'?'Payments & bank details':tab==='dashboard'?'Dashboard':tab}</span>
+    </button>)}
+   </nav>
+   <div className="rw-layout ep-organiser-main" style={{minWidth:0}}>
+    <header className="ep-organiser-workspace-toolbar"><button type="button" className="ep-admin-menu-trigger" aria-controls="organiser-workspace-navigation" aria-expanded={organiserMenuOpen} onClick={()=>setOrganiserMenuOpen(x=>!x)}><span aria-hidden="true">☰</span> Menu</button>
+    <div><div className="eyebrow">ORGANISER / WORKSPACE</div><h2>{organiserTab==='dashboard'?'Dashboard':organiserTab==='tickets'?'Ticket Studio':organiserTab==='offline'?'Offline ticketing':organiserTab==='team'?'Gate management':organiserTab==='payments'?'Payments & bank details':organiserTab.charAt(0).toUpperCase()+organiserTab.slice(1)}</h2></div></header>
+   <section className="rw-panel rw-wide" aria-label="Active organiser event" style={{padding:16}}>
     <div className="eyebrow">ACTIVE EVENT CONTEXT</div>
     <label className="rw-field">Choose the event for payments, ticket design and gate management
       <select value={eventId} onChange={e=>{
