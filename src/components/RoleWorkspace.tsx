@@ -400,10 +400,6 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     <span className="ep-admin-queue-count">{count}</span><span>{label}</span><strong aria-hidden="true">›</strong>
    </button>)}
   </div>
-  <div className="ep-admin-section-heading"><div><h3>Operational shortcuts</h3><p>All shortcuts open their connected administrative workspaces.</p></div></div>
-  <div className="ep-admin-shortcuts">
-   {([['Review organisers','organisers'],['Moderate events','moderation'],['Manage accounts','users'],['Payments & reconciliation','refunds'],['Support desk','support'],['Event analytics','reports'],['Audit history','audit'],['Platform settings','settings']] as [string,string][]).map(([label,tab])=><button type="button" key={tab} className="ghost" onClick={()=>setAdminTab(tab)}>{label} <span aria-hidden="true">›</span></button>)}
-  </div>
   <h3>Recent support activity</h3>
   {cases.slice(0,4).map(c=><button type="button" className="ep-admin-recent-case" key={c.id} onClick={()=>{setSelectedSupportId(c.id);setSupportDrafts(p=>({...p,[c.id]:p[c.id]||{priority:c.priority,resolution:c.resolution||''}}));setAdminTab('support')}}><strong>{c.subject}</strong><small>{c.organiser_name} · {c.status.replace('_',' ')} · {c.priority}</small><span>Review case</span></button>)}
   {!cases.length&&<p>No support requests recorded.</p>}
