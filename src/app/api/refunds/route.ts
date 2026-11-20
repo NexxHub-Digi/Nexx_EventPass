@@ -21,7 +21,21 @@ export async function GET(req:Request){
     where e.organiser_id=${u.id} and (${eventId}='' or o.event_id::text=${eventId})
     and (o.refund_status!='not_required' or (o.status='pending' and o.reservation_expires_at<=now() and o.receipt_data is not null))
     order by o.created_at desc limit 150`;
-  return ok({orders});
+  // Administrators can inspect previously issued paid orders before a supervised
+  // cancellation. Redeemed, already revoked, or partially issued admissions are
+  // presented as blocked, not as actionable refund buttons.
+  const issuedOrders=u.role==='platform_admin'?await db()`select o.id,o.event_id,o.quantity,o.amount_ngn,o.payment_method,
+    e.title as event_title,buyer.email as buyer_email,
+    count(t.id)::int as ticket_count,
+    count(t.id) filter(where t.status='issued' and t.redeemed_at is null)::int as unused_count,
+    count(t.id) filter(where t.redeemed_at is not null)::int as admitted_count
+    from ticket_orders o join events e on e.id=o.event_id
+    join app_users buyer on buyer.id=o.buyer_id
+    left join tickets t on t.order_id=o.id
+    where o.status='approved' and (${eventId}='' or o.event_id::text=${eventId})
+    group by o.id,e.title,buyer.email
+    order by o.created_at desc limit 100`:[];
+  return ok({orders,issuedOrders});
  }catch(e){return handleError(e)}
 }
 export async function PATCH(req:Request){
