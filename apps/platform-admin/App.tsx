@@ -522,7 +522,7 @@ export default function App(){
       pendingOrganisers={applicants.filter(a=>a.role==='user'&&a.requested_role==='organiser').length}
       pendingRefunds={refundCases.filter(r=>['review_required','initiated'].includes(r.refund_status)).length}/>
     </View>
-   </View>
+   </View>}
  </View>
 }
 const s=StyleSheet.create({
