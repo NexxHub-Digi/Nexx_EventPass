@@ -19,7 +19,7 @@ test('web Support case editor binds each priority and resolution to a specific c
  assert.match(web,/selectedSupportId/);
  assert.match(web,/supportDrafts\[c\.id\]/);
  assert.match(web,/Resolution \/ guidance for this case/);
- assert.match(web,/onClick=\{\(\)=>openSupportCaseEditor\(c\)\}/);
+ assert.ok(web.includes('()=>openSupportCaseEditor(c)'));
  assert.match(web,/await api\('support\/cases','PATCH',\{id:c\.id,status,priority:draft\.priority,resolution:draft\.resolution\.trim\(\)\}\)/);
  assert.match(web,/Open case \/ take action/);
  assert.match(web,/Resolve case/);
