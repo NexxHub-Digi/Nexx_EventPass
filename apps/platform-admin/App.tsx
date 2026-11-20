@@ -1,6 +1,7 @@
 import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {AccessibilityInfo,Animated,Easing,Alert,ScrollView,Pressable,Text,TextInput,View,StyleSheet,Platform,StatusBar,ActivityIndicator,Image} from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import PlatformOverview from './PlatformOverview';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
 WebBrowser.maybeCompleteAuthSession();
@@ -182,15 +183,11 @@ export default function App(){
   </View>:<>
  <Text style={s.title}>Welcome, {member.full_name}</Text><Text style={s.hint}>{member.email}</Text>
  {member.account_status==='pending'?<View style={s.card}><Text style={s.title}>Approval pending</Text><Text style={s.hint}>Platform Admin must approve this organiser application.</Text></View>:<>{button('Refresh',()=>{void exec(async()=>load(token))},true)}
- {section==='overview'&&<><Text style={s.title}>Platform overview</Text>
- <Text style={s.hint}>Live totals across online and offline tickets and gate admissions.</Text>
- {Object.entries(summary).map(([key,value])=><View key={key} style={s.card}>
-  <Text style={{color:'#fff',fontSize:21,fontWeight:'900'}}>{Number(value).toLocaleString('en-NG')}</Text>
-  <Text style={s.hint}>{key.replace(/_/g,' ')}</Text>
- </View>)}
- {button('Moderate events',()=>setSection('events'))}
- {button('Payment exceptions',()=>setSection('finance'),true)}
- </>}
+ {section==='overview'&&<PlatformOverview fullName={member.full_name} summary={summary}
+ pendingOrganisers={applicants.filter(a=>a.role==='user'&&a.requested_role==='organiser').length}
+ pendingEvents={moderationEvents.filter(e=>e.verification_status==='pending').length}
+ pendingRefunds={refundCases.filter(r=>r.refund_status!=='settled').length}
+ onNavigate={target=>setSection(target)} onRefresh={()=>void exec(async()=>load(token))} busy={busy}/>}
  {section==='more'&&<><Text style={s.title}>More tools</Text>
  {button('Users & access',()=>setSection('accounts'))}
  {button('Events & analytics',()=>setSection('analytics'),true)}
