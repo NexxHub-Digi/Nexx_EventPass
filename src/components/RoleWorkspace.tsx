@@ -68,6 +68,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string;entryCode?:string|null}|null>(null);
  const [adminTab,setAdminTab]=useState('overview');
  const [adminMenuOpen,setAdminMenuOpen]=useState(false),[adminNavCollapsed,setAdminNavCollapsed]=useState(false),[organiserMenuOpen,setOrganiserMenuOpen]=useState(false);
+ const [adminLoadIssues,setAdminLoadIssues]=useState<string[]>([]);
  const [showEventDesign,setShowEventDesign]=useState(false);
  const [organiserTab,setOrganiserTab]=useState<'dashboard'|'events'|'tickets'|'offline'|'payments'|'team'|'profile'|'settings'>('dashboard');
  const [gateOperators,setGateOperators]=useState<GateOperator[]>([]);
@@ -111,7 +112,16 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  async function fetchAll(){
   const m=await api('auth/me');setMe(m.user);setPortals(m.portals||[]);
   if(!m.user)return;
-  const [e,themeResult]=await Promise.all([api('events'),api('ticket-themes')]);setEvents(e.events||[]);if(themeResult.themes?.length)setThemeCatalog(themeResult.themes);
+  const adminIssues:string[]=[];
+  if(role==='platform-admin'){
+   const common=await Promise.allSettled([api('events'),api('ticket-themes')]);
+   if(common[0].status==='fulfilled')setEvents(common[0].value.events||[]);else adminIssues.push('Event catalogue unavailable');
+   if(common[1].status==='fulfilled'){if(common[1].value.themes?.length)setThemeCatalog(common[1].value.themes)}
+   else adminIssues.push('Ticket theme catalogue unavailable');
+  }else{
+   const [e,themeResult]=await Promise.all([api('events'),api('ticket-themes')]);
+   setEvents(e.events||[]);if(themeResult.themes?.length)setThemeCatalog(themeResult.themes);
+  }
   if(m.user.account_status==='pending'||(role==='organiser'&&m.user.role==='user'&&m.user.requested_role==='organiser'))return;
   const rr=role==='platform-admin'?'platform_admin':role;
   if(!(m.portals||[]).includes(rr))return;
@@ -125,13 +135,37 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    setGates(g.gates||[]);setInvites(g.invitations||[]);setGateOperators(g.operators||[]);
   }else if(role==='gate'){const g=await api('gates');setGates(g.gates||[]);}
   else if(role==='platform-admin'){
-   const [a,overview,banks]=await Promise.all([api('platform/organisers'),api('platform/overview'),api('organiser/payment-account')]);
-   setBankAccounts(banks.accounts||[]);
-   setOrganisers(a.organisers||[]);setStats(overview.stats||{});
-   const [reviews,people,support,configuration,report,refunds,audit]=await Promise.all([api('platform/events'),api('platform/users'),api('support/cases'),api('platform/settings'),api('platform/event-directory'),api('refunds'),api('platform/audit')]);
-   setEventReports(report.events||[]);setRefundCases(refunds.orders||[]);setAuditHistory(audit.history||[]);
-   setModerationEvents(reviews.events||[]);setModerationMedia(reviews.media||[]);
-   setAllUsers(people.accounts||[]);setUsersCount(people.count||0);setCases(support.cases||[]);setPlatformSettings(configuration.settings||{});
+   const calls=[
+    ['Organisers',api('platform/organisers')],
+    ['Dashboard',api('platform/overview')],
+    ['Bank verification',api('organiser/payment-account')],
+    ['Event moderation',api('platform/events')],
+    ['Users & access',api('platform/users')],
+    ['Support',api('support/cases')],
+    ['Settings',api('platform/settings')],
+    ['Events & analytics',api('platform/event-directory')],
+    ['Payments & refunds',api('refunds')],
+    ['Audit logs',api('platform/audit')]
+   ] as const;
+   const settled=await Promise.allSettled(calls.map(([,request])=>request));
+   const loaded=(i:number)=>{
+    const result=settled[i];
+    if(result.status==='fulfilled')return result.value;
+    adminIssues.push(calls[i][0]+' service unavailable');
+    return null;
+   };
+   const organisersResult=loaded(0);if(organisersResult)setOrganisers(organisersResult.organisers||[]);
+   const overview=loaded(1);if(overview)setStats(overview.stats||{});
+   const banks=loaded(2);if(banks)setBankAccounts(banks.accounts||[]);
+   const reviews=loaded(3);if(reviews){setModerationEvents(reviews.events||[]);setModerationMedia(reviews.media||[])}
+   const people=loaded(4);if(people){setAllUsers(people.accounts||[]);setUsersCount(people.count||0)}
+   const support=loaded(5);if(support)setCases(support.cases||[]);
+   const configuration=loaded(6);if(configuration)setPlatformSettings(configuration.settings||{});
+   const report=loaded(7);if(report)setEventReports(report.events||[]);
+   const refunds=loaded(8);if(refunds)setRefundCases(refunds.orders||[]);
+   const audit=loaded(9);if(audit)setAuditHistory(audit.history||[]);
+   setAdminLoadIssues(adminIssues);
+
   }
  }
  useEffect(()=>{setLoading(true);fetchAll().catch(e=>setMessage((e as Error).message)).finally(()=>setLoading(false));return ()=>{cameraGeneration.current++;scanControls.current?.stop()}},[role]);
@@ -387,7 +421,11 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     </div>
     <div className="ep-admin-header-status"><span className="ep-admin-status-dot" aria-hidden="true"/> Live database <small>{me.full_name}</small></div>
    </header>
-  <section className="rw-panel ep-admin-dashboard" style={{display:adminTab==='overview'?'':'none'}}><div className="ep-admin-dashboard-welcome"><div><div className="eyebrow">WELCOME TO YOUR COMMAND CENTRE</div><h2>Good to see you, {me.full_name}</h2><p>Review live performance, resolve pending work and manage EventPass from the menu.</p></div><span className="ep-admin-live-label">Platform Administrator</span></div><div className="ep-admin-section-heading"><div><div className="eyebrow">OPERATIONS AT A GLANCE</div><h2 id="admin-overview">Platform overview</h2><p>Live operational totals across organisers, reservations, tickets and admission activity.</p></div><span className="ep-admin-live-label">Database-backed</span></div><p className="ep-admin-metric-note">Verified collections are confirmed payments only. Offline sales are manually recorded, not necessarily received. Refund exposure reflects open review cases, not approved payouts.</p><div className="rw-stats ep-admin-kpis">{Object.entries(stats).map(([k,v])=><div className="rw-stat ep-admin-kpi" key={k}><small>{({verified_collections_ngn:'Verified collections',verified_commissions_ngn:'Verified platform commissions',commission_outstanding_ngn:'Outstanding commission remittance',manual_offline_sales_ngn:'Manually recorded offline sales',refund_review_exposure_ngn:'Unresolved refund exposure'} as Record<string,string>)[k]||k.replace(/_/g,' ')}</small><b>{k.endsWith('_ngn')?'₦'+Number(v).toLocaleString('en-NG'):Number(v).toLocaleString('en-NG')}</b><span className="ep-admin-kpi-rule" aria-hidden="true"/></div>)}</div>
+  {adminLoadIssues.length>0&&<div className="ep-admin-load-warning" role="alert">
+    <div><strong>Some administrator modules could not load</strong><p>{adminLoadIssues.join(' · ')}</p><small>Working modules remain available; missing data is not being presented as zero.</small></div>
+    <button className="ghost" type="button" disabled={busy} onClick={()=>{void run(async()=>{await fetchAll()})}}>Retry modules</button>
+   </div>}
+   <section className="rw-panel ep-admin-dashboard" style={{display:adminTab==='overview'?'':'none'}}><div className="ep-admin-dashboard-welcome"><div><div className="eyebrow">WELCOME TO YOUR COMMAND CENTRE</div><h2>Good to see you, {me.full_name}</h2><p>Review live performance, resolve pending work and manage EventPass from the menu.</p></div><span className="ep-admin-live-label">Platform Administrator</span></div><div className="ep-admin-section-heading"><div><div className="eyebrow">OPERATIONS AT A GLANCE</div><h2 id="admin-overview">Platform overview</h2><p>Live operational totals across organisers, reservations, tickets and admission activity.</p></div><span className="ep-admin-live-label">Database-backed</span></div><p className="ep-admin-metric-note">Verified collections are confirmed payments only. Offline sales are manually recorded, not necessarily received. Refund exposure reflects open review cases, not approved payouts.</p><div className="rw-stats ep-admin-kpis">{Object.entries(stats).map(([k,v])=><div className="rw-stat ep-admin-kpi" key={k}><small>{({verified_collections_ngn:'Verified collections',verified_commissions_ngn:'Verified platform commissions',commission_outstanding_ngn:'Outstanding commission remittance',manual_offline_sales_ngn:'Manually recorded offline sales',refund_review_exposure_ngn:'Unresolved refund exposure'} as Record<string,string>)[k]||k.replace(/_/g,' ')}</small><b>{k.endsWith('_ngn')?'₦'+Number(v).toLocaleString('en-NG'):Number(v).toLocaleString('en-NG')}</b><span className="ep-admin-kpi-rule" aria-hidden="true"/></div>)}</div>
   <div className="ep-admin-section-heading"><div><div className="eyebrow">LIVE WORK QUEUE</div><h3>Requires administrator attention</h3><p>Open a section below to resolve records in the database. These are not demo tasks.</p></div>{btn('Refresh dashboard',()=>{void run(async()=>{await fetchAll();setMessage('Live administrator dashboard refreshed')})},true)}</div>
   <div className="ep-admin-queues">
    {([
