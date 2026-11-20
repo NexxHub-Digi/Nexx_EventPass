@@ -65,7 +65,7 @@ export default function App(){
  const [a,people,support,configuration,overview,moderation,audit,refunds,eventDirectory,themeCatalog]=await Promise.all([
   api('platform/organisers',t),api('platform/users',t),api('support/cases',t),api('platform/settings',t),
   api('platform/overview',t),api('platform/events',t),api('platform/audit',t),api('refunds',t),api('platform/event-directory',t),api('ticket-themes',t)]);
- setApplicants(a.organisers||[]);setAccounts(people.accounts||[]);setCases(support.cases||[]);setSettings(configuration.settings||{});
+ setApplicants(a.organisers||[]);setAccounts(people.accounts||[]);setCases(support.cases||[]);setSettings(configuration.settings||{});setSettingValue(String((configuration.settings||{})[settingKey]||''));
  setSummary(overview.stats||{});setModerationEvents(moderation.events||[]);setModerationMedia(moderation.media||[]);
  setAuditHistory(audit.history||[]);setRefundCases(refunds.orders||[]);
  setEventMetrics(eventDirectory.events||[]);setThemes(themeCatalog.themes||[]);setAccountCount(people.count||0);setAccountPage(people.page||1);
@@ -132,7 +132,15 @@ export default function App(){
    {text:'Cancel',style:'cancel'},{text:'Confirm',onPress:()=>void resolveCase(c,status)}
   ]);
  }
- async function saveSetting(){await exec(async()=>{await api('platform/settings',token,'PATCH',{key:settingKey,value:settingValue});setSettings({...settings,[settingKey]:settingValue});Alert.alert('Configuration saved')})}
+ async function saveSetting(){await exec(async()=>{
+  const value=settingValue.trim();
+  if(!value)throw Error('Enter a configuration value; blank settings cannot be saved.');
+  if(settingKey==='support_email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))throw Error('Enter a valid support email address.');
+  await api('platform/settings',token,'PATCH',{key:settingKey,value});
+  const result=await api('platform/settings',token);setSettings(result.settings||{});
+  setSettingValue(String(result.settings?.[settingKey]||''));
+  Alert.alert('Setting saved','Configuration was persisted and reloaded from the server.');
+ })}
  async function moderate(eventId:string,action:'verify'|'reject'|'approve_media'|'reject_media',mediaId?:string){await exec(async()=>{
   await api('platform/events',token,'POST',{eventId,action,...(mediaId?{mediaId}:{})});
   await load(token);Alert.alert('Review saved','The moderated record has been updated.');
@@ -217,6 +225,7 @@ export default function App(){
  pendingRefunds={refundCases.filter(r=>r.refund_status!=='settled').length}
  pendingSupport={cases.filter(c=>['open','in_progress'].includes(c.status)).length}
  pendingBanks={bankAccounts.filter(b=>b.status==='pending').length}
+ recentActions={auditHistory}
  onNavigate={navigateAdmin} onRefresh={()=>void exec(async()=>load(token))} busy={busy}/>}
  {section==='analytics'&&<><Text style={s.title}>Events & analytics</Text>
  <Text style={s.hint}>Confirmed revenue excludes pending orders and manually tracked offline sales.</Text>
@@ -441,10 +450,30 @@ export default function App(){
   </View>}
  </View>)}
  </>}
- {section==='settings'&&<><Text style={s.title}>Platform settings</Text>
- <Text style={s.hint}>Supported settings: support_email, organiser_approval_policy, event_verification_policy, help_text. Secrets are configured only on the server.</Text>
- {input('Setting key',settingKey,setSettingKey)}{input('Setting value',settingValue,setSettingValue)}
- {button('Save setting',()=>{void saveSetting()})}</>}
+ {section==='settings'&&<><Text style={s.title}>Platform configuration</Text>
+ <Text style={s.hint}>Configure actual saved policies and contact details. API secrets are controlled in the hosting environment, not in the app.</Text>
+ {([
+  ['support_email','Support contact email','Shown to organisers requesting platform assistance'],
+  ['organiser_approval_policy','Organiser approval checklist','Requirements applied during organiser onboarding'],
+  ['event_verification_policy','Event authenticity checklist','Guidance used when reviewing events and media'],
+  ['help_text','Platform help text','Instructions available to users and organisers']
+ ] as const).map(([key,label,description])=><Pressable key={key} accessibilityRole="button"
+  accessibilityLabel={'Edit '+label} accessibilityState={{selected:settingKey===key}}
+  onPress={()=>{setSettingKey(key);setSettingValue(String(settings[key]||''))}}
+  style={[s.card,{borderColor:settingKey===key?'#b39be9':'#374b6f',backgroundColor:settingKey===key?'#312b55':'#16213a'}]}>
+   <Text style={{color:'#fff',fontWeight:'800',fontSize:14}}>{label}</Text>
+   <Text style={s.hint}>{description}</Text>
+   <Text style={{fontSize:12,color:'#bed0eb'}} numberOfLines={2}>{settings[key]||'Not configured yet — tap to set'}</Text>
+  </Pressable>)}
+ <View style={s.card}>
+  <Text style={s.title}>Edit selected setting</Text>
+  <Text style={s.hint}>{settingKey.replaceAll('_',' ')}</Text>
+  <TextInput accessibilityLabel={'Value for '+settingKey} placeholder="Enter a policy or contact value" placeholderTextColor="#9caecc"
+   multiline={settingKey!=='support_email'} maxLength={750} textAlignVertical="top" value={settingValue} onChangeText={setSettingValue}
+   autoCapitalize="none" style={[s.input,settingKey!=='support_email'&&{minHeight:105}]}/>
+  {button('Save and verify setting',()=>void saveSetting())}
+  {button('Reload saved settings',()=>void exec(async()=>{const data=await api('platform/settings',token);setSettings(data.settings||{});setSettingValue(String(data.settings?.[settingKey]||''))}),true)}
+ </View></>}
  </>}
  </>}
  {!!error&&<Text style={s.error} accessibilityRole="alert">{error}</Text>}{busy&&<ActivityIndicator color="#45D6C9"/>}
