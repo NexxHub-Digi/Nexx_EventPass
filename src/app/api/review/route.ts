@@ -2,7 +2,7 @@ import { currentUser } from '@/lib/security';
 import { db } from '@/lib/db';
 import { issueTicketCredential } from '@/lib/ticket-credentials';
 import {registerEntryCode} from '@/lib/ticket-entry-code';
-import {makeIssuedDesignSnapshot} from '@/lib/ticket-design-snapshot';
+import {makeIssuedDesignSnapshot,type SavedDesign} from '@/lib/ticket-design-snapshot';
 import { fail, handleError, ok, payload, str } from '@/lib/http';
 export const runtime='nodejs';
 export async function POST(req: Request) {
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
           from events e where e.id=${order.event_id}`;
         const [savedDesign]=await tx`select version,theme_id,mode,fields,enabled from event_ticket_design_versions
           where event_id=${order.event_id} order by version desc limit 1`;
-        const snapshot=makeIssuedDesignSnapshot(savedDesign||null,order.ticket_category_id||null);
+        const snapshot=makeIssuedDesignSnapshot((savedDesign||null) as SavedDesign|null,order.ticket_category_id||null);
         const issuedTheme=snapshot?.theme||design[0].ticket_theme;
         // Existing legacy events use signed EVP1 tickets; new configured events use encrypted EVP2.
         // Never mark a payment approved without issuing every ticket inside this same transaction.
