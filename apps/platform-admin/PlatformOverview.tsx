@@ -1,18 +1,7 @@
 import React from 'react';
 import {Pressable,Text,View,StyleSheet,useWindowDimensions} from 'react-native';
 type Section='organisers'|'accounts'|'events'|'analytics'|'finance'|'support'|'themes'|'audit'|'settings';
-type Props={fullName:string;summary:Record<string,number>;pendingOrganisers:number;pendingEvents:number;pendingRefunds:number;pendingSupport:number;pendingBanks:number;onNavigate:(section:Section)=>void;onRefresh:()=>void;busy:boolean};
-const actions:[Section,string,string,string][]=[
- ['organisers','Organisers','Review applications and permissions','◎'],
- ['events','Event moderation','Verify listings and submitted media','◈'],
- ['finance','Payments & refunds','Review exceptions and settlements','₦'],
- ['accounts','Users & access','Find accounts and inspect permissions','♧'],
- ['analytics','Events & analytics','Monitor reservations and attendance','▥'],
- ['support','Support desk','Resolve organiser requests','◇'],
- ['themes','Ticket themes','Manage available event designs','✧'],
- ['audit','Audit history','Inspect administrator decisions','≡'],
- ['settings','Platform settings','Configure approved platform policies','⚙']
-];
+type Props={fullName:string;summary:Record<string,number>;pendingOrganisers:number;pendingEvents:number;pendingRefunds:number;pendingSupport:number;pendingBanks:number;recentActions:{id:string;action:string;created_at:string;performed_by:string;target_email?:string|null}[];onNavigate:(section:Section)=>void;onRefresh:()=>void;busy:boolean};
 const featuredKeys=['organisers','events','tickets','admissions','orders','revenue'];
 const financialMetricLabels:Record<string,string>={
  verified_collections_ngn:'Verified collections',verified_commissions_ngn:'Verified platform commissions',
@@ -21,7 +10,7 @@ const financialMetricLabels:Record<string,string>={
 };
 function displayName(key:string){return financialMetricLabels[key]||key.replace(/_/g,' ').replace(/\b\w/g,letter=>letter.toUpperCase())}
 function formatMetric(key:string,value:number){return key.endsWith('_ngn')?'₦'+Number(value).toLocaleString('en-NG'):Number(value).toLocaleString('en-NG')}
-export default function PlatformOverview({fullName,summary,pendingOrganisers,pendingEvents,pendingRefunds,pendingSupport,pendingBanks,onNavigate,onRefresh,busy}:Props){
+export default function PlatformOverview({fullName,summary,pendingOrganisers,pendingEvents,pendingRefunds,pendingSupport,pendingBanks,recentActions,onNavigate,onRefresh,busy}:Props){
  const {width}=useWindowDimensions();
  const columns=width<380?2:width<780?2:3;
  const statEntries=Object.entries(summary).sort(([a],[b])=>{
@@ -54,13 +43,18 @@ export default function PlatformOverview({fullName,summary,pendingOrganisers,pen
     <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit>{formatMetric(key,value)}</Text>
     <View style={styles.metricAccent}/>
    </View>)}</View>}
-  <Text style={styles.sectionTitle}>Administration tools</Text>
-  <View style={styles.tools}>
-   {actions.map(([key,title,description,glyph])=><Pressable accessibilityRole="button" accessibilityLabel={'Open '+title} key={key} onPress={()=>onNavigate(key)} style={[styles.tool,{width:width<390?'100%':'48%'}]}>
-    <View style={styles.toolTop}><Text style={styles.toolGlyph}>{glyph}</Text><Text style={styles.chevron}>›</Text></View>
-    <Text style={styles.toolTitle}>{title}</Text><Text style={styles.toolDesc}>{description}</Text>
-   </Pressable>)}
+  <View style={styles.recentHead}>
+   <Text style={styles.sectionTitle}>Recent administrator activity</Text>
+   <Pressable accessibilityRole="button" accessibilityLabel="Open full administrator audit log" onPress={()=>onNavigate('audit')} style={styles.auditButton}><Text style={styles.auditText}>Open audit log ›</Text></Pressable>
   </View>
+  {recentActions.length===0?<Text style={styles.caption}>No administrator actions have been recorded yet.</Text>:
+   recentActions.slice(0,5).map(item=><View style={styles.recentRow} key={item.id}>
+    <View style={styles.activityDot}/><View style={{flex:1}}>
+     <Text style={styles.activityName}>{item.action.replaceAll('_',' ')}</Text>
+     <Text style={styles.caption}>{item.target_email||'Platform operation'} · {item.performed_by}</Text>
+     <Text style={styles.activityDate}>{new Date(item.created_at).toLocaleString('en-NG')}</Text>
+    </View>
+   </View>)}
  </View>
 }
 const styles=StyleSheet.create({
@@ -79,8 +73,11 @@ const styles=StyleSheet.create({
  metric:{backgroundColor:'#1b2946',borderWidth:1,borderColor:'#405475',borderRadius:16,padding:13,minHeight:112,justifyContent:'space-between',gap:7},
  metricLabel:{color:'#c6d2e5',fontSize:11,fontWeight:'700'},metricValue:{color:'#fff',fontSize:24,fontWeight:'900'},
  metricAccent:{backgroundColor:'#b6a0ee',width:34,height:3,borderRadius:3},
- tools:{flexDirection:'row',justifyContent:'space-between',flexWrap:'wrap',rowGap:11},
- tool:{backgroundColor:'#17223d',borderWidth:1,borderColor:'#3f5072',borderRadius:16,padding:15,gap:8,minHeight:131},
- toolTop:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},
- toolGlyph:{color:'#dfbd80',fontSize:23,fontWeight:'900'},toolTitle:{color:'#fff',fontSize:14,fontWeight:'800'},toolDesc:{color:'#bac7db',fontSize:12,lineHeight:17}
+ recentHead:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap',marginTop:10},
+ auditButton:{minHeight:44,justifyContent:'center',paddingHorizontal:12,borderRadius:12,borderColor:'#667db4',borderWidth:1,backgroundColor:'#253457'},
+ auditText:{color:'#dcf1eb',fontWeight:'800',fontSize:12},
+ recentRow:{flexDirection:'row',gap:12,alignItems:'flex-start',padding:14,borderColor:'#3d4e71',borderWidth:1,borderRadius:14,backgroundColor:'#182541'},
+ activityDot:{width:9,height:9,marginTop:6,borderRadius:6,backgroundColor:'#d8bf84'},
+ activityName:{color:'#fff',fontWeight:'800',fontSize:13,textTransform:'capitalize'},
+ activityDate:{color:'#9caece',fontSize:11,marginTop:4}
 });
