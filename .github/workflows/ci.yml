@@ -13,6 +13,7 @@ jobs:
           node-version: '22'
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
+      - run: node --test tests/mobile-download-links.test.mjs
       - run: npm run test:qr
       - run: npm run test:entry-codes
       - run: npm run test:workflow
