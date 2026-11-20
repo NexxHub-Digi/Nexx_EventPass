@@ -646,8 +646,10 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/refunds',{cookie:adminCookie,method:'PATCH',body:{orderId:onsite.id,action:'settled',note:'Missing initiation'}}),409,'cannot settle before initiation');
   expect(await req('/api/refunds',{cookie:adminCookie,method:'PATCH',body:{orderId:onsite.id,action:'initiated',note:'Manual bank repayment initiated'}}),200,'initiate refund after revocation');
   expect(await req('/api/refunds',{cookie:adminCookie,method:'PATCH',body:{orderId:onsite.id,action:'settled',note:'Independent bank statement refund reference REF-12345'}}),200,'settle verified manual refund');
-  const [cancelAudit]=await sql`select details from platform_admin_actions where action='cancel_issued_order' and details->>'orderId'=${onsite.id}`;
-  assert.equal(Number(cancelAudit.details.revoked),1,'admin cancellation recorded in audit');
+  const cancelAuditRows=await sql`select action,details from platform_admin_actions where action='cancel_issued_order' order by id desc limit 5`;
+  assert.ok(cancelAuditRows.length>0,'supervised cancellation must persist a platform action record');
+  assert.ok(cancelAuditRows.some(a=>a.details?.orderId===onsite.id),'audit record must reference cancelled order: '+JSON.stringify(cancelAuditRows.map(a=>a.details)));
+  assert.equal(Number(cancelAuditRows.find(a=>a.details?.orderId===onsite.id).details.revoked),1,'admin cancellation recorded in audit');
 
 
  }finally{await sql.end()}
