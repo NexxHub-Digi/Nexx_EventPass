@@ -479,7 +479,11 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     <option value="event_verification_policy">Event authenticity checklist</option><option value="help_text">Help text</option></select></label>
    <label className="rw-field">Value<textarea rows={3} value={settingValue} onChange={e=>setSettingValue(e.target.value)}/></label>{btn('Save settings',()=>{void saveSetting()})}
   </section>
-  <section className="rw-panel" style={{display:adminTab==='organisers'?'':'none'}}><h2>Organiser directory and access control</h2>
+  <section className="rw-panel" style={{display:adminTab==='organisers'?'':'none'}}><h2>Organiser directory and access control</h2><div className="rw-profile" style={{margin:'12px 0 20px'}}>
+   <h3>Approve verified organiser onboarding</h3><p>Only a previously registered, Google-verified User can become an organiser. This action uses the administrator approval API and never creates default passwords.</p>
+   {input('Existing verified User email',newOrganiser,setNewOrganiser,'email')}
+   {btn('Create verified organiser',()=>{void adminAction('create')})}
+  </div>
    <p>Select <strong>View / edit profile</strong> to inspect an organiser, update their details, change permissions, or revoke access. Changes are saved through the administrator API and audited.</p><div className="rw-actions">{btn('Refresh organisers',()=>{void run(async()=>{const r=await api('platform/organisers');setOrganisers(r.organisers||[]);setMessage('Organiser directory refreshed')})},true)}{btn('Find users',()=>{setAdminTab('users');void searchAdminUsers(1)},true)}</div>
    {organisers.map(o=><div className="rw-list-item" key={o.id}>
     <div><b>{o.full_name}</b><p>{o.email}</p><small>{o.role==='user'&&o.requested_role==='organiser'?'PENDING APPROVAL':o.account_status.toUpperCase()} · {o.event_count} events · {o.tickets_issued} tickets · {o.gate_operators} operators</small></div>
