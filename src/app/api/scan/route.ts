@@ -13,6 +13,17 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
     union select 'Organiser'::text,e.qr_keyword_ciphertext,e.starts_at,e.ends_at from events e join app_users owner on owner.id=e.organiser_id
     where e.id=${eventId} and e.organiser_id=${u.id} and owner.account_status='active' and owner.role='organiser' and e.status='published' and e.verification_status='verified'`;
   if(!perm[0])return fail('Not assigned to this event',403);
+  // An atomic database counter protects across serverless instances and concurrent requests.
+  const limit=entryMethod==='manual'?30:180;
+  const budget=await db()`insert into eventpass_gate_rate_windows(event_id,actor_id,entry_method,window_started,request_count)
+    values(${eventId},${u.id},${entryMethod},date_trunc('minute',now()),1)
+    on conflict(event_id,actor_id,entry_method) do update set
+      request_count=case when eventpass_gate_rate_windows.window_started=excluded.window_started then eventpass_gate_rate_windows.request_count+1 else 1 end,
+      window_started=excluded.window_started
+    where eventpass_gate_rate_windows.window_started<excluded.window_started
+      or (eventpass_gate_rate_windows.window_started=excluded.window_started and eventpass_gate_rate_windows.request_count<${limit})
+    returning request_count`;
+  if(!budget.length)return fail('Scan rate limit reached. Retry in one minute.',429);
   const gateLabel=String(perm[0].gate_label);
   const encrypted=perm[0].qr_keyword_ciphertext;
   const manualHash=entryMethod==='manual'?entryCodeHash(code):null;

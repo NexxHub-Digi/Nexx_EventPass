@@ -18,6 +18,7 @@ jobs:
       - run: npm run test:qr
       - run: npm run test:entry-codes
       - run: node --experimental-strip-types --test tests/email-quality.test.mjs
+      - run: node --experimental-strip-types --test tests/ticket-notification-email.test.mjs
       - run: npm run test:workflow
       - run: node --test tests/manual-payment-admission-lifecycle.test.mjs
       - run: node --test tests/full-debug-media-og.test.mjs

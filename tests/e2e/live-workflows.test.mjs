@@ -286,7 +286,10 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(Number((await sql`select count(*)::int as total from tickets where order_id=${order.id}`)[0].total),0,
     'manual checkout and receipt upload do not create ticket rows');
   expect(await req('/api/orders/receipt?orderId='+order.id,{cookie:wrong.cookie}),404,'receipt privacy');
+  assert.equal((await sql`select count(*)::int as n from ticket_email_outbox where order_id=${order.id}`)[0].n,0,'pending payment never queues email');
   const approved=expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),200,'organiser payment verification');
+  assert.equal((await sql`select count(*)::int as n from ticket_email_outbox where order_id=${order.id}`)[0].n,1,'approved order queues exactly one notification');
+  expect(await post('/api/internal/ticket-notifications',buyer.cookie,{}),403,'ordinary user cannot dispatch notifications');
   assert.ok(!expect(await req(inboxPath,{cookie:org.cookie}),200,'approved order leaves inbox').payments.some(item=>item.id===order.id));
   expect(await post('/api/platform/events',adminCookie,{eventId:event.id,action:'reject'}),409,'event with sold tickets must not be unpublished');
   const report=expect(await req('/api/platform/event-directory',{cookie:adminCookie}),200,'admin event details').events;
