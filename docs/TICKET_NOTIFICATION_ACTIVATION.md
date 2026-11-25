@@ -1,0 +1,13 @@
+# Live notification activation runbook
+
+## Staging first
+Apply both 20261125 notification migrations to isolated preview database. Verify tables, trigger and webhook index. Restore backup into a separate branch, verify readable critical data and do not finalize over production. A new production checkpoint and verified migration rollback plan remain required.
+
+## Provider configuration (disabled by default)
+In Resend add an owned sending subdomain, publish the exact DNS records it returns, then verify the domain. Generate a scoped sending API key. Configure server-only RESEND_API_KEY, EVENTPASS_EMAIL_FROM, RESEND_WEBHOOK_SECRET and EVENTPASS_NOTIFICATION_SECRET (random 32+ characters). Set EVENTPASS_EMAIL_SENDER_VERIFIED=true only after the domain is actually verified. Keep EVENTPASS_TICKET_EMAIL_ENABLED=false until release approval. Use separate staging credentials and never use a live recipient on cloned production data. Configure a webhook at /api/webhooks/resend for sent, delivered, delivery_delayed, bounced, failed, complained and suppressed. Raw HMAC signature and 5-minute timestamp verification are mandatory. Webhook journal stores only provider IDs, event type and timestamps. Replayed events are deduplicated; events arriving before send response are correlated at read time.
+
+## Scheduled dispatch
+A GitHub Actions scheduler is defined every five minutes, with a protected production environment, no checkout and a fixed HTTPS destination. The repository variable EVENTPASS_NOTIFICATION_SCHEDULER_ENABLED must explicitly equal true and the environment secret EVENTPASS_NOTIFICATION_SECRET must match the server. Schedule runs on main after merge; GitHub timing is best effort and may be delayed. Do not enable it until the production server, schema, recovery, domain and test receipts pass. Worker also requires its own enable flag and sender-verification flag. On the Hobby plan avoid adding a sub-daily Vercel cron that would fail deployment.
+
+## Controlled delivery acceptance
+Use synthetic verified test orders and controlled inboxes on isolated staging only. Check provider acceptance and independently confirm inbox receipt, webhook signature, delivered/bounced/failed status, and retry/idempotency. Resend's delivered@resend.dev and bounced@resend.dev simulate provider outcomes, not actual customer inbox receipt. Do not send real customer mail until approval. Review provider suppression and failure status before any manual retry; no automatic resending on terminal bounces. Template version and sender/recipient must not change during a pending retry. The wallet remains authoritative; never email QR credentials.

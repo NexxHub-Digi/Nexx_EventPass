@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import postgres from 'postgres';
 import bcrypt from 'bcryptjs';
 import {SignJWT} from 'jose';
-import {randomUUID,randomBytes,createHash} from 'node:crypto';
+import {randomUUID,randomBytes,createHash,createHmac} from 'node:crypto';
 if(process.env.CI!=='true'||process.env.EVENTPASS_E2E!=='true'||!/@(localhost|127\.0\.0\.1):/.test(process.env.DATABASE_URL||''))throw Error('Refusing to run E2E outside isolated local CI');
 const sql=postgres(process.env.DATABASE_URL,{ssl:false,prepare:false});
 const base='http://localhost:3210', tag=randomUUID().slice(0,8),password='EventPass-E2E-Password-123456789!';
@@ -286,7 +286,33 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(Number((await sql`select count(*)::int as total from tickets where order_id=${order.id}`)[0].total),0,
     'manual checkout and receipt upload do not create ticket rows');
   expect(await req('/api/orders/receipt?orderId='+order.id,{cookie:wrong.cookie}),404,'receipt privacy');
+  assert.equal((await sql`select count(*)::int as n from ticket_email_outbox where order_id=${order.id}`)[0].n,0,'pending payment never queues email');
   const approved=expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),200,'organiser payment verification');
+  assert.equal((await sql`select count(*)::int as n from ticket_email_outbox where order_id=${order.id}`)[0].n,1,'approved order queues exactly one notification');
+  expect(await post('/api/internal/ticket-notifications',buyer.cookie,{}),403,'ordinary user cannot dispatch notifications');
+  expect(await req('/api/platform/notifications',{cookie:buyer.cookie}),403,'notification monitoring is admin-only');
+  const providerId='fixture-'+tag;
+  // Simulate a webhook arriving before the provider response is committed; no real email sent.
+  const hook=async(type,id,occurred=new Date().toISOString())=>{
+    const body=JSON.stringify({type,created_at:occurred,data:{email_id:providerId,to:['fixture@example.invalid']}});
+    const timestamp=String(Math.floor(Date.now()/1000));
+    const signature=createHmac('sha256',Buffer.alloc(32,7)).update(id+'.'+timestamp+'.'+body).digest('base64');
+    return fetch(base+'/api/webhooks/resend',{method:'POST',headers:{'Content-Type':'application/json','svix-id':id,'svix-timestamp':timestamp,'svix-signature':'v1,'+signature},body});
+  };
+  const deliveredId='msg_delivered_'+tag;
+  assert.equal((await hook('email.delivered',deliveredId)).status,200);
+  assert.equal((await hook('email.delivered',deliveredId)).status,200,'replayed delivery is idempotent');
+  assert.equal((await sql`select count(*)::int as n from ticket_email_webhook_events where webhook_id=${deliveredId}`)[0].n,1);
+  await sql`update ticket_email_outbox set state='accepted',provider_id=${providerId} where order_id=${order.id}`;
+  assert.equal((await hook('email.delivery_delayed','msg_delayed_'+tag)).status,200);
+  const observed=expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'admin delivery monitor');
+  assert.equal(observed.counts.delivered,1,'late nonterminal status cannot override delivery');
+  assert.equal((await hook('email.bounced','msg_bounced_'+tag)).status,200);
+  assert.equal(expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'bounce monitoring').counts.bounced,1);
+  assert.equal((await hook('email.failed','msg_failed_'+tag,new Date(Date.now()+1000).toISOString())).status,200);
+  assert.equal(expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'failure monitoring').counts.failed,1);
+  assert.equal((await fetch(base+'/api/webhooks/resend',{method:'POST',body:'{}'})).status,400,'unsigned webhook denied');
+
   assert.ok(!expect(await req(inboxPath,{cookie:org.cookie}),200,'approved order leaves inbox').payments.some(item=>item.id===order.id));
   expect(await post('/api/platform/events',adminCookie,{eventId:event.id,action:'reject'}),409,'event with sold tickets must not be unpublished');
   const report=expect(await req('/api/platform/event-directory',{cookie:adminCookie}),200,'admin event details').events;
@@ -413,6 +439,14 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(recordedHistory.scans.some(scan=>scan.outcome==='approved'&&scan.ticket_id===ticket.id&&scan.offline_ticket_id===null));
   assert.ok(recordedHistory.scans.length&&recordedHistory.scans.every(scan=>scan.created_at));
   assert.equal(Number(history.stats.admitted),1);assert.equal(Number(history.stats.duplicates),2,'QR and manual attempts are both audited as duplicates');
+  // The prior QR is consumed. Rehearsal requests must still respect the shared rate budget.
+  const [clock]=await sql`select extract(second from clock_timestamp())::float as second`;
+  if(Number(clock.second)>50)await new Promise(resolve=>setTimeout(resolve,(61-Number(clock.second))*1000));
+  await sql`insert into eventpass_gate_rate_windows(event_id,actor_id,entry_method,window_started,request_count)
+    values(${event.id},${operator.id},'qr',date_trunc('minute',now()),179)
+    on conflict(event_id,actor_id,entry_method) do update set window_started=excluded.window_started,request_count=179`;
+  const limited=await Promise.all([post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr,testOnly:true}),post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr,testOnly:true})]);
+  assert.deepEqual(limited.map(r=>r.status).sort(),[200,429],'concurrent scanner requests cannot exceed the shared rate budget');
   const otherEvent=expect(await post('/api/events',org.cookie,{title:'E2E Other Event',venue:'E2E Other Venue',startsAt:date,capacity:3,priceNgn:0,qrKeyword:'other-private-keyword',ticketTheme:dynamicTheme.id}),201,'second event').event;
   expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:{id:dynamicTheme.id,action:'archive'}}),409,'event-linked theme cannot be archived or mutate historical tickets');
   expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:{...themeEdit,id:dynamicTheme.id}}),409,'event-linked theme cannot be edited');
