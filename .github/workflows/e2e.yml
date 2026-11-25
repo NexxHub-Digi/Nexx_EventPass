@@ -28,6 +28,7 @@ jobs:
       NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3210
       AUTH_SECRET: ci-auth-test-only-never-use-in-production-123456789
       QR_SIGNING_SECRET: ci-qr-test-only-never-use-in-production-123456789
+      RESEND_WEBHOOK_SECRET: whsec_BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
       GOOGLE_USER_CLIENT_ID: 123456-ci-user.apps.googleusercontent.com
       GOOGLE_USER_CLIENT_SECRET: fake-ci-user-secret
       GOOGLE_ORGANISER_CLIENT_ID: 123456-ci-organiser.apps.googleusercontent.com

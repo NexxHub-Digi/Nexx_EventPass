@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import postgres from 'postgres';
 import bcrypt from 'bcryptjs';
 import {SignJWT} from 'jose';
-import {randomUUID,randomBytes,createHash} from 'node:crypto';
+import {randomUUID,randomBytes,createHash,createHmac} from 'node:crypto';
 if(process.env.CI!=='true'||process.env.EVENTPASS_E2E!=='true'||!/@(localhost|127\.0\.0\.1):/.test(process.env.DATABASE_URL||''))throw Error('Refusing to run E2E outside isolated local CI');
 const sql=postgres(process.env.DATABASE_URL,{ssl:false,prepare:false});
 const base='http://localhost:3210', tag=randomUUID().slice(0,8),password='EventPass-E2E-Password-123456789!';
@@ -290,6 +290,29 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const approved=expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),200,'organiser payment verification');
   assert.equal((await sql`select count(*)::int as n from ticket_email_outbox where order_id=${order.id}`)[0].n,1,'approved order queues exactly one notification');
   expect(await post('/api/internal/ticket-notifications',buyer.cookie,{}),403,'ordinary user cannot dispatch notifications');
+  expect(await req('/api/platform/notifications',{cookie:buyer.cookie}),403,'notification monitoring is admin-only');
+  const providerId='fixture-'+tag;
+  // Simulate a webhook arriving before the provider response is committed; no real email sent.
+  const hook=async(type,id,occurred=new Date().toISOString())=>{
+    const body=JSON.stringify({type,created_at:occurred,data:{email_id:providerId,to:['fixture@example.invalid']}});
+    const timestamp=String(Math.floor(Date.now()/1000));
+    const signature=createHmac('sha256',Buffer.alloc(32,7)).update(id+'.'+timestamp+'.'+body).digest('base64');
+    return fetch(base+'/api/webhooks/resend',{method:'POST',headers:{'Content-Type':'application/json','svix-id':id,'svix-timestamp':timestamp,'svix-signature':'v1,'+signature},body});
+  };
+  const deliveredId='msg_delivered_'+tag;
+  assert.equal((await hook('email.delivered',deliveredId)).status,200);
+  assert.equal((await hook('email.delivered',deliveredId)).status,200,'replayed delivery is idempotent');
+  assert.equal((await sql`select count(*)::int as n from ticket_email_webhook_events where webhook_id=${deliveredId}`)[0].n,1);
+  await sql`update ticket_email_outbox set state='accepted',provider_id=${providerId} where order_id=${order.id}`;
+  assert.equal((await hook('email.delivery_delayed','msg_delayed_'+tag)).status,200);
+  const observed=expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'admin delivery monitor');
+  assert.equal(observed.counts.delivered,1,'late nonterminal status cannot override delivery');
+  assert.equal((await hook('email.bounced','msg_bounced_'+tag)).status,200);
+  assert.equal(expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'bounce monitoring').counts.bounced,1);
+  assert.equal((await hook('email.failed','msg_failed_'+tag,new Date(Date.now()+1000).toISOString())).status,200);
+  assert.equal(expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'failure monitoring').counts.failed,1);
+  assert.equal((await fetch(base+'/api/webhooks/resend',{method:'POST',body:'{}'})).status,400,'unsigned webhook denied');
+
   assert.ok(!expect(await req(inboxPath,{cookie:org.cookie}),200,'approved order leaves inbox').payments.some(item=>item.id===order.id));
   expect(await post('/api/platform/events',adminCookie,{eventId:event.id,action:'reject'}),409,'event with sold tickets must not be unpublished');
   const report=expect(await req('/api/platform/event-directory',{cookie:adminCookie}),200,'admin event details').events;

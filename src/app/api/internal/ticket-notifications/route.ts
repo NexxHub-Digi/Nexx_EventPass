@@ -11,7 +11,7 @@ async function dispatch(req:Request){
   const secret=process.env.EVENTPASS_NOTIFICATION_SECRET||'';
   if(secret.length<32||!timingSafeEqual(digest(req.headers.get('authorization')||''),digest('Bearer '+secret)))return reply(403,{error:'Forbidden'});
   const apiKey=process.env.RESEND_API_KEY,from=process.env.EVENTPASS_EMAIL_FROM;
-  if(process.env.EVENTPASS_TICKET_EMAIL_ENABLED!=='true'||!apiKey||!from)return reply(503,{error:'Ticket email delivery is disabled'});
+  if(process.env.EVENTPASS_TICKET_EMAIL_ENABLED!=='true'||process.env.EVENTPASS_EMAIL_SENDER_VERIFIED!=='true'||!process.env.RESEND_WEBHOOK_SECRET||!apiKey||!from)return reply(503,{error:'Ticket email delivery is disabled'});
   try{
     const sql=db(),claim=randomUUID();
     await sql`update ticket_email_outbox set state='failed',completed_at=now(),last_result='retry_window_closed'
@@ -35,7 +35,15 @@ async function dispatch(req:Request){
         where u.id=${row.recipient_id} and u.account_status='active' and o.status='approved'
         and e.status='published' and e.verification_status='verified' and e.starts_at>=now()-interval '4 hours'
         and exists(select 1 from tickets t where t.order_id=o.id and t.owner_id=u.id and t.status='issued')`;
-      const result=recipient ? await sendTicketNotice({apiKey,from,to:String(recipient.email),orderId:String(row.order_id)}) : null;
+      let result:Awaited<ReturnType<typeof sendTicketNotice>>|null=null;
+      if(recipient){
+        const to=String(recipient.email);
+        const fingerprint=createHash('sha256').update(JSON.stringify(['ticket-notice-v1',from,to])).digest('hex');
+        const bound=await sql`update ticket_email_outbox set request_fingerprint=${fingerprint}
+          where order_id=${row.order_id} and claim_token=${claim} and state='sending'
+          and (request_fingerprint is null or request_fingerprint=${fingerprint}) returning order_id`;
+        result=bound.length?await sendTicketNotice({apiKey,from,to,orderId:String(row.order_id)}):{kind:'failed'};
+      }
       const state=!result?'skipped':result.kind==='accepted'?'accepted':result.kind==='failed'||Number(row.attempts)>=5?'failed':'pending';
       const providerId=result?.kind==='accepted'?result.id:null;
       const updated=await sql`update ticket_email_outbox set state=${state},provider_id=${providerId},

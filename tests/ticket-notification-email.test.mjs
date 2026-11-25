@@ -9,7 +9,7 @@ test('provider accepts stable idempotent wallet notice without admission secrets
   assert.equal(init.headers['Idempotency-Key'],'eventpass-ticket-notice/test-order');
   const body=JSON.parse(init.body);
   assert.deepEqual(body.to,[input.to]);assert.match(body.text,/dashboard\/user/);
-  assert.ok(!('qr' in body));assert.ok(!('ticket' in body));
+  assert.ok(!('qr' in body));assert.ok(!('ticket' in body));assert.match(body.html,/NEXX/);assert.match(body.html,/Open my ticket wallet/);assert.ok(!body.html.includes(input.to));assert.ok(!body.html.includes(input.orderId));
   return new Response(JSON.stringify({id:'provider-123'}),{status:200});
  });
  assert.deepEqual(result,{kind:'accepted',id:'provider-123'});
