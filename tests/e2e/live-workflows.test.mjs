@@ -416,6 +416,14 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(recordedHistory.scans.some(scan=>scan.outcome==='approved'&&scan.ticket_id===ticket.id&&scan.offline_ticket_id===null));
   assert.ok(recordedHistory.scans.length&&recordedHistory.scans.every(scan=>scan.created_at));
   assert.equal(Number(history.stats.admitted),1);assert.equal(Number(history.stats.duplicates),2,'QR and manual attempts are both audited as duplicates');
+  // The prior QR is consumed. Rehearsal requests must still respect the shared rate budget.
+  const [clock]=await sql`select extract(second from clock_timestamp())::float as second`;
+  if(Number(clock.second)>50)await new Promise(resolve=>setTimeout(resolve,(61-Number(clock.second))*1000));
+  await sql`insert into eventpass_gate_rate_windows(event_id,actor_id,entry_method,window_started,request_count)
+    values(${event.id},${operator.id},'qr',date_trunc('minute',now()),179)
+    on conflict(event_id,actor_id,entry_method) do update set window_started=excluded.window_started,request_count=179`;
+  const limited=await Promise.all([post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr,testOnly:true}),post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr,testOnly:true})]);
+  assert.deepEqual(limited.map(r=>r.status).sort(),[200,429],'concurrent scanner requests cannot exceed the shared rate budget');
   const otherEvent=expect(await post('/api/events',org.cookie,{title:'E2E Other Event',venue:'E2E Other Venue',startsAt:date,capacity:3,priceNgn:0,qrKeyword:'other-private-keyword',ticketTheme:dynamicTheme.id}),201,'second event').event;
   expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:{id:dynamicTheme.id,action:'archive'}}),409,'event-linked theme cannot be archived or mutate historical tickets');
   expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:{...themeEdit,id:dynamicTheme.id}}),409,'event-linked theme cannot be edited');
