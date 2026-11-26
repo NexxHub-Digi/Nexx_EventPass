@@ -10,6 +10,7 @@ import {TicketDesign} from '@/components/TicketDesign';
 import TicketStudioEditor from '@/components/TicketStudioEditor';
 import EventPassLoading from '@/components/EventPassLoading';
 import FinanceLedger from '@/components/FinanceLedger';
+import PaystackRefundVerification from '@/components/PaystackRefundVerification';
 import TicketNotificationMonitor from '@/components/TicketNotificationMonitor';
 import OfflineTicketManager from '@/components/OfflineTicketManager';
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null};
@@ -26,7 +27,7 @@ type EventMedia={id:string;event_id?:string;media_type:string;file_name:string;a
 type AdminAccount={id:string;email:string;full_name:string;role:string;account_status:string;google_verified:boolean;order_count:number;ticket_count:number;event_count:number;gate_event_count:number;created_at:string};
 type SupportCase={payment_order_id?:string|null;id:string;organiser_id:string;organiser_name:string;subject:string;description:string;status:string;priority:string;resolution:string};
 type EventReport={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;status:string;verification_status:string;capacity:number;tickets_issued:number;external_tickets_issued:number;reserved_seats:number;pending_orders:number;checked_in:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number};
-type RefundCase={id:string;event_id:string;event_title:string;buyer_email:string;organiser_name:string;amount_ngn:number;status:string;refund_status:string;refund_note:string;reservation_expires_at:string};
+type RefundCase={payment_method?:string;id:string;event_id:string;event_title:string;buyer_email:string;organiser_name:string;amount_ngn:number;status:string;refund_status:string;refund_note:string;reservation_expires_at:string};
 type IssuedOrder={id:string;event_id:string;event_title:string;buyer_email:string;amount_ngn:number;payment_method:string;quantity:number;ticket_count:number;unused_count:number;admitted_count:number};
 type AuditRecord={id:string;action:string;performed_by:string;target_email?:string;created_at:string;details:Record<string,unknown>};
 type ModerationEvent={id:string;organiser_id:string;owner_eligible:boolean;title:string;venue:string;starts_at:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;pending_media:number};
@@ -569,13 +570,14 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title} — {money(r.amount_ngn)}</b>
     <p>{r.buyer_email} · {r.refund_status} · {r.status}</p><small>{r.organiser_name||''} · {r.refund_note||'Not yet reconciled'}</small></div>
     <div className="rw-actions">
+     {r.payment_method==='paystack'?<PaystackRefundVerification orderId={r.id} settled={r.refund_status==='settled'} onVerified={()=>setMessage('Provider refund verified. Refresh the workspace for the updated ledger.')}/>:<>
      {r.refund_status==='not_required'&&btn('Open review',()=>{void updateRefund(r.id,'review_required')},true)}
      {r.refund_status==='review_required'&&btn('Refund initiated',()=>{if(window.confirm('Record that repayment has been initiated for '+r.buyer_email+'?'))void updateRefund(r.id,'initiated')},true)}
      {r.refund_status==='initiated'&&<>
       <label className="rw-field">Verified settlement reference for {r.buyer_email}<input maxLength={500} value={refundNotes[r.id]||''} onChange={e=>setRefundNotes(p=>({...p,[r.id]:e.target.value}))}/></label>
       {btn('Mark settled',()=>{if((refundNotes[r.id]||'').trim().length<10){setMessage('Add a verified transfer reference for this order (10+ characters)');return}if(window.confirm('Confirm you independently verified refund settlement for '+r.buyer_email+'?'))void updateRefund(r.id,'settled')})}
      </>}
-     {r.refund_status==='settled'&&<span>Settlement recorded — read only</span>}
+     {r.refund_status==='settled'&&<span>Settlement recorded — read only</span>}</>}
     </div></div>)}
    {!refundCases.length&&<p>No payment exceptions are currently recorded.</p>}
   </section>

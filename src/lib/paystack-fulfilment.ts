@@ -43,7 +43,7 @@ export async function reconcilePaystackReference(reference:string):Promise<Recon
    Number(order.amount_ngn)*100===Number(payment.amount_kobo);
   if(!valid){
    await tx`update paystack_payments set status='reconciliation_required',
-    last_error='Paid reservation expired or no longer eligible',updated_at=now() where id=${payment.id}`;
+    last_error='Paid reservation expired or no longer eligible',provider_transaction_id=${String(charge.id)},provider_paid_at=coalesce(provider_paid_at,now()),updated_at=now() where id=${payment.id}`;
    if(order.status!=='approved'&&order.refund_status==='not_required')await tx`update ticket_orders
     set refund_status='review_required',refund_note='Verified Paystack payment requires supervised reconciliation',
      refund_updated_at=now() where id=${order.id}`;
@@ -64,7 +64,7 @@ export async function reconcilePaystackReference(reference:string):Promise<Recon
   if(!Number.isFinite(pool)||Number(usage.all_issued)+Number(order.quantity)>Number(event.capacity)||
      Number(usage.pool_issued)+Number(order.quantity)>pool){
    await tx`update paystack_payments set status='reconciliation_required',
-     last_error='Inventory exhausted after provider settlement',updated_at=now() where id=${payment.id}`;
+     last_error='Inventory exhausted after provider settlement',provider_transaction_id=${String(charge.id)},provider_paid_at=coalesce(provider_paid_at,now()),updated_at=now() where id=${payment.id}`;
    await tx`update ticket_orders set refund_status='review_required',
      refund_note='Paid reservation requires inventory reconciliation',refund_updated_at=now()
      where id=${order.id} and refund_status='not_required'`;

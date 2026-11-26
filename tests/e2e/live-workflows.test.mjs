@@ -51,6 +51,8 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/events',org.cookie,{title:'Denied',venue:'E2E',startsAt:new Date(Date.now()+3600000),capacity:1,priceNgn:5000,qrKeyword:'secrettest123'}),403,'unapproved organiser');
   await sql.unsafe('update app_users set role=$1 where id=$2',['platform_admin',admin.id]);
   const adminCookie=admin.cookie;
+  expect(await post('/api/payments/paystack/refunds/verify',buyer.cookie,{orderId:randomUUID(),providerRefundId:'123'}),403,'only active platform administrator may verify provider refunds');
+  expect(await post('/api/payments/paystack/refunds/verify',adminCookie,{orderId:randomUUID(),providerRefundId:'123'}),503,'refund verification remains disabled without sandbox key');
   expect(await post('/api/auth/login',null,{portal:'platform_admin',email:admin.email,password}),403,'retired password sign-in blocked even for admins');
   assert.ok(expect(await req('/api/platform/organisers',{cookie:adminCookie}),200,'admin directory').organisers.some(x=>x.id===org.id));
   const accounts=expect(await req('/api/platform/users',{cookie:adminCookie}),200,'multi-tenant account directory');

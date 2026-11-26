@@ -7,14 +7,14 @@ export async function GET(req:Request){
   const u=await currentUser();if(!u||u.account_status!=='active'||!['organiser','platform_admin'].includes(u.role))return fail('Organiser or Platform Admin only',403);
   const eventId=str(new URL(req.url).searchParams.get('eventId'),40);
   const orders=u.role==='platform_admin'?
-   await db()`select o.id,o.event_id,o.buyer_id,o.status,o.quantity,o.amount_ngn,o.refund_status,o.refund_note,o.reservation_expires_at,o.created_at,
+   await db()`select o.id,o.event_id,o.buyer_id,o.status,o.payment_method,o.quantity,o.amount_ngn,o.refund_status,o.refund_note,o.reservation_expires_at,o.created_at,
     e.title as event_title,host.full_name as organiser_name,buyer.email as buyer_email
     from ticket_orders o join events e on e.id=o.event_id join app_users host on host.id=e.organiser_id
     join app_users buyer on buyer.id=o.buyer_id
     where (${eventId}='' or o.event_id::text=${eventId}) and
      (o.refund_status!='not_required' or (o.status='pending' and o.reservation_expires_at<=now() and o.receipt_data is not null))
     order by o.created_at desc limit 150`:
-   await db()`select o.id,o.event_id,o.buyer_id,o.status,o.quantity,o.amount_ngn,o.refund_status,o.refund_note,o.reservation_expires_at,o.created_at,
+   await db()`select o.id,o.event_id,o.buyer_id,o.status,o.payment_method,o.quantity,o.amount_ngn,o.refund_status,o.refund_note,o.reservation_expires_at,o.created_at,
     e.title as event_title,host.full_name as organiser_name,buyer.email as buyer_email
     from ticket_orders o join events e on e.id=o.event_id join app_users host on host.id=e.organiser_id
     join app_users buyer on buyer.id=o.buyer_id
