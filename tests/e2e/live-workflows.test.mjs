@@ -541,7 +541,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const second=inventory[1];
   expect(await req('/api/offline/tickets',{cookie:org.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[second.id],action:'distribution',distribution:'sold',amountNgn:4000}}),200,'record external sale');
   const financeStaff=await signUp('distribution-only');
-  await sql`insert into oauth_identities(user_id,provider,provider_subject,provider_email) values(${financeStaff.id},'google',${randomUUID()},${financeStaff.email})`;
+  await sql`insert into oauth_identities(user_id,provider,provider_sub,provider_email) values(${financeStaff.id},'google',${randomUUID()},${financeStaff.email})`;
   expect(await post('/api/offline/staff',org.cookie,{eventId:privateEvent.id,email:financeStaff.email,scope:'selected',eventIds:[privateEvent.id],permissions:['view','distribute']}),200,'assign distribution-only staff');
   expect(await req('/api/offline/tickets',{cookie:financeStaff.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[second.id],action:'distribution',distribution:'unassigned'}}),403,'distribution permission cannot erase recorded sale');
   assert.equal(Number((await sql`select sale_amount_ngn from offline_tickets where id=${second.id}`)[0].sale_amount_ngn),4000);
