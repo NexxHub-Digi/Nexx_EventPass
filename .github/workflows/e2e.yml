@@ -61,6 +61,10 @@ jobs:
         run: node --test tests/e2e/live-workflows.test.mjs
       - name: Verify legacy entry-code backfill on isolated PostgreSQL
         run: node --experimental-strip-types --test tests/e2e/backfill-entry-codes.test.mjs
+      - name: Prove isolated PostgreSQL backup and restoration
+        env:
+          EVENTPASS_TEST_DB_CONTAINER: ${{ job.services.postgres.id }}
+        run: bash scripts/test-db-restore.sh
       - name: Show Next.js server logs when tests fail
         if: failure()
         run: tail -n 150 /tmp/eventpass-e2e-next.log || true
