@@ -12,6 +12,7 @@ import EventPassLoading from '@/components/EventPassLoading';
 import FinanceLedger from '@/components/FinanceLedger';
 import PaystackRefundVerification from '@/components/PaystackRefundVerification';
 import TicketNotificationMonitor from '@/components/TicketNotificationMonitor';
+import ProviderReadiness from '@/components/ProviderReadiness';
 import OfflineTicketManager from '@/components/OfflineTicketManager';
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null};
 type Event={payment_account_id?:string|null;onsite_payments_enabled?:boolean;id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;verification_status?:string;organiser?:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;cover_media_id?:string|null;video_media_id?:string|null;ticket_art_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
@@ -504,7 +505,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     <span className="ep-admin-queue-count">{count}</span><span>{label}</span><strong aria-hidden="true">›</strong>
    </button>)}
   </div>
-  {adminTab==='overview'&&<TicketNotificationMonitor/>}
+  {adminTab==='overview'&&<><ProviderReadiness/><TicketNotificationMonitor/></>}
   <h3>Recent support activity</h3>
   {cases.slice(0,4).map(c=><button type="button" className="ep-admin-recent-case" key={c.id} onClick={()=>{setSelectedSupportId(c.id);setSupportDrafts(p=>({...p,[c.id]:p[c.id]||{priority:c.priority,resolution:c.resolution||''}}));setAdminTab('support')}}><strong>{c.subject}</strong><small>{c.organiser_name} · {c.status.replace('_',' ')} · {c.priority}</small><span>Review case</span></button>)}
   {!cases.length&&<p>No support requests recorded.</p>}

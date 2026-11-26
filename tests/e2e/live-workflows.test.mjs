@@ -51,6 +51,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/events',org.cookie,{title:'Denied',venue:'E2E',startsAt:new Date(Date.now()+3600000),capacity:1,priceNgn:5000,qrKeyword:'secrettest123'}),403,'unapproved organiser');
   await sql.unsafe('update app_users set role=$1 where id=$2',['platform_admin',admin.id]);
   const adminCookie=admin.cookie;
+  expect(await req('/api/platform/provider-readiness',{cookie:buyer.cookie}),403,'provider readiness is admin-only');
+  const readiness=expect(await req('/api/platform/provider-readiness',{cookie:adminCookie}),200,'admin provider readiness');
+  assert.equal(readiness.payments.mode,'test');assert.equal(readiness.payments.testKeyConfigured,false);assert.equal(readiness.payments.livePayments,false);
+  assert.equal(readiness.notifications.deliveryEnabled,false);assert.equal(readiness.database.schemaReady,true);
+  assert.equal(readiness.acceptance,'not_verified');assert.ok(!JSON.stringify(readiness).includes(process.env.AUTH_SECRET));
   expect(await post('/api/payments/paystack/refunds/verify',buyer.cookie,{orderId:randomUUID(),providerRefundId:'123'}),403,'only active platform administrator may verify provider refunds');
   expect(await post('/api/payments/paystack/refunds/verify',adminCookie,{orderId:randomUUID(),providerRefundId:'123'}),503,'refund verification remains disabled without sandbox key');
   expect(await post('/api/auth/login',null,{portal:'platform_admin',email:admin.email,password}),403,'retired password sign-in blocked even for admins');
