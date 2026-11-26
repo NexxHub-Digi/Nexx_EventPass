@@ -1,6 +1,7 @@
 import {currentUser} from '@/lib/security';
 import {db} from '@/lib/db';
 import {fail,ok} from '@/lib/http';
+import {noticeTemplate} from '@/lib/ticket-notification-email';
 export const runtime='nodejs';
 export async function GET(){
  try{
@@ -19,6 +20,6 @@ export async function GET(){
    (select max(received_at) from ticket_email_webhook_events) as last_webhook_at,
    (select min(created_at) from ticket_email_outbox where state in ('pending','sending')) as oldest_pending_at`;
   return ok({counts:Object.fromEntries(rows.map(r=>[r.status,Number(r.total)])),health,
-    enabled:process.env.EVENTPASS_TICKET_EMAIL_ENABLED==='true',configured:Boolean(process.env.RESEND_API_KEY&&process.env.EVENTPASS_EMAIL_FROM&&process.env.RESEND_WEBHOOK_SECRET&&process.env.EVENTPASS_EMAIL_SENDER_VERIFIED==='true'&&(process.env.EVENTPASS_NOTIFICATION_SECRET||'').length>=32)});
+    enabled:process.env.EVENTPASS_TICKET_EMAIL_ENABLED==='true',configured:Boolean(noticeTemplate(process.env.EVENTPASS_EMAIL_WALLET_ORIGIN)&&process.env.RESEND_API_KEY&&process.env.EVENTPASS_EMAIL_FROM&&process.env.RESEND_WEBHOOK_SECRET&&process.env.EVENTPASS_EMAIL_SENDER_VERIFIED==='true'&&(process.env.EVENTPASS_NOTIFICATION_SECRET||'').length>=32)});
  }catch{return fail('Notification monitoring unavailable',503)}
 }

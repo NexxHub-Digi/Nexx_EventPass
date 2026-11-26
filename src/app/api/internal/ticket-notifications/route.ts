@@ -1,7 +1,7 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { sendTicketNotice } from '@/lib/ticket-notification-email';
+import { sendTicketNotice,noticeTemplate } from '@/lib/ticket-notification-email';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=30;
@@ -11,7 +11,9 @@ async function dispatch(req:Request){
   const secret=process.env.EVENTPASS_NOTIFICATION_SECRET||'';
   if(secret.length<32||!timingSafeEqual(digest(req.headers.get('authorization')||''),digest('Bearer '+secret)))return reply(403,{error:'Forbidden'});
   const apiKey=process.env.RESEND_API_KEY,from=process.env.EVENTPASS_EMAIL_FROM;
-  if(process.env.EVENTPASS_TICKET_EMAIL_ENABLED!=='true'||process.env.EVENTPASS_EMAIL_SENDER_VERIFIED!=='true'||!process.env.RESEND_WEBHOOK_SECRET||!apiKey||!from)return reply(503,{error:'Ticket email delivery is disabled'});
+  const walletOrigin=process.env.EVENTPASS_EMAIL_WALLET_ORIGIN;
+  const template=noticeTemplate(walletOrigin);
+  if(process.env.EVENTPASS_TICKET_EMAIL_ENABLED!=='true'||process.env.EVENTPASS_EMAIL_SENDER_VERIFIED!=='true'||!process.env.RESEND_WEBHOOK_SECRET||!apiKey||!from||!template)return reply(503,{error:'Ticket email delivery is disabled'});
   try{
     const sql=db(),claim=randomUUID();
     await sql`update ticket_email_outbox set state='failed',completed_at=now(),last_result='retry_window_closed'
@@ -39,11 +41,11 @@ async function dispatch(req:Request){
       let result:Awaited<ReturnType<typeof sendTicketNotice>>|null=null;
       if(recipient){
         const to=String(recipient.email);
-        const fingerprint=createHash('sha256').update(JSON.stringify(['ticket-notice-v1',from,to])).digest('hex');
+        const fingerprint=createHash('sha256').update(JSON.stringify(['ticket-notice-v2',from,to,template])).digest('hex');
         const bound=await sql`update ticket_email_outbox set request_fingerprint=${fingerprint}
           where order_id=${row.order_id} and claim_token=${claim} and state='sending'
           and (request_fingerprint is null or request_fingerprint=${fingerprint}) returning order_id`;
-        result=bound.length?await sendTicketNotice({apiKey,from,to,orderId:String(row.order_id)}):{kind:'failed'};
+        result=bound.length?await sendTicketNotice({apiKey,from,to,orderId:String(row.order_id),walletOrigin}):{kind:'failed'};
       }
       const state=!result?'skipped':result.kind==='accepted'?'accepted':result.kind==='failed'||Number(row.attempts)>=5?'failed':'pending';
       const providerId=result?.kind==='accepted'?result.id:null;

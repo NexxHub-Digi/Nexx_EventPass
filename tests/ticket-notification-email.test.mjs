@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {sendTicketNotice} from '../src/lib/ticket-notification-email.ts';
+import {sendTicketNotice,noticeTemplate} from '../src/lib/ticket-notification-email.ts';
 const input={apiKey:'fake-key',from:'Nexx <tickets@example.invalid>',to:'buyer@example.invalid',orderId:'test-order'};
 test('provider accepts stable idempotent wallet notice without admission secrets',async()=>{
  const result=await sendTicketNotice(input,async(url,init)=>{
@@ -19,4 +19,10 @@ test('retry uncertain provider results without exposing errors',async()=>{
  assert.deepEqual(await sendTicketNotice(input,async()=>{throw Error('secret provider error')}),{kind:'retry'});
  assert.deepEqual(await sendTicketNotice(input,async()=>new Response('{}',{status:200})),{kind:'retry'});
  assert.deepEqual(await sendTicketNotice(input,async()=>new Response('',{status:401})),{kind:'failed'});
+});
+
+test('isolated staging links never direct to production wallet and reject unsafe origins',async()=>{
+ const t=noticeTemplate('https://staging.example.invalid');assert.ok(t);assert.match(t.text,/https:\/\/staging\.example\.invalid\/dashboard\/user/);assert.doesNotMatch(t.html,/nexx-eventpass\.vercel\.app/);
+ for(const origin of ['http://example.invalid','https://user:pass@example.invalid','https://example.invalid/path','https://example.invalid/?token=secret','https://example.invalid/#x'])assert.equal(noticeTemplate(origin),null);
+ let called=false;assert.deepEqual(await sendTicketNotice({...input,walletOrigin:'http://example.invalid'},async()=>{called=true;throw Error('unexpected')}),{kind:'failed'});assert.equal(called,false);
 });

@@ -50,6 +50,11 @@ done
 curl -fsS http://127.0.0.1:3210/api/events >/dev/null
 node --test tests/e2e/live-workflows.test.mjs | tee "$log/e2e.log"
 node --experimental-strip-types --test tests/e2e/backfill-entry-codes.test.mjs | tee "$log/backfill.log"
+if [[ "${EVENTPASS_TEST_BROWSER:-false}" == true ]]; then
+ npm install --no-save --no-package-lock playwright@1.56.1
+ npx playwright install chromium
+ EVENTPASS_BROWSER_EVIDENCE="$log/browser" node --test tests/e2e/browser-acceptance.test.mjs | tee "$log/browser.log"
+fi
 bash scripts/test-db-restore.sh | tee "$log/restore.log"
 if [[ "${EVENTPASS_TEST_NATIVE:-false}" == true ]]; then
  for app in user organiser gate platform-admin; do

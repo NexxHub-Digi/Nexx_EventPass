@@ -1,9 +1,9 @@
 export type EmailResult = { kind: 'accepted'; id: string } | {kind: 'retry' | 'failed'};
-export async function sendTicketNotice(input: { apiKey: string; from: string; to: string; orderId: string }, fetcher: typeof fetch = fetch): Promise<EmailResult> {
+export async function sendTicketNotice(input: { apiKey: string; from: string; to: string; orderId: string; walletOrigin?: string }, fetcher: typeof fetch = fetch): Promise<EmailResult> {
   // Never include a QR code, financial data, or a bearer link in email.
-  const body = {
-    from: input.from, to: [input.to], subject:ticketNoticeSubject, text:ticketNoticeText, html:ticketNoticeHtml
-  };
+  const template=noticeTemplate(input.walletOrigin);
+  if(!template)return {kind:'failed'};
+  const body = {from:input.from,to:[input.to],...template};
   try {
     const response = await fetcher('https://api.resend.com/emails', {
       method:'POST', redirect:'error', cache:'no-store', signal:AbortSignal.timeout(4000),
@@ -31,3 +31,12 @@ export const ticketNoticeHtml=`<!doctype html><html lang="en"><body style="margi
 <p style="font-size:14px;line-height:1.6;color:#514967">For your security, admission QR codes and backup entry codes are never attached to this email. Access them in your authenticated wallet and do not share them.</p></td></tr>
 <tr><td style="padding:20px 28px;background:#f7f5fc;color:#625b74;font-size:12px;line-height:1.5">Nexx EventPass · Transactional ticket notification<br>Use your existing account to access your wallet.</td></tr></table>
 </td></tr></table></body></html>`;
+
+/** Environment-controlled wallet origin; no arbitrary user input or credential-bearing links. */
+export function noticeTemplate(origin?:string){
+ let target=wallet;
+ if(origin!==undefined){
+  try{const u=new URL(origin);if(u.protocol!=='https:'||u.username||u.password||u.pathname!=='/'||u.search||u.hash||u.port)return null;target=u.origin+'/dashboard/user';}catch{return null}
+ }
+ return {subject:ticketNoticeSubject,text:ticketNoticeText.replaceAll(wallet,target),html:ticketNoticeHtml.replaceAll(wallet,target)};
+}
