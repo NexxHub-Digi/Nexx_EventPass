@@ -33,7 +33,8 @@ export async function reconcilePaystackReference(reference:string):Promise<Recon
    const [n]=await tx`select count(*)::int as count from tickets where order_id=${order.id}`;
    return {status:'already_issued' as const,ticketsIssued:Number(n.count)};
   }
-  const valid=order.status==='pending'&&order.payment_method==='paystack'&&
+  const [buyer]=await tx`select account_status from app_users where id=${order.buyer_id} for share`;
+  const valid=buyer?.account_status==='active'&&order.status==='pending'&&order.payment_method==='paystack'&&
    new Date(order.reservation_expires_at).getTime()>Date.now()&&
    new Date(event.starts_at).getTime()+4*60*60*1000>Date.now()&&
    event.status==='published'&&event.verification_status==='verified'&&

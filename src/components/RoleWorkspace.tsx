@@ -10,6 +10,7 @@ import {TicketDesign} from '@/components/TicketDesign';
 import TicketStudioEditor from '@/components/TicketStudioEditor';
 import EventPassLoading from '@/components/EventPassLoading';
 import FinanceLedger from '@/components/FinanceLedger';
+import PaystackReconciliationDesk from '@/components/PaystackReconciliationDesk';
 import PaystackRefundVerification from '@/components/PaystackRefundVerification';
 import TicketNotificationMonitor from '@/components/TicketNotificationMonitor';
 import ProviderReadiness from '@/components/ProviderReadiness';
@@ -549,7 +550,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
        <button type="submit" className="ghost" value="rejected" disabled={busy}>Reject account</button>
       </form>}
     </div>)}
-  </section><FinanceLedger admin/></>}
+  </section><FinanceLedger admin/><PaystackReconciliationDesk/></>}
   <section className="rw-panel rw-wide" style={{display:adminTab==='refunds'?'':'none'}}><div className="eyebrow">SUPERVISED TICKET CANCELLATION</div><h2>Issued orders & admission revocation</h2>
     <p>Only Platform Administrator can cancel an approved order. Every ticket must be unused. A cancellation immediately blocks all QR and backup-code admissions; any paid refund is a separate audited settlement workflow.</p>
     {issuedOrders.map(order=><div className="rw-list-item" key={order.id}>

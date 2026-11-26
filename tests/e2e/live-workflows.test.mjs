@@ -51,6 +51,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/events',org.cookie,{title:'Denied',venue:'E2E',startsAt:new Date(Date.now()+3600000),capacity:1,priceNgn:5000,qrKeyword:'secrettest123'}),403,'unapproved organiser');
   await sql.unsafe('update app_users set role=$1 where id=$2',['platform_admin',admin.id]);
   const adminCookie=admin.cookie;
+  expect(await req('/api/platform/paystack-reconciliation',{cookie:buyer.cookie}),403,'payment recovery queue is admin-only');
+  const queue=expect(await req('/api/platform/paystack-reconciliation',{cookie:adminCookie}),200,'admin gateway recovery queue');
+  assert.equal(queue.mode,'test');assert.equal(queue.enabled,false);assert.ok(Array.isArray(queue.payments));
+  expect(await post('/api/platform/paystack-reconciliation',buyer.cookie,{reference:'EP-'+randomUUID()}),403,'buyer cannot operate admin payment recovery');
+  expect(await post('/api/platform/paystack-reconciliation',adminCookie,{reference:'EP-'+randomUUID()}),503,'recovery requires sandbox configuration');
   expect(await req('/api/platform/provider-readiness',{cookie:buyer.cookie}),403,'provider readiness is admin-only');
   const readiness=expect(await req('/api/platform/provider-readiness',{cookie:adminCookie}),200,'admin provider readiness');
   assert.equal(readiness.payments.mode,'test');assert.equal(readiness.payments.testKeyConfigured,false);assert.equal(readiness.payments.livePayments,false);

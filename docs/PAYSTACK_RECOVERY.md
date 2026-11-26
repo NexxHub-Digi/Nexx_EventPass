@@ -1,0 +1,2 @@
+# Sandbox payment recovery
+The Platform Admin finance workspace lists unsettled Paystack provider records and allows a supervised recheck of the existing transaction. The action is audited and delegates to the same independent provider verification and atomic ticket issuance path. No new charge, refund transfer, live API key, or automatic retry of uncertain initialization is permitted. Refund exceptions use the existing separate verification desk. Suspended buyers and invalid provider IDs cannot receive new tickets. Real sandbox provider acceptance remains required.

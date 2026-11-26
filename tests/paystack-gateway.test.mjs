@@ -56,6 +56,7 @@ test('provider verification rejects untrusted amounts and wrong environments',()
  assert.equal(validPaystackCharge({...charge,domain:'live'},'EP-reference',500000),false);
  assert.equal(validPaystackCharge({...charge,amount:500},'EP-reference',500000),false);
  assert.equal(validPaystackCharge({...charge,currency:'USD'},'EP-reference',500000),false);
+ for(const invalid of [{id:null},{id:'0'},{id:1.5},{id:'missing'},{amount:'500000'}])assert.equal(validPaystackCharge({...charge,...invalid},'EP-reference',500000),false);
 });
 test('webhook cannot fulfil without provider verification and event lock',()=>{
  const callback=read('src/app/api/payments/paystack/webhook/route.ts');

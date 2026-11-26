@@ -16,7 +16,7 @@ export async function POST(req:Request){
   if(!origin.startsWith('https://'))return fail('Secure HTTPS checkout required',400);
   const result=await db().begin(async tx=>{
    const [order]=await tx`select o.id,o.buyer_id,o.amount_ngn,o.status,o.payment_method,o.reservation_expires_at,
-    e.organiser_id,e.status as event_status,e.verification_status,e.starts_at,owner.account_status,
+    e.organiser_id,e.status as event_status,e.verification_status,e.starts_at,e.visibility,owner.account_status,owner.role as owner_role,
     a.subaccount_code,policy.basis_points
     from ticket_orders o join events e on e.id=o.event_id join app_users owner on owner.id=e.organiser_id
     join paystack_organiser_accounts a on a.organiser_id=e.organiser_id
@@ -26,7 +26,7 @@ export async function POST(req:Request){
     new Date(order.reservation_expires_at).getTime()<=Date.now()||
     new Date(order.starts_at).getTime()+4*60*60*1000<=Date.now()||
     order.event_status!=='published'||order.verification_status!=='verified'||
-    order.account_status!=='active')return {error:'Active Paystack reservation required',status:409};
+    order.account_status!=='active'||order.owner_role!=='organiser'||order.visibility!=='public')return {error:'Active Paystack reservation required',status:409};
    const [prior]=await tx`select reference,authorization_url,status from paystack_payments where order_id=${orderId}`;
    if(prior)return {prior};
    const amount=Number(order.amount_ngn)*100;
