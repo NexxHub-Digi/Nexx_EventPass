@@ -1,0 +1,4 @@
+# Notification exception reconciliation
+The administrator notification panel lists the most recent 100 delayed, failed, skipped, bounced, complained, suppressed, expired-lease and overdue queue cases. Rows contain order identifier, delivery classification, timestamps and attempts, but not recipient addresses, provider IDs, message bodies or credential fingerprints. No retry or send action is provided. Review the authoritative wallet and provider event evidence before any independently approved action. The worker records distinct content mismatch and exhausted retry reasons. A fingerprint mismatch must never be reset just to force a send.
+ 
+Provider acceptance still requires a private verifier deployment, approved HTTPS endpoint, verified Resend sending domain, controlled staging inbox delivery and real webhook evidence. Do not enable live delivery from this change.

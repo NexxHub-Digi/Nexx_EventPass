@@ -20,7 +20,7 @@ export async function paystackApi<T>(path:string,method='GET',body?:unknown):Pro
   throw Error('Unsupported Paystack API operation');
  const response=await fetch(apiOrigin+path,{method,headers:{
   Authorization:'Bearer '+paystackKey(),'Content-Type':'application/json'
- },body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(15000)});
+ },body:body===undefined?undefined:JSON.stringify(body),redirect:'error',cache:'no-store',signal:AbortSignal.timeout(15000)});
  const result=await response.json() as {status?:boolean;data?:T};
  if(!response.ok||result?.status!==true||!result.data)throw Error('Paystack provider request failed');
  return result.data;
@@ -50,5 +50,11 @@ export type VerifiedPaystackCharge={
 };
 export function validPaystackCharge(charge:VerifiedPaystackCharge,reference:string,amountKobo:number){
  return charge.reference===reference&&charge.status==='success'&&charge.domain==='test'&&
-  charge.currency==='NGN'&&Number(charge.amount)===amountKobo&&Number.isSafeInteger(Number(charge.amount));
+  charge.currency==='NGN'&&typeof charge.amount==='number'&&charge.amount===amountKobo&&Number.isSafeInteger(charge.amount)&&charge.amount>0&&
+  (typeof charge.id==='string'||(typeof charge.id==='number'&&Number.isSafeInteger(charge.id)))&&/^[1-9][0-9]{0,19}$/.test(String(charge.id));
+}
+
+/** Terminal or supervised refund states must never be overwritten by a late charge replay. */
+export function isPaystackRefundState(status:string):status is 'refund_pending'|'refunded'|'refund_failed' {
+ return ['refund_pending','refunded','refund_failed'].includes(status);
 }

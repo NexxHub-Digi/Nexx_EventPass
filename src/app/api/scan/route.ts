@@ -13,6 +13,17 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
     union select 'Organiser'::text,e.qr_keyword_ciphertext,e.starts_at,e.ends_at from events e join app_users owner on owner.id=e.organiser_id
     where e.id=${eventId} and e.organiser_id=${u.id} and owner.account_status='active' and owner.role='organiser' and e.status='published' and e.verification_status='verified'`;
   if(!perm[0])return fail('Not assigned to this event',403);
+  // An atomic database counter protects across serverless instances and concurrent requests.
+  const limit=entryMethod==='manual'?30:180;
+  const budget=await db()`insert into eventpass_gate_rate_windows(event_id,actor_id,entry_method,window_started,request_count)
+    values(${eventId},${u.id},${entryMethod},date_trunc('minute',now()),1)
+    on conflict(event_id,actor_id,entry_method) do update set
+      request_count=case when eventpass_gate_rate_windows.window_started=excluded.window_started then eventpass_gate_rate_windows.request_count+1 else 1 end,
+      window_started=excluded.window_started
+    where eventpass_gate_rate_windows.window_started<excluded.window_started
+      or (eventpass_gate_rate_windows.window_started=excluded.window_started and eventpass_gate_rate_windows.request_count<${limit})
+    returning request_count`;
+  if(!budget.length)return fail('Scan rate limit reached. Retry in one minute.',429);
   const gateLabel=String(perm[0].gate_label);
   const encrypted=perm[0].qr_keyword_ciphertext;
   const manualHash=entryMethod==='manual'?entryCodeHash(code):null;
@@ -65,6 +76,17 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
       'TEST ONLY — ticket is not eligible. Entry was not recorded.'});
   }
   const result=await db().begin(async tx=>{
+    // Revalidate and lock the live event and account state before consuming any credential.
+    const [live]=await tx`select e.organiser_id from events e join app_users owner on owner.id=e.organiser_id
+      join app_users actor on actor.id=${u.id}
+      where e.id=${eventId} and e.status='published' and e.verification_status='verified'
+        and owner.role='organiser' and owner.account_status='active' and actor.account_status='active'
+      for share of e,owner,actor`;
+    if(!live)return {denied:true as const};
+    if(live.organiser_id!==u.id){
+      const [assignment]=await tx`select gate_label from gate_assignments where event_id=${eventId} and user_id=${u.id} for share`;
+      if(!assignment)return {denied:true as const};
+    }
     const updated=source==='offline'?[]:await tx`update tickets t set redeemed_at=now(),redeemed_by=${u.id}
      where t.id=${decoded.ticketId} and t.event_id=${eventId} and t.status='issued' and t.redeemed_at is null
       and exists(select 1 from ticket_orders o join verified_order_payments p on p.order_id=o.id
@@ -95,6 +117,7 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
         jsonb_build_object('gateLabel',${gateLabel}::text,'entryMethod',${entryMethod}::text) from offline_tickets where id=${decoded.ticketId}`;
     return {outcome,prior,admittedAt:updated[0]?.redeemed_at||offlineUpdated[0]?.redeemed_at||null};
   });
+  if('denied' in result)return fail('Gate access is no longer active',403);
   const outsideWindow=result.outcome==='inactive_or_unavailable'&&!admissionOpen;
   return ok({...result,testOnly:false,entry_method:entryMethod,
    reason:outsideWindow?'event_not_open':undefined,opensAt:admissionOpensAt,closesAt:admissionClosesAt,

@@ -6,8 +6,9 @@ export async function GET(){
  try{
   const user=await currentUser();
   if(!user)return ok({user:null,portals:[]});
-  const portals:string[]=['user'];
+  const portals:string[]=[];
   if(user.account_status==='active'){
+   portals.push('user');
    if(user.role==='organiser')portals.push('organiser');
    if(user.role==='platform_admin')portals.push('platform_admin');
    const assignments=await db()`select 1 from events e join app_users owner on owner.id=e.organiser_id

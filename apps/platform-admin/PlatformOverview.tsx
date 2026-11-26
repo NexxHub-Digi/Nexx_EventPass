@@ -1,7 +1,8 @@
 import React from 'react';
 import {Pressable,Text,View,StyleSheet,useWindowDimensions} from 'react-native';
 type Section='organisers'|'accounts'|'events'|'analytics'|'finance'|'support'|'themes'|'audit'|'settings';
-type Props={fullName:string;summary:Record<string,number>;pendingOrganisers:number;pendingEvents:number;pendingRefunds:number;pendingSupport:number;pendingBanks:number;recentActions:{id:string;action:string;created_at:string;performed_by:string;target_email?:string|null}[];onNavigate:(section:Section)=>void;onRefresh:()=>void;busy:boolean};
+type NoticeSummary={counts:Record<string,number>;enabled:boolean;configured:boolean;health:{expired_leases:number;unmatched_events:number;last_webhook_at:string|null;oldest_pending_at:string|null}};
+type Props={notifications:NoticeSummary|null;fullName:string;summary:Record<string,number>;pendingOrganisers:number;pendingEvents:number;pendingRefunds:number;pendingSupport:number;pendingBanks:number;recentActions:{id:string;action:string;created_at:string;performed_by:string;target_email?:string|null}[];onNavigate:(section:Section)=>void;onRefresh:()=>void;busy:boolean};
 const featuredKeys=['organisers','events','tickets','admissions','orders','revenue'];
 const financialMetricLabels:Record<string,string>={
  verified_collections_ngn:'Verified collections',verified_commissions_ngn:'Verified platform commissions',
@@ -10,7 +11,7 @@ const financialMetricLabels:Record<string,string>={
 };
 function displayName(key:string){return financialMetricLabels[key]||key.replace(/_/g,' ').replace(/\b\w/g,letter=>letter.toUpperCase())}
 function formatMetric(key:string,value:number){return key.endsWith('_ngn')?'₦'+Number(value).toLocaleString('en-NG'):Number(value).toLocaleString('en-NG')}
-export default function PlatformOverview({fullName,summary,pendingOrganisers,pendingEvents,pendingRefunds,pendingSupport,pendingBanks,recentActions,onNavigate,onRefresh,busy}:Props){
+export default function PlatformOverview({fullName,summary,pendingOrganisers,pendingEvents,pendingRefunds,pendingSupport,pendingBanks,recentActions,notifications,onNavigate,onRefresh,busy}:Props){
  const {width}=useWindowDimensions();
  const columns=width<380?2:width<780?2:3;
  const statEntries=Object.entries(summary).sort(([a],[b])=>{
@@ -43,6 +44,14 @@ export default function PlatformOverview({fullName,summary,pendingOrganisers,pen
     <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit>{formatMetric(key,value)}</Text>
     <View style={styles.metricAccent}/>
    </View>)}</View>}
+  <Text style={styles.sectionTitle}>Ticket delivery health</Text>
+  {!notifications?<View style={styles.empty}><Text accessibilityRole="alert" style={styles.caption}>Notification metrics unavailable. Refresh to retry.</Text></View>:<View style={styles.empty}>
+    <Text style={styles.alertLabel}>{notifications.enabled?(notifications.configured?'Dispatch enabled':'Dispatch misconfigured'):'Dispatch disabled'} · {notifications.configured?'Provider configured':'Setup incomplete'}</Text>
+    <Text style={styles.caption}>Delivered means accepted by the receiving mail server, not read by the customer.</Text>
+    {['pending','sending','accepted','sent','delivered','delivery_delayed','bounced','complained','suppressed','failed','skipped'].map(key=><Text key={key} style={styles.caption}>{displayName(key)}: {Number(notifications.counts[key]??0)}</Text>)}
+    <Text style={styles.caption}>Expired leases: {notifications.health.expired_leases} · Unmatched events: {notifications.health.unmatched_events}</Text>
+    <Text style={styles.caption}>Last webhook: {notifications.health.last_webhook_at?new Date(notifications.health.last_webhook_at).toLocaleString('en-NG'):'None received'}</Text>
+  </View>}
   <View style={styles.recentHead}>
    <Text style={styles.sectionTitle}>Recent administrator activity</Text>
    <Pressable accessibilityRole="button" accessibilityLabel="Open full administrator audit log" onPress={()=>onNavigate('audit')} style={styles.auditButton}><Text style={styles.auditText}>Open audit log ›</Text></Pressable>

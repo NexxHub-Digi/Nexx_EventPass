@@ -13,6 +13,7 @@ jobs:
           node-version: '22'
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
+      - run: node --test tests/uiux-accessibility-recovery.test.mjs
       - run: node --test tests/android-release-security.test.mjs
       - run: node --test tests/mobile-download-links.test.mjs
       - run: npm run test:qr
@@ -41,7 +42,10 @@ jobs:
       - run: node --test tests/organiser-native-dashboard.test.mjs
       - run: node --experimental-strip-types --test tests/user-native-discovery.test.mjs
       - run: node --test tests/gate-native-rehearsal.test.mjs
+      - run: node --experimental-strip-types --test tests/ticket-notification-email.test.mjs
+      - run: node --experimental-strip-types --test tests/resend-webhook.test.mjs
       - run: npm run test:paystack
+      - run: node --experimental-strip-types --test tests/paystack-refund-verification.test.mjs
       - run: node --test tests/android-local-apk-workflow.test.mjs
       - run: node --test tests/gate-invitations.test.mjs
       - run: node --test tests/gate-portal-access.test.mjs

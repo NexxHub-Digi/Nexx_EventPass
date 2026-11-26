@@ -26,21 +26,21 @@ type Options = {
 const unchecked = (reason: EmailQualityResult['reason']): EmailQualityResult =>
   ({ state: 'unchecked', reason });
 
+export function validatorEndpoint(value:string|undefined):URL|null {
+ if(!value)return null;
+ try{
+  const url=new URL(value),loopback=['localhost','127.0.0.1','[::1]'].includes(url.hostname);
+  if((url.protocol!=='https:'&&!(url.protocol==='http:'&&loopback))||url.pathname!=='/api/validate'||url.search||url.hash||url.username||url.password)return null;
+  return url;
+ }catch{return null}
+}
+
 export async function assessEmailQuality(email: string, options: Options = {}): Promise<EmailQualityResult> {
   const endpoint = options.endpoint ?? process.env.NEXX_EMAIL_VALIDATOR_URL;
   if (!endpoint) return unchecked('unconfigured');
 
-  let url: URL;
-  try {
-    url = new URL(endpoint);
-    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-    if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) ||
-      url.pathname !== '/api/validate' || url.search || url.hash || url.username || url.password) {
-      return unchecked('invalid_endpoint');
-    }
-  } catch {
-    return unchecked('invalid_endpoint');
-  }
+  const url=validatorEndpoint(endpoint);
+  if(!url)return unchecked('invalid_endpoint');
 
   const token = options.token ?? process.env.NEXX_EMAIL_VALIDATOR_TOKEN;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };

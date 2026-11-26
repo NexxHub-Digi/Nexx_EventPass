@@ -1,0 +1,30 @@
+name: EventPass ticket notification scheduler
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: eventpass-ticket-notification-dispatch
+  cancel-in-progress: false
+jobs:
+  dispatch:
+    if: github.ref == 'refs/heads/main' && vars.EVENTPASS_NOTIFICATION_SCHEDULER_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    environment: production
+    env:
+      EVENTPASS_NOTIFICATION_SECRET: ${{ secrets.EVENTPASS_NOTIFICATION_SECRET }}
+    steps:
+      - name: Invoke authenticated production dispatcher
+        run: |
+          node --input-type=module <<'JS'
+          const secret=process.env.EVENTPASS_NOTIFICATION_SECRET;
+          if(!secret||secret.length<32)throw Error('Notification scheduler secret is missing');
+          const response=await fetch('https://nexx-eventpass.vercel.app/api/internal/ticket-notifications',{
+            method:'POST',redirect:'error',signal:AbortSignal.timeout(45000),headers:{Authorization:'Bearer '+secret}
+          });
+          if(!response.ok)throw Error('Dispatcher returned HTTP '+response.status);
+          const data=await response.json();
+          console.log(JSON.stringify(Object.fromEntries(['claimed','accepted','skipped','failed','retry'].map(k=>[k,Number(data[k]||0)]))));
+          JS

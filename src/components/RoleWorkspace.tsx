@@ -10,6 +10,10 @@ import {TicketDesign} from '@/components/TicketDesign';
 import TicketStudioEditor from '@/components/TicketStudioEditor';
 import EventPassLoading from '@/components/EventPassLoading';
 import FinanceLedger from '@/components/FinanceLedger';
+import PaystackReconciliationDesk from '@/components/PaystackReconciliationDesk';
+import PaystackRefundVerification from '@/components/PaystackRefundVerification';
+import TicketNotificationMonitor from '@/components/TicketNotificationMonitor';
+import ProviderReadiness from '@/components/ProviderReadiness';
 import OfflineTicketManager from '@/components/OfflineTicketManager';
 type Member={id:string;email:string;full_name:string;role:string;account_status:string;requested_role:string|null};
 type Event={payment_account_id?:string|null;onsite_payments_enabled?:boolean;id:string;organiser_id:string;title:string;venue:string;starts_at:string;price_ngn:number;capacity:number;status:string;verification_status?:string;organiser?:string;description?:string;category?:string;ticket_theme?:string;admission_label?:string;poster_template?:string;cover_media_id?:string|null;video_media_id?:string|null;ticket_art_id?:string|null;bank_name?:string;bank_account_name?:string;bank_account_number?:string};
@@ -25,7 +29,7 @@ type EventMedia={id:string;event_id?:string;media_type:string;file_name:string;a
 type AdminAccount={id:string;email:string;full_name:string;role:string;account_status:string;google_verified:boolean;order_count:number;ticket_count:number;event_count:number;gate_event_count:number;created_at:string};
 type SupportCase={payment_order_id?:string|null;id:string;organiser_id:string;organiser_name:string;subject:string;description:string;status:string;priority:string;resolution:string};
 type EventReport={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;status:string;verification_status:string;capacity:number;tickets_issued:number;external_tickets_issued:number;reserved_seats:number;pending_orders:number;checked_in:number;confirmed_revenue_ngn:number;refund_cases:number;active_gate_operators:number};
-type RefundCase={id:string;event_id:string;event_title:string;buyer_email:string;organiser_name:string;amount_ngn:number;status:string;refund_status:string;refund_note:string;reservation_expires_at:string};
+type RefundCase={payment_method?:string;id:string;event_id:string;event_title:string;buyer_email:string;organiser_name:string;amount_ngn:number;status:string;refund_status:string;refund_note:string;reservation_expires_at:string};
 type IssuedOrder={id:string;event_id:string;event_title:string;buyer_email:string;amount_ngn:number;payment_method:string;quantity:number;ticket_count:number;unused_count:number;admitted_count:number};
 type AuditRecord={id:string;action:string;performed_by:string;target_email?:string;created_at:string;details:Record<string,unknown>};
 type ModerationEvent={id:string;organiser_id:string;owner_eligible:boolean;title:string;venue:string;starts_at:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;pending_media:number};
@@ -79,6 +83,23 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
  const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string;entryCode?:string|null}|null>(null);
+ const qrDialog=useRef<HTMLDivElement>(null);
+ useEffect(()=>{
+  if(!expandedQr||!qrDialog.current)return;
+  const dialog=qrDialog.current,opener=document.activeElement,previousOverflow=document.body.style.overflow;
+  document.body.style.overflow='hidden';
+  dialog.querySelector<HTMLElement>('button')?.focus();
+  const onKey=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'){event.preventDefault();setExpandedQr(null);return}
+   if(event.key!=='Tab')return;
+   const controls=Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled)'));
+   const first=controls[0],last=controls.at(-1);
+   if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus()}
+   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus()}
+  };
+  dialog.addEventListener('keydown',onKey);
+  return()=>{dialog.removeEventListener('keydown',onKey);document.body.style.overflow=previousOverflow;if(opener instanceof HTMLElement&&opener.isConnected)opener.focus()};
+ },[expandedQr]);
  const [adminTab,setAdminTab]=useState('overview');
  const [adminMenuOpen,setAdminMenuOpen]=useState(false),[adminNavCollapsed,setAdminNavCollapsed]=useState(false),[organiserMenuOpen,setOrganiserMenuOpen]=useState(false);
  const [adminLoadIssues,setAdminLoadIssues]=useState<string[]>([]);
@@ -444,7 +465,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    event.preventDefault();resetPortalHome();
   }}>◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title} · Nexx Future</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
  <nav className="rw-portal-switch" aria-label={`${title} workspace navigation`}><span aria-current="page">{title} workspace</span></nav>
- {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
+ {message&&<div className="rw-message" role="status">{message}<button type="button" aria-label="Dismiss message" onClick={()=>setMessage('')}>×</button></div>}
  
  {role==='platform-admin'&&<div className={['rw-workspace-shell','ep-admin-workspace',adminNavCollapsed?'is-collapsed':''].filter(Boolean).join(' ')}>
   {adminMenuOpen&&<button type="button" className="ep-admin-drawer-scrim" aria-label="Close administrator menu" onClick={()=>setAdminMenuOpen(false)}/>}
@@ -485,6 +506,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     <span className="ep-admin-queue-count">{count}</span><span>{label}</span><strong aria-hidden="true">›</strong>
    </button>)}
   </div>
+  {adminTab==='overview'&&<><ProviderReadiness/><TicketNotificationMonitor/></>}
   <h3>Recent support activity</h3>
   {cases.slice(0,4).map(c=><button type="button" className="ep-admin-recent-case" key={c.id} onClick={()=>{setSelectedSupportId(c.id);setSupportDrafts(p=>({...p,[c.id]:p[c.id]||{priority:c.priority,resolution:c.resolution||''}}));setAdminTab('support')}}><strong>{c.subject}</strong><small>{c.organiser_name} · {c.status.replace('_',' ')} · {c.priority}</small><span>Review case</span></button>)}
   {!cases.length&&<p>No support requests recorded.</p>}
@@ -528,7 +550,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
        <button type="submit" className="ghost" value="rejected" disabled={busy}>Reject account</button>
       </form>}
     </div>)}
-  </section><FinanceLedger admin/></>}
+  </section><FinanceLedger admin/><PaystackReconciliationDesk/></>}
   <section className="rw-panel rw-wide" style={{display:adminTab==='refunds'?'':'none'}}><div className="eyebrow">SUPERVISED TICKET CANCELLATION</div><h2>Issued orders & admission revocation</h2>
     <p>Only Platform Administrator can cancel an approved order. Every ticket must be unused. A cancellation immediately blocks all QR and backup-code admissions; any paid refund is a separate audited settlement workflow.</p>
     {issuedOrders.map(order=><div className="rw-list-item" key={order.id}>
@@ -550,13 +572,14 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    {refundCases.map(r=><div key={r.id} className="rw-list-item"><div><b>{r.event_title} — {money(r.amount_ngn)}</b>
     <p>{r.buyer_email} · {r.refund_status} · {r.status}</p><small>{r.organiser_name||''} · {r.refund_note||'Not yet reconciled'}</small></div>
     <div className="rw-actions">
+     {r.payment_method==='paystack'?<PaystackRefundVerification orderId={r.id} settled={r.refund_status==='settled'} onVerified={()=>setMessage('Provider refund verified. Refresh the workspace for the updated ledger.')}/>:<>
      {r.refund_status==='not_required'&&btn('Open review',()=>{void updateRefund(r.id,'review_required')},true)}
      {r.refund_status==='review_required'&&btn('Refund initiated',()=>{if(window.confirm('Record that repayment has been initiated for '+r.buyer_email+'?'))void updateRefund(r.id,'initiated')},true)}
      {r.refund_status==='initiated'&&<>
       <label className="rw-field">Verified settlement reference for {r.buyer_email}<input maxLength={500} value={refundNotes[r.id]||''} onChange={e=>setRefundNotes(p=>({...p,[r.id]:e.target.value}))}/></label>
       {btn('Mark settled',()=>{if((refundNotes[r.id]||'').trim().length<10){setMessage('Add a verified transfer reference for this order (10+ characters)');return}if(window.confirm('Confirm you independently verified refund settlement for '+r.buyer_email+'?'))void updateRefund(r.id,'settled')})}
      </>}
-     {r.refund_status==='settled'&&<span>Settlement recorded — read only</span>}
+     {r.refund_status==='settled'&&<span>Settlement recorded — read only</span>}</>}
     </div></div>)}
    {!refundCases.length&&<p>No payment exceptions are currently recorded.</p>}
   </section>
@@ -951,7 +974,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     </div>)}{!tickets.length&&<p>Approved event passes will appear here with a unique encrypted QR code.</p>}</section>
  </div>}
  {role==='user'&&expandedQr&&<div className="masque-qr-modal-backdrop" role="presentation" onClick={()=>setExpandedQr(null)}>
-  <div className="masque-qr-modal" role="dialog" aria-modal="true" aria-label="Enlarged ticket QR" onClick={e=>e.stopPropagation()}>
+  <div ref={qrDialog} className="masque-qr-modal" role="dialog" aria-modal="true" aria-label="Enlarged ticket QR" onClick={e=>e.stopPropagation()}>
    <h3>{expandedQr.eventName}</h3><p>Show this secure QR to the assigned Gate Operator.</p>
    <div className="masque-expanded-code"><QRCodeSVG value={expandedQr.value} size={288} level="M" includeMargin/></div>
    {expandedQr.entryCode&&<p><strong>Manual backup code: {expandedQr.entryCode}</strong></p>}

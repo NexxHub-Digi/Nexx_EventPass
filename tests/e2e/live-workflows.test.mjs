@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import postgres from 'postgres';
 import bcrypt from 'bcryptjs';
 import {SignJWT} from 'jose';
-import {randomUUID,randomBytes,createHash} from 'node:crypto';
+import {randomUUID,randomBytes,createHash,createHmac} from 'node:crypto';
 if(process.env.CI!=='true'||process.env.EVENTPASS_E2E!=='true'||!/@(localhost|127\.0\.0\.1):/.test(process.env.DATABASE_URL||''))throw Error('Refusing to run E2E outside isolated local CI');
 const sql=postgres(process.env.DATABASE_URL,{ssl:false,prepare:false});
 const base='http://localhost:3210', tag=randomUUID().slice(0,8),password='EventPass-E2E-Password-123456789!';
@@ -51,12 +51,25 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/events',org.cookie,{title:'Denied',venue:'E2E',startsAt:new Date(Date.now()+3600000),capacity:1,priceNgn:5000,qrKeyword:'secrettest123'}),403,'unapproved organiser');
   await sql.unsafe('update app_users set role=$1 where id=$2',['platform_admin',admin.id]);
   const adminCookie=admin.cookie;
+  expect(await req('/api/platform/paystack-reconciliation',{cookie:buyer.cookie}),403,'payment recovery queue is admin-only');
+  const queue=expect(await req('/api/platform/paystack-reconciliation',{cookie:adminCookie}),200,'admin gateway recovery queue');
+  assert.equal(queue.mode,'test');assert.equal(queue.enabled,false);assert.ok(Array.isArray(queue.payments));
+  expect(await post('/api/platform/paystack-reconciliation',buyer.cookie,{reference:'EP-'+randomUUID()}),403,'buyer cannot operate admin payment recovery');
+  expect(await post('/api/platform/paystack-reconciliation',adminCookie,{reference:'EP-'+randomUUID()}),503,'recovery requires sandbox configuration');
+  expect(await req('/api/platform/provider-readiness',{cookie:buyer.cookie}),403,'provider readiness is admin-only');
+  const readiness=expect(await req('/api/platform/provider-readiness',{cookie:adminCookie}),200,'admin provider readiness');
+  assert.equal(readiness.payments.mode,'test');assert.equal(readiness.payments.testKeyConfigured,false);assert.equal(readiness.payments.livePayments,false);
+  assert.equal(readiness.notifications.deliveryEnabled,false);assert.equal(readiness.database.schemaReady,true);
+  assert.equal(readiness.acceptance,'not_verified');assert.ok(!JSON.stringify(readiness).includes(process.env.AUTH_SECRET));
+  expect(await post('/api/payments/paystack/refunds/verify',buyer.cookie,{orderId:randomUUID(),providerRefundId:'123'}),403,'only active platform administrator may verify provider refunds');
+  expect(await post('/api/payments/paystack/refunds/verify',adminCookie,{orderId:randomUUID(),providerRefundId:'123'}),503,'refund verification remains disabled without sandbox key');
   expect(await post('/api/auth/login',null,{portal:'platform_admin',email:admin.email,password}),403,'retired password sign-in blocked even for admins');
   assert.ok(expect(await req('/api/platform/organisers',{cookie:adminCookie}),200,'admin directory').organisers.some(x=>x.id===org.id));
   const accounts=expect(await req('/api/platform/users',{cookie:adminCookie}),200,'multi-tenant account directory');
   assert.ok(accounts.accounts.some(a=>a.id===buyer.id),'directory includes buyer');
   const searched=expect(await req('/api/platform/users?q='+encodeURIComponent(buyer.email),{cookie:adminCookie}),200,'search users');
   assert.equal(searched.count,1);
+  assert.equal(expect(await req('/api/platform/users?page=1.5',{cookie:adminCookie}),200,'fractional page safely normalized').page,1);
   expect(await req('/api/platform/users',{cookie:wrong.cookie}),403,'users cannot open administrator directory');
   const changed=await req('/api/platform/users',{cookie:adminCookie,method:'PATCH',body:{action:'configure',userId:buyer.id,fullName:'E2E Buyer Updated'}});
   expect(changed,200,'admin modifies User profile');
@@ -75,7 +88,8 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/platform/organisers',adminCookie,{action:'reject',userId:rejectedApplicant.id,reason:'Second rejection should fail'}),409,'already rejected application cannot be rejected twice');
   const rejectionAudit=expect(await req('/api/platform/audit',{cookie:adminCookie}),200,'admin sees rejection audit').history.find(item=>item.target_email===rejectedApplicant.email&&item.action==='reject');
   assert.equal(rejectionAudit?.details?.reason,'Required organiser registration documents were not supplied');
-  expect(await post('/api/platform/organisers',adminCookie,{action:'approve',userId:org.id}),200,'approve organiser');
+  const approvals=await Promise.all([post('/api/platform/organisers',adminCookie,{action:'approve',userId:org.id}),post('/api/platform/organisers',adminCookie,{action:'approve',userId:org.id})]);
+  assert.deepEqual(approvals.map(r=>r.status).sort(),[200,409],'concurrent approvals produce exactly one successful transition');
   assert.equal(expect(await req('/api/auth/me',{cookie:org.cookie}),200,'approved role').user.role,'organiser');
   const opened=expect(await post('/api/support/cases',org.cookie,{subject:'Need verification assistance',description:'Please help review this test event and bank settings',priority:'high'}),201,'organiser opens support case').case;
   assert.ok(expect(await req('/api/support/cases',{cookie:adminCookie}),200,'platform support inbox').cases.some(c=>c.id===opened.id));
@@ -153,6 +167,9 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const unrelated=expect(await post(bankRoute,sibling.cookie,{bankName:'Other Bank',accountName:'Other Organiser',accountNumber:'2468013579'}),201,'second organiser account').account;
   expect(await reviewBank(adminCookie,unrelated.id,'verified'),200,'verify unrelated organiser account');
   expect(await post('/api/events',org.cookie,{...paidDraft,paymentAccountId:unrelated.id}),409,'cannot use another organiser’s verified account');
+  const cancelledDraft=expect(await post('/api/events',org.cookie,{title:'Cancelled event regression',venue:'E2E',startsAt:date,capacity:1,priceNgn:0,qrKeyword:'private-test-keyword'}),201,'create event for cancellation regression').event;
+  await sql`update events set status='cancelled' where id=${cancelledDraft.id}`;
+  expect(await req('/api/events',{cookie:org.cookie,method:'PATCH',body:{eventId:cancelledDraft.id,description:'Attempted resurrection',ticketTheme:'aurora'}}),409,'organiser cannot resurrect cancelled event');
   const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,paymentAccountId:bank.id,qrKeyword:'private-test-keyword',ticketTheme:'stj-royal-gold',admissionLabel:'ADMIT ONE — MASK COMPULSORY',posterTemplate:'stj-apartment-party'}),201,'create event').event;
   assert.ok(!expect(await req('/api/auth/me',{cookie:org.cookie}),200,'draft event gate rights').portals.includes('gate'),'draft/unverified event must not grant gate access');
   const draftGate=await fetch(base+'/gate',{headers:{Cookie:org.cookie},redirect:'manual'});
@@ -286,7 +303,37 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal(Number((await sql`select count(*)::int as total from tickets where order_id=${order.id}`)[0].total),0,
     'manual checkout and receipt upload do not create ticket rows');
   expect(await req('/api/orders/receipt?orderId='+order.id,{cookie:wrong.cookie}),404,'receipt privacy');
+  assert.equal((await sql`select count(*)::int as n from ticket_email_outbox where order_id=${order.id}`)[0].n,0,'pending payment never queues email');
   const approved=expect(await post('/api/review',org.cookie,{orderId:order.id,decision:'approved'}),200,'organiser payment verification');
+  assert.equal((await sql`select count(*)::int as n from ticket_email_outbox where order_id=${order.id}`)[0].n,1,'approved order queues exactly one notification');
+  expect(await post('/api/internal/ticket-notifications',buyer.cookie,{}),403,'ordinary user cannot dispatch notifications');
+  expect(await req('/api/platform/notifications',{cookie:buyer.cookie}),403,'notification monitoring is admin-only');
+  const providerId='fixture-'+tag;
+  // Simulate a webhook arriving before the provider response is committed; no real email sent.
+  const hook=async(type,id,occurred=new Date().toISOString())=>{
+    const body=JSON.stringify({type,created_at:occurred,data:{email_id:providerId,to:['fixture@example.invalid']}});
+    const timestamp=String(Math.floor(Date.now()/1000));
+    const signature=createHmac('sha256',Buffer.alloc(32,7)).update(id+'.'+timestamp+'.'+body).digest('base64');
+    return fetch(base+'/api/webhooks/resend',{method:'POST',headers:{'Content-Type':'application/json','svix-id':id,'svix-timestamp':timestamp,'svix-signature':'v1,'+signature},body});
+  };
+  const deliveredId='msg_delivered_'+tag;
+  assert.equal((await hook('email.delivered',deliveredId)).status,200);
+  assert.equal((await hook('email.delivered',deliveredId)).status,200,'replayed delivery is idempotent');
+  assert.equal((await sql`select count(*)::int as n from ticket_email_webhook_events where webhook_id=${deliveredId}`)[0].n,1);
+  await sql`update ticket_email_outbox set state='accepted',provider_id=${providerId} where order_id=${order.id}`;
+  assert.equal((await hook('email.delivery_delayed','msg_delayed_'+tag)).status,200);
+  const observed=expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'admin delivery monitor');
+  assert.equal(observed.counts.delivered,1,'late nonterminal status cannot override delivery');
+  assert.equal((await hook('email.bounced','msg_bounced_'+tag)).status,200);
+  assert.equal(expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'bounce monitoring').counts.bounced,1);
+  assert.equal((await hook('email.failed','msg_failed_'+tag,new Date(Date.now()+1000).toISOString())).status,200);
+  const failureMonitor=expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'failure monitoring');
+  assert.equal(failureMonitor.counts.failed,1);
+  const exception=failureMonitor.exceptions.find(x=>x.order_id===order.id);
+  assert.ok(exception);assert.equal(exception.delivery_status,'failed');assert.equal(exception.review_reason,'provider_failed');
+  assert.ok(!('email' in exception)&&!('recipient_id' in exception)&&!('provider_id' in exception)&&!('request_fingerprint' in exception));
+  assert.equal((await fetch(base+'/api/webhooks/resend',{method:'POST',body:'{}'})).status,400,'unsigned webhook denied');
+
   assert.ok(!expect(await req(inboxPath,{cookie:org.cookie}),200,'approved order leaves inbox').payments.some(item=>item.id===order.id));
   expect(await post('/api/platform/events',adminCookie,{eventId:event.id,action:'reject'}),409,'event with sold tickets must not be unpublished');
   const report=expect(await req('/api/platform/event-directory',{cookie:adminCookie}),200,'admin event details').events;
@@ -413,6 +460,14 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(recordedHistory.scans.some(scan=>scan.outcome==='approved'&&scan.ticket_id===ticket.id&&scan.offline_ticket_id===null));
   assert.ok(recordedHistory.scans.length&&recordedHistory.scans.every(scan=>scan.created_at));
   assert.equal(Number(history.stats.admitted),1);assert.equal(Number(history.stats.duplicates),2,'QR and manual attempts are both audited as duplicates');
+  // The prior QR is consumed. Rehearsal requests must still respect the shared rate budget.
+  const [clock]=await sql`select extract(second from clock_timestamp())::float as second`;
+  if(Number(clock.second)>50)await new Promise(resolve=>setTimeout(resolve,(61-Number(clock.second))*1000));
+  await sql`insert into eventpass_gate_rate_windows(event_id,actor_id,entry_method,window_started,request_count)
+    values(${event.id},${operator.id},'qr',date_trunc('minute',now()),179)
+    on conflict(event_id,actor_id,entry_method) do update set window_started=excluded.window_started,request_count=179`;
+  const limited=await Promise.all([post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr,testOnly:true}),post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr,testOnly:true})]);
+  assert.deepEqual(limited.map(r=>r.status).sort(),[200,429],'concurrent scanner requests cannot exceed the shared rate budget');
   const otherEvent=expect(await post('/api/events',org.cookie,{title:'E2E Other Event',venue:'E2E Other Venue',startsAt:date,capacity:3,priceNgn:0,qrKeyword:'other-private-keyword',ticketTheme:dynamicTheme.id}),201,'second event').event;
   expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:{id:dynamicTheme.id,action:'archive'}}),409,'event-linked theme cannot be archived or mutate historical tickets');
   expect(await req('/api/ticket-themes',{cookie:adminCookie,method:'PATCH',body:{...themeEdit,id:dynamicTheme.id}}),409,'event-linked theme cannot be edited');
@@ -424,6 +479,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/gates',{method:'DELETE',cookie:org.cookie,body:{eventId:event.id,email:operator.email}}),200,'revoke gate');
   expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),403,'revoked gate denied');
   expect(await post('/api/platform/organisers',adminCookie,{action:'suspend',userId:org.id}),200,'suspend organiser');
+  assert.deepEqual(expect(await req('/api/auth/me',{cookie:org.cookie}),200,'suspended account session status').portals,[],'inactive account must advertise no portals');
   expect(await post('/api/events',org.cookie,{title:'Nope',venue:'E2E',startsAt:date,capacity:1,priceNgn:0,qrKeyword:'secrettest123'}),403,'suspended organiser');
   expect(await post('/api/platform/organisers',adminCookie,{action:'restore',userId:org.id}),200,'restore organiser');
   const nativeCode=randomBytes(32).toString('base64url');
@@ -500,6 +556,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/offline/tickets',{cookie:wrong.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[first.id],action:'activate'}}),403,'unauthorised activation');
   const second=inventory[1];
   expect(await req('/api/offline/tickets',{cookie:org.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[second.id],action:'distribution',distribution:'sold',amountNgn:4000}}),200,'record external sale');
+  const financeStaff=await signUp('distribution-only');
+  await sql`insert into oauth_identities(user_id,provider,provider_sub,provider_email) values(${financeStaff.id},'google',${randomUUID()},${financeStaff.email})`;
+  expect(await post('/api/offline/staff',org.cookie,{eventId:privateEvent.id,email:financeStaff.email,scope:'selected',eventIds:[privateEvent.id],permissions:['view','distribute']}),200,'assign distribution-only staff');
+  expect(await req('/api/offline/tickets',{cookie:financeStaff.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[second.id],action:'distribution',distribution:'unassigned'}}),403,'distribution permission cannot erase recorded sale');
+  assert.equal(Number((await sql`select sale_amount_ngn from offline_tickets where id=${second.id}`)[0].sale_amount_ngn),4000);
   const offlineFinancials=expect(await req('/api/platform/overview',{cookie:adminCookie}),200,'overview includes manually recorded sales').stats;
   assert.ok(Number(offlineFinancials.manual_offline_sales_ngn)>=4000,'offline sale is separately reported before reissue');
   const [confirmedBeforeOnsite]=await sql`select coalesce(sum(gross_ngn),0)::bigint as gross from verified_order_payments`;

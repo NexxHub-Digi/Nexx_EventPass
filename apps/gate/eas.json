@@ -25,6 +25,12 @@
         "EXPO_PUBLIC_RELEASE_CHANNEL": "production",
         "EXPO_PUBLIC_API_URL": "https://nexx-eventpass.vercel.app"
       }
+    },
+    "ios-simulator": {
+      "extends": "preview",
+      "ios": {
+        "simulator": true
+      }
     }
   }
 }

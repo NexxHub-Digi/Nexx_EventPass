@@ -19,7 +19,7 @@ type AdminAccount={id:string;email:string;full_name:string;role:string;account_s
 type SupportCase={id:string;subject:string;description:string;organiser_name:string;status:string;priority:string;resolution:string;payment_order_id?:string|null};
 type ModerationEvent={id:string;title:string;venue:string;organiser_id:string;organiser_name:string;organiser_email:string;status:string;verification_status:string;owner_eligible:boolean;pending_media:number};
 type MediaReview={id:string;event_id:string;file_name:string;media_type:string};
-type RefundCase={id:string;event_title:string;buyer_email:string;status:string;refund_status:string;amount_ngn:number;refund_note?:string|null};
+type RefundCase={payment_method?:string;id:string;event_title:string;buyer_email:string;status:string;refund_status:string;amount_ngn:number;refund_note?:string|null};
 type IssuedOrder={id:string;event_title:string;buyer_email:string;amount_ngn:number;payment_method:string;quantity:number;ticket_count:number;unused_count:number;admitted_count:number};
 type AuditEntry={id:string;action:string;created_at:string;performed_by:string;target_email?:string|null;details?:{reason?:string}|null};
 type Theme={id:string;name:string;label:string;color_a:string;color_b:string;accent:string;active:boolean};
@@ -50,6 +50,7 @@ export default function App(){
  const [bankAccounts,setBankAccounts]=useState<{id:string;bank_name:string;account_name:string;account_number:string;status:string;organiser_name:string}[]>([]);
  const [bankReviewId,setBankReviewId]=useState(''),[bankReviewNote,setBankReviewNote]=useState('');
  const [summary,setSummary]=useState<Record<string,number>>({});
+ const [notificationSummary,setNotificationSummary]=useState<{counts:Record<string,number>;enabled:boolean;configured:boolean;health:{expired_leases:number;unmatched_events:number;last_webhook_at:string|null;oldest_pending_at:string|null}}|null>(null);
  const [loadWarnings,setLoadWarnings]=useState<string[]>([]);
  const [moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<MediaReview[]>([]);
  const [auditHistory,setAuditHistory]=useState<AuditEntry[]>([]),[refundCases,setRefundCases]=useState<RefundCase[]>([]);
@@ -80,7 +81,8 @@ export default function App(){
    ['Audit logs',api('platform/audit',t)],
    ['Payments & refunds',api('refunds',t)],
    ['Events & analytics',api('platform/event-directory',t)],
-   ['Ticket themes',api('ticket-themes?includeInactive=true',t)]
+   ['Ticket themes',api('ticket-themes?includeInactive=true',t)],
+   ['Ticket notifications',api('platform/notifications',t)]
   ] as const;
   const settled=await Promise.allSettled(services.map(([,promise])=>promise));
   const warnings:string[]=[];
@@ -101,6 +103,7 @@ export default function App(){
   const refunds=result(9);if(refunds){setRefundCases(refunds.orders||[]);setIssuedOrders(refunds.issuedOrders||[])}
   const directory=result(10);if(directory)setEventMetrics(directory.events||[]);
   const themes=result(11);if(themes)setThemes(themes.themes||[]);
+  setNotificationSummary(result(12));
   setLoadWarnings(warnings);
  }
  useEffect(()=>{
@@ -210,6 +213,13 @@ export default function App(){
    })}
   ]);
  }
+ async function verifyProviderRefund(orderId:string){await exec(async()=>{
+  const providerRefundId=(refundNotes[orderId]||'').trim();
+  if(!/^[1-9][0-9]{0,19}$/.test(providerRefundId))throw Error('Enter a numeric Paystack refund ID.');
+  await api('payments/paystack/refunds/verify',token,'POST',{orderId,providerRefundId});
+  const updated=await api('refunds',token);setRefundCases(updated.orders||[]);setIssuedOrders(updated.issuedOrders||[]);setRefundNotes(previous=>({...previous,[orderId]:''}));
+  Alert.alert('Provider refund verified','The full sandbox refund has been recorded. No money was sent by this action.');
+ })}
  async function updateRefund(orderId:string,action:'review_required'|'initiated'|'settled'){await exec(async()=>{
   const note=(refundNotes[orderId]||'').trim();
   if(action==='settled'&&note.length<10)throw Error('Enter a verified settlement reference for this order (10+ characters).');
@@ -293,7 +303,7 @@ export default function App(){
  pendingRefunds={refundCases.filter(r=>r.refund_status!=='settled').length}
  pendingSupport={cases.filter(c=>['open','in_progress'].includes(c.status)).length}
  pendingBanks={bankAccounts.filter(b=>b.status==='pending').length}
- recentActions={auditHistory}
+ recentActions={auditHistory} notifications={notificationSummary}
  onNavigate={navigateAdmin} onRefresh={()=>void exec(async()=>load(token))} busy={busy}/>}
  {section==='analytics'&&<><Text style={s.title}>Events & analytics</Text>
  <Text style={s.hint}>Confirmed revenue excludes pending orders and manually tracked offline sales.</Text>
@@ -401,6 +411,11 @@ export default function App(){
   <Text style={s.hint}>{refund.buyer_email} · ₦{Number(refund.amount_ngn).toLocaleString('en-NG')}</Text>
   <Text style={s.hint}>{refund.status} · {refund.refund_status}</Text>
   {!!refund.refund_note&&<Text style={s.hint}>Previous note: {refund.refund_note}</Text>}
+  {refund.payment_method==='paystack'?refund.refund_status==='settled'?<Text style={s.hint}>Provider settlement recorded — read only</Text>:<>
+   <Text style={s.hint}>Verify an existing full processed sandbox refund. This action does not send money.</Text>
+   <TextInput accessibilityLabel={'Paystack refund ID for '+refund.buyer_email} placeholder="Numeric provider refund ID" placeholderTextColor="#a4b1c8" keyboardType="number-pad" style={s.input} maxLength={20} value={refundNotes[refund.id]||''} onChangeText={value=>setRefundNotes(previous=>({...previous,[refund.id]:value}))}/>
+   {button('Verify provider refund',()=>void verifyProviderRefund(refund.id),true)}
+  </>:<>
   {refund.refund_status==='not_required'&&button('Open review',()=>void updateRefund(refund.id,'review_required'),true)}
   {refund.refund_status==='review_required'&&button('Refund initiated',()=>Alert.alert('Initiate refund?','Only record initiation after arranging repayment to the buyer.',[
    {text:'Cancel',style:'cancel'},{text:'Record initiation',onPress:()=>void updateRefund(refund.id,'initiated')}
@@ -411,7 +426,7 @@ export default function App(){
     {text:'Cancel',style:'cancel'},{text:'Confirm settlement',onPress:()=>void updateRefund(refund.id,'settled')}
    ]))}
   </>}
-  {refund.refund_status==='settled'&&<Text style={s.hint}>Settlement recorded — read only</Text>}
+  {refund.refund_status==='settled'&&<Text style={s.hint}>Settlement recorded — read only</Text>}</>}
  </View>)}
  </>}
  {section==='audit'&&<><Text style={s.title}>Administrator audit history</Text>

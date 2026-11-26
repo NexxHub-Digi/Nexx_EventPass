@@ -5,8 +5,8 @@ on:
   pull_request:
 jobs:
   http-e2e:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17
@@ -28,6 +28,7 @@ jobs:
       NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3210
       AUTH_SECRET: ci-auth-test-only-never-use-in-production-123456789
       QR_SIGNING_SECRET: ci-qr-test-only-never-use-in-production-123456789
+      RESEND_WEBHOOK_SECRET: whsec_BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
       GOOGLE_USER_CLIENT_ID: 123456-ci-user.apps.googleusercontent.com
       GOOGLE_USER_CLIENT_SECRET: fake-ci-user-secret
       GOOGLE_ORGANISER_CLIENT_ID: 123456-ci-organiser.apps.googleusercontent.com
@@ -43,6 +44,10 @@ jobs:
           node-version: '22'
       - name: Install web dependencies
         run: npm install --no-audit --no-fund
+      - name: Install Chromium browser acceptance dependencies
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
       - name: Initialise isolated PostgreSQL test database
         run: node tests/e2e/setup.mjs
       - name: Build actual Next.js app
@@ -60,6 +65,20 @@ jobs:
         run: node --test tests/e2e/live-workflows.test.mjs
       - name: Verify legacy entry-code backfill on isolated PostgreSQL
         run: node --experimental-strip-types --test tests/e2e/backfill-entry-codes.test.mjs
+      - name: Execute four-portal browser acceptance
+        run: node --test tests/e2e/browser-acceptance.test.mjs
+      - name: Retain synthetic browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eventpass-browser-acceptance
+          path: /tmp/eventpass-browser-acceptance
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Prove isolated PostgreSQL backup and restoration
+        env:
+          EVENTPASS_TEST_DB_CONTAINER: ${{ job.services.postgres.id }}
+        run: bash scripts/test-db-restore.sh
       - name: Show Next.js server logs when tests fail
         if: failure()
         run: tail -n 150 /tmp/eventpass-e2e-next.log || true
