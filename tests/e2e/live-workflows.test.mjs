@@ -57,6 +57,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.ok(accounts.accounts.some(a=>a.id===buyer.id),'directory includes buyer');
   const searched=expect(await req('/api/platform/users?q='+encodeURIComponent(buyer.email),{cookie:adminCookie}),200,'search users');
   assert.equal(searched.count,1);
+  assert.equal(expect(await req('/api/platform/users?page=1.5',{cookie:adminCookie}),200,'fractional page safely normalized').page,1);
   expect(await req('/api/platform/users',{cookie:wrong.cookie}),403,'users cannot open administrator directory');
   const changed=await req('/api/platform/users',{cookie:adminCookie,method:'PATCH',body:{action:'configure',userId:buyer.id,fullName:'E2E Buyer Updated'}});
   expect(changed,200,'admin modifies User profile');
@@ -75,7 +76,8 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await post('/api/platform/organisers',adminCookie,{action:'reject',userId:rejectedApplicant.id,reason:'Second rejection should fail'}),409,'already rejected application cannot be rejected twice');
   const rejectionAudit=expect(await req('/api/platform/audit',{cookie:adminCookie}),200,'admin sees rejection audit').history.find(item=>item.target_email===rejectedApplicant.email&&item.action==='reject');
   assert.equal(rejectionAudit?.details?.reason,'Required organiser registration documents were not supplied');
-  expect(await post('/api/platform/organisers',adminCookie,{action:'approve',userId:org.id}),200,'approve organiser');
+  const approvals=await Promise.all([post('/api/platform/organisers',adminCookie,{action:'approve',userId:org.id}),post('/api/platform/organisers',adminCookie,{action:'approve',userId:org.id})]);
+  assert.deepEqual(approvals.map(r=>r.status).sort(),[200,409],'concurrent approvals produce exactly one successful transition');
   assert.equal(expect(await req('/api/auth/me',{cookie:org.cookie}),200,'approved role').user.role,'organiser');
   const opened=expect(await post('/api/support/cases',org.cookie,{subject:'Need verification assistance',description:'Please help review this test event and bank settings',priority:'high'}),201,'organiser opens support case').case;
   assert.ok(expect(await req('/api/support/cases',{cookie:adminCookie}),200,'platform support inbox').cases.some(c=>c.id===opened.id));
@@ -153,6 +155,9 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   const unrelated=expect(await post(bankRoute,sibling.cookie,{bankName:'Other Bank',accountName:'Other Organiser',accountNumber:'2468013579'}),201,'second organiser account').account;
   expect(await reviewBank(adminCookie,unrelated.id,'verified'),200,'verify unrelated organiser account');
   expect(await post('/api/events',org.cookie,{...paidDraft,paymentAccountId:unrelated.id}),409,'cannot use another organiser’s verified account');
+  const cancelledDraft=expect(await post('/api/events',org.cookie,{title:'Cancelled event regression',venue:'E2E',startsAt:date,capacity:1,priceNgn:0,qrKeyword:'private-test-keyword'}),201,'create event for cancellation regression').event;
+  await sql`update events set status='cancelled' where id=${cancelledDraft.id}`;
+  expect(await req('/api/events',{cookie:org.cookie,method:'PATCH',body:{eventId:cancelledDraft.id,description:'Attempted resurrection',ticketTheme:'aurora'}}),409,'organiser cannot resurrect cancelled event');
   const event=expect(await post('/api/events',org.cookie,{title:'E2E Test Event',venue:'E2E Venue',startsAt:date,capacity:2,priceNgn:5000,paymentAccountId:bank.id,qrKeyword:'private-test-keyword',ticketTheme:'stj-royal-gold',admissionLabel:'ADMIT ONE — MASK COMPULSORY',posterTemplate:'stj-apartment-party'}),201,'create event').event;
   assert.ok(!expect(await req('/api/auth/me',{cookie:org.cookie}),200,'draft event gate rights').portals.includes('gate'),'draft/unverified event must not grant gate access');
   const draftGate=await fetch(base+'/gate',{headers:{Cookie:org.cookie},redirect:'manual'});
@@ -458,6 +463,7 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/gates',{method:'DELETE',cookie:org.cookie,body:{eventId:event.id,email:operator.email}}),200,'revoke gate');
   expect(await post('/api/scan',operator.cookie,{eventId:event.id,code:ticket.qr}),403,'revoked gate denied');
   expect(await post('/api/platform/organisers',adminCookie,{action:'suspend',userId:org.id}),200,'suspend organiser');
+  assert.deepEqual(expect(await req('/api/auth/me',{cookie:org.cookie}),200,'suspended account session status').portals,[],'inactive account must advertise no portals');
   expect(await post('/api/events',org.cookie,{title:'Nope',venue:'E2E',startsAt:date,capacity:1,priceNgn:0,qrKeyword:'secrettest123'}),403,'suspended organiser');
   expect(await post('/api/platform/organisers',adminCookie,{action:'restore',userId:org.id}),200,'restore organiser');
   const nativeCode=randomBytes(32).toString('base64url');
@@ -534,6 +540,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   expect(await req('/api/offline/tickets',{cookie:wrong.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[first.id],action:'activate'}}),403,'unauthorised activation');
   const second=inventory[1];
   expect(await req('/api/offline/tickets',{cookie:org.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[second.id],action:'distribution',distribution:'sold',amountNgn:4000}}),200,'record external sale');
+  const financeStaff=await signUp('distribution-only');
+  await sql`insert into oauth_identities(user_id,provider,provider_sub,provider_email) values(${financeStaff.id},'google',${randomUUID()},${financeStaff.email})`;
+  expect(await post('/api/offline/staff',org.cookie,{eventId:privateEvent.id,email:financeStaff.email,scope:'selected',eventIds:[privateEvent.id],permissions:['view','distribute']}),200,'assign distribution-only staff');
+  expect(await req('/api/offline/tickets',{cookie:financeStaff.cookie,method:'PATCH',body:{eventId:privateEvent.id,ticketIds:[second.id],action:'distribution',distribution:'unassigned'}}),403,'distribution permission cannot erase recorded sale');
+  assert.equal(Number((await sql`select sale_amount_ngn from offline_tickets where id=${second.id}`)[0].sale_amount_ngn),4000);
   const offlineFinancials=expect(await req('/api/platform/overview',{cookie:adminCookie}),200,'overview includes manually recorded sales').stats;
   assert.ok(Number(offlineFinancials.manual_offline_sales_ngn)>=4000,'offline sale is separately reported before reissue');
   const [confirmedBeforeOnsite]=await sql`select coalesce(sum(gross_ngn),0)::bigint as gross from verified_order_payments`;

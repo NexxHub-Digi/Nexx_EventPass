@@ -8,7 +8,8 @@ export async function GET(req:Request){
   const admin=await currentUser();
   if(!admin||admin.role!=='platform_admin'||admin.account_status!=='active')return fail('Platform Administrator only',403);
   const url=new URL(req.url),query=str(url.searchParams.get('q'),120).toLowerCase(),role=str(url.searchParams.get('role'),25);
-  const page=Math.min(500,Math.max(1,Number(url.searchParams.get('page'))||1)),offset=(page-1)*40;
+  const rawPage=Number(url.searchParams.get('page')||'1');
+  const page=Number.isSafeInteger(rawPage)?Math.min(500,Math.max(1,rawPage)):1,offset=(page-1)*40;
   const accounts=await db()`select u.id,u.full_name,u.email,u.role,u.account_status,u.requested_role,u.created_at,u.approved_at,
    exists(select 1 from oauth_identities oi where oi.user_id=u.id and oi.provider='google') as google_verified,
    (select count(*)::int from ticket_orders o where o.buyer_id=u.id) as order_count,
@@ -18,7 +19,7 @@ export async function GET(req:Request){
    from app_users u
    where (${query}='' or lower(u.email) like ${'%'+query+'%'} or lower(u.full_name) like ${'%'+query+'%'})
     and (${role}='' or u.role=${role})
-   order by u.created_at desc limit 40 offset ${offset}`;
+   order by u.created_at desc,u.id desc limit 40 offset ${offset}`;
   const totals=await db()`select count(*)::int as count from app_users u where
    (${query}='' or lower(u.email) like ${'%'+query+'%'} or lower(u.full_name) like ${'%'+query+'%'})
    and (${role}='' or u.role=${role})`;

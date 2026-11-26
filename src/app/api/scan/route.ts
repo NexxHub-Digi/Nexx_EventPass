@@ -76,6 +76,17 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
       'TEST ONLY — ticket is not eligible. Entry was not recorded.'});
   }
   const result=await db().begin(async tx=>{
+    // Revalidate and lock the live event and account state before consuming any credential.
+    const [live]=await tx`select e.organiser_id from events e join app_users owner on owner.id=e.organiser_id
+      join app_users actor on actor.id=${u.id}
+      where e.id=${eventId} and e.status='published' and e.verification_status='verified'
+        and owner.role='organiser' and owner.account_status='active' and actor.account_status='active'
+      for share of e,owner,actor`;
+    if(!live)return {denied:true as const};
+    if(live.organiser_id!==u.id){
+      const [assignment]=await tx`select gate_label from gate_assignments where event_id=${eventId} and user_id=${u.id} for share`;
+      if(!assignment)return {denied:true as const};
+    }
     const updated=source==='offline'?[]:await tx`update tickets t set redeemed_at=now(),redeemed_by=${u.id}
      where t.id=${decoded.ticketId} and t.event_id=${eventId} and t.status='issued' and t.redeemed_at is null
       and exists(select 1 from ticket_orders o join verified_order_payments p on p.order_id=o.id
@@ -106,6 +117,7 @@ export async function POST(req:Request){try{const u=await currentUser();if(!u||u
         jsonb_build_object('gateLabel',${gateLabel}::text,'entryMethod',${entryMethod}::text) from offline_tickets where id=${decoded.ticketId}`;
     return {outcome,prior,admittedAt:updated[0]?.redeemed_at||offlineUpdated[0]?.redeemed_at||null};
   });
+  if('denied' in result)return fail('Gate access is no longer active',403);
   const outsideWindow=result.outcome==='inactive_or_unavailable'&&!admissionOpen;
   return ok({...result,testOnly:false,entry_method:entryMethod,
    reason:outsideWindow?'event_not_open':undefined,opensAt:admissionOpensAt,closesAt:admissionClosesAt,
