@@ -1,18 +1,19 @@
 import {db} from '@/lib/db';
-import {paystackApi,paystackTestEnabled,validPaystackCharge,type VerifiedPaystackCharge} from '@/lib/paystack';
+import {paystackApi,paystackTestEnabled,validPaystackCharge,isPaystackRefundState,type VerifiedPaystackCharge} from '@/lib/paystack';
 import {issueTicketCredential} from '@/lib/ticket-credentials';
 import {registerEntryCode} from '@/lib/ticket-entry-code';
 import {makeIssuedDesignSnapshot,type SavedDesign} from '@/lib/ticket-design-snapshot';
-export type Reconciliation={status:'pending'|'issued'|'already_issued'|'reconciliation_required';ticketsIssued?:number};
+export type Reconciliation={status:'pending'|'issued'|'already_issued'|'reconciliation_required'|'refund_pending'|'refunded'|'refund_failed';ticketsIssued?:number};
 export async function reconcilePaystackReference(reference:string):Promise<Reconciliation>{
  if(!paystackTestEnabled()||!/^EP-[a-f0-9-]{36}$/i.test(reference))throw Error('Paystack test mode or reference invalid');
- const [record]=await db()`select order_id,amount_kobo from paystack_payments where reference=${reference}`;
+ const [record]=await db()`select order_id,amount_kobo,status from paystack_payments where reference=${reference}`;
  if(!record)throw Error('Payment reference not found');
+ if(isPaystackRefundState(record.status))return {status:record.status};
  const charge=await paystackApi<VerifiedPaystackCharge>('/transaction/verify/'+encodeURIComponent(reference));
  if(charge.status!=='success')return {status:'pending'};
  if(!validPaystackCharge(charge,reference,Number(record.amount_kobo))){
   await db()`update paystack_payments set status='reconciliation_required',last_error='Provider verification mismatch',updated_at=now()
-   where reference=${reference} and status not in ('success','refunded')`;
+   where reference=${reference} and status not in ('success','refund_pending','refunded','refund_failed')`;
   return {status:'reconciliation_required'};
  }
  return db().begin(async tx=>{
@@ -27,6 +28,7 @@ export async function reconcilePaystackReference(reference:string):Promise<Recon
   const [order]=await tx`select * from ticket_orders where id=${record.order_id} for update`;
   const [payment]=await tx`select * from paystack_payments where reference=${reference} for update`;
   if(!order||!payment)throw Error('Payment record missing');
+  if(isPaystackRefundState(payment.status))return {status:payment.status};
   if(order.status==='approved'&&payment.status==='success'){
    const [n]=await tx`select count(*)::int as count from tickets where order_id=${order.id}`;
    return {status:'already_issued' as const,ticketsIssued:Number(n.count)};

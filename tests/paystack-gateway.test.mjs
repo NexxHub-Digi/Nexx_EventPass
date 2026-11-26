@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {paystackKey,paystackTestEnabled,validPaystackWebhook,commissionKobo,validPaystackCharge} from '../src/lib/paystack.ts';
+import {paystackKey,paystackTestEnabled,validPaystackWebhook,commissionKobo,validPaystackCharge,isPaystackRefundState} from '../src/lib/paystack.ts';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const raw=Buffer.from('{"event":"charge.success","data":{"reference":"EP-TEST"}}');
 test('Paystack is strictly test-only and refuses a live provider key',()=>{
@@ -69,4 +69,15 @@ test('webhook cannot fulfil without provider verification and event lock',()=>{
  assert.match(fulfil,/verified_order_payments/);
  assert.match(fulfil,/ticket_deliveries/);
  assert.match(read('src/app/api/review/route.ts'),/order\.payment_method==='paystack'/);
+});
+
+test('charge replay never changes protected refund states',()=>{
+ for(const s of ['refund_pending','refunded','refund_failed'])assert.equal(isPaystackRefundState(s),true);
+ for(const s of ['initialized','success','reconciliation_required'])assert.equal(isPaystackRefundState(s),false);
+ const source=read('src/lib/paystack-fulfilment.ts');
+ assert.match(source,/isPaystackRefundState\(record.status\)/);assert.match(source,/isPaystackRefundState\(payment.status\)/);
+});
+test('insecure checkout requests cannot reserve a provider record',()=>{
+ const source=read('src/app/api/payments/paystack/initialize/route.ts');
+ assert.ok(source.indexOf('Secure HTTPS checkout required')<source.indexOf('insert into paystack_payments'));
 });

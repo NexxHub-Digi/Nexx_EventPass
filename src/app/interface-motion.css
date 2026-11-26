@@ -148,3 +148,26 @@
 }
 .ep-login .ep-switch-button { min-width:48px; min-height:48px; display:grid; place-items:center; padding:0; }
 .nxp .nxp-home-button { background:transparent; color:inherit; text-align:start; border:0; padding:0; }
+
+/* UI acceptance: keyboard focus, small screens, touch and recovery. */
+:is(.nxp,.rw-shell,.ep-login) :is(a[href],button,input,select,textarea,summary):focus-visible{outline:2px solid #9ef6e3;outline-offset:3px}
+.rw-field textarea{width:100%;min-height:96px;resize:vertical;padding:12px 13px;border-radius:10px;border:1px solid #415172;background:#222e48;color:#fff;font:inherit}
+.nxp .empty button{margin-top:12px}
+.nxp .modal,.masque-qr-modal{max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}
+.masque-expanded-code svg,.rw-qr svg{max-width:100%;height:auto}
+.rw-top>div,.rw-actions>*,.rw-field,.nxp main,.nxp .cardbody{min-width:0;overflow-wrap:anywhere}
+.ep-route-error{min-height:100svh;display:grid;place-items:center;padding:24px;background:#0b1020;color:#f8faff}
+.ep-route-error section{width:min(100%,480px);padding:28px;border:1px solid #415172;border-radius:18px;background:#171f33}
+.ep-route-error p{line-height:1.6;color:#c2cce6}
+@media(max-width:640px){
+ .nxp :is(input,select,textarea),.rw-shell :is(input,select,textarea),.ep-login :is(input,select,textarea){font-size:16px}
+ .nxp :is(.cta,.outline,.chip,.heart,.avatar),.rw-shell .rw-actions button,.rw-shell .rw-message button,.rw-gate-stage :is(button,summary){min-height:44px}
+ .nxp .bottom button{min-height:48px}
+ .nxp .bottom{padding-bottom:env(safe-area-inset-bottom,0px)}
+ .nxp .cardfoot{flex-wrap:wrap;gap:10px}
+ .nxp .modalbg,.masque-qr-modal-backdrop{padding:12px}
+ .rw-top{flex-wrap:wrap;gap:12px}
+ .rw-tools{flex-wrap:wrap;max-width:100%}
+ .rw-actions{gap:8px}
+}
+@media(forced-colors:active){:is(.nxp,.rw-shell,.ep-login) :is(button,a,input,select,textarea):focus-visible{outline:2px solid Highlight}}

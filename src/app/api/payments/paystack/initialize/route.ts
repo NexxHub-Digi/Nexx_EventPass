@@ -12,6 +12,8 @@ export async function POST(req:Request){
   if(!paystackTestEnabled())return fail('Paystack test mode is not configured',503);
   const body=await payload(req),orderId=str(body.orderId,40);
   if(!uuid.test(orderId))return fail('Valid reservation required',400);
+  const origin=new URL(req.url).origin;
+  if(!origin.startsWith('https://'))return fail('Secure HTTPS checkout required',400);
   const result=await db().begin(async tx=>{
    const [order]=await tx`select o.id,o.buyer_id,o.amount_ngn,o.status,o.payment_method,o.reservation_expires_at,
     e.organiser_id,e.status as event_status,e.verification_status,e.starts_at,owner.account_status,
@@ -43,8 +45,6 @@ export async function POST(req:Request){
    if(p?.status==='initialized'&&p?.authorization_url)return ok({authorization_url:p.authorization_url,reference:p.reference,mode:'test',replayed:true});
    return fail('Payment initiation is in progress or needs reconciliation. Open My Orders.',409);
   }
-  const origin=new URL(req.url).origin;
-  if(!origin.startsWith('https://'))return fail('Secure HTTPS checkout required',400);
   try{
    const provider=await paystackApi<{authorization_url:string;reference:string}>('/transaction/initialize','POST',{
     email:user.email,amount:result.amount,currency:'NGN',reference:result.reference,

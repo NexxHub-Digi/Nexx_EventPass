@@ -50,6 +50,7 @@ export default function App(){
  const [bankAccounts,setBankAccounts]=useState<{id:string;bank_name:string;account_name:string;account_number:string;status:string;organiser_name:string}[]>([]);
  const [bankReviewId,setBankReviewId]=useState(''),[bankReviewNote,setBankReviewNote]=useState('');
  const [summary,setSummary]=useState<Record<string,number>>({});
+ const [notificationSummary,setNotificationSummary]=useState<{counts:Record<string,number>;enabled:boolean;configured:boolean;health:{expired_leases:number;unmatched_events:number;last_webhook_at:string|null;oldest_pending_at:string|null}}|null>(null);
  const [loadWarnings,setLoadWarnings]=useState<string[]>([]);
  const [moderationEvents,setModerationEvents]=useState<ModerationEvent[]>([]),[moderationMedia,setModerationMedia]=useState<MediaReview[]>([]);
  const [auditHistory,setAuditHistory]=useState<AuditEntry[]>([]),[refundCases,setRefundCases]=useState<RefundCase[]>([]);
@@ -80,7 +81,8 @@ export default function App(){
    ['Audit logs',api('platform/audit',t)],
    ['Payments & refunds',api('refunds',t)],
    ['Events & analytics',api('platform/event-directory',t)],
-   ['Ticket themes',api('ticket-themes?includeInactive=true',t)]
+   ['Ticket themes',api('ticket-themes?includeInactive=true',t)],
+   ['Ticket notifications',api('platform/notifications',t)]
   ] as const;
   const settled=await Promise.allSettled(services.map(([,promise])=>promise));
   const warnings:string[]=[];
@@ -101,6 +103,7 @@ export default function App(){
   const refunds=result(9);if(refunds){setRefundCases(refunds.orders||[]);setIssuedOrders(refunds.issuedOrders||[])}
   const directory=result(10);if(directory)setEventMetrics(directory.events||[]);
   const themes=result(11);if(themes)setThemes(themes.themes||[]);
+  setNotificationSummary(result(12));
   setLoadWarnings(warnings);
  }
  useEffect(()=>{
@@ -293,7 +296,7 @@ export default function App(){
  pendingRefunds={refundCases.filter(r=>r.refund_status!=='settled').length}
  pendingSupport={cases.filter(c=>['open','in_progress'].includes(c.status)).length}
  pendingBanks={bankAccounts.filter(b=>b.status==='pending').length}
- recentActions={auditHistory}
+ recentActions={auditHistory} notifications={notificationSummary}
  onNavigate={navigateAdmin} onRefresh={()=>void exec(async()=>load(token))} busy={busy}/>}
  {section==='analytics'&&<><Text style={s.title}>Events & analytics</Text>
  <Text style={s.hint}>Confirmed revenue excludes pending orders and manually tracked offline sales.</Text>

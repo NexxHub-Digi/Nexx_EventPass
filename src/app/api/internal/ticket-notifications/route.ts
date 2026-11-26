@@ -32,6 +32,7 @@ async function dispatch(req:Request){
         join oauth_identities i on i.user_id=u.id and i.provider='google' and lower(i.provider_email)=lower(u.email)
         join ticket_orders o on o.buyer_id=u.id and o.id=${row.order_id} and o.event_id=${row.event_id}
         join verified_order_payments p on p.order_id=o.id join events e on e.id=o.event_id
+        join app_users owner on owner.id=e.organiser_id and owner.role='organiser' and owner.account_status='active'
         where u.id=${row.recipient_id} and u.account_status='active' and o.status='approved'
         and e.status='published' and e.verification_status='verified' and e.starts_at>=now()-interval '4 hours'
         and exists(select 1 from tickets t where t.order_id=o.id and t.owner_id=u.id and t.status='issued')`;

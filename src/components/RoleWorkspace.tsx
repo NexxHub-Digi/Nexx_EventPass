@@ -80,6 +80,23 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
  const [eventId,setEventId]=useState(''),[eventTitle,setEventTitle]=useState(''),[venue,setVenue]=useState(''),[startsAt,setStartsAt]=useState(''),[capacity,setCapacity]=useState('100'),[ticketPrice,setTicketPrice]=useState('5000'),[keyword,setKeyword]=useState('');
  const [quantity,setQuantity]=useState('1'),[paymentRef,setPaymentRef]=useState(''),[selectedEvent,setSelectedEvent]=useState(''),[receipt,setReceipt]=useState<File|null>(null),[receiptUploads,setReceiptUploads]=useState<Record<string,File|null>>({});
  const [expandedQr,setExpandedQr]=useState<{value:string;eventName:string;entryCode?:string|null}|null>(null);
+ const qrDialog=useRef<HTMLDivElement>(null);
+ useEffect(()=>{
+  if(!expandedQr||!qrDialog.current)return;
+  const dialog=qrDialog.current,opener=document.activeElement,previousOverflow=document.body.style.overflow;
+  document.body.style.overflow='hidden';
+  dialog.querySelector<HTMLElement>('button')?.focus();
+  const onKey=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'){event.preventDefault();setExpandedQr(null);return}
+   if(event.key!=='Tab')return;
+   const controls=Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled)'));
+   const first=controls[0],last=controls.at(-1);
+   if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus()}
+   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus()}
+  };
+  dialog.addEventListener('keydown',onKey);
+  return()=>{dialog.removeEventListener('keydown',onKey);document.body.style.overflow=previousOverflow;if(opener instanceof HTMLElement&&opener.isConnected)opener.focus()};
+ },[expandedQr]);
  const [adminTab,setAdminTab]=useState('overview');
  const [adminMenuOpen,setAdminMenuOpen]=useState(false),[adminNavCollapsed,setAdminNavCollapsed]=useState(false),[organiserMenuOpen,setOrganiserMenuOpen]=useState(false);
  const [adminLoadIssues,setAdminLoadIssues]=useState<string[]>([]);
@@ -445,7 +462,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
    event.preventDefault();resetPortalHome();
   }}>◈ NEXX <span>EVENTPASS</span></a><div className="rw-label">{title} · Nexx Future</div></div><div className="rw-tools"><span>{me.full_name}</span><a className="rw-google-link" href={'/api/auth/google?portal='+encodeURIComponent(role==='platform-admin'?'platform_admin':role)+'&intent=link'}>Link Google account</a>{btn('Sign out',()=>{void signout()},true)}</div></div>
  <nav className="rw-portal-switch" aria-label={`${title} workspace navigation`}><span aria-current="page">{title} workspace</span></nav>
- {message&&<div className="rw-message" role="status">{message}<button onClick={()=>setMessage('')}>×</button></div>}
+ {message&&<div className="rw-message" role="status">{message}<button type="button" aria-label="Dismiss message" onClick={()=>setMessage('')}>×</button></div>}
  
  {role==='platform-admin'&&<div className={['rw-workspace-shell','ep-admin-workspace',adminNavCollapsed?'is-collapsed':''].filter(Boolean).join(' ')}>
   {adminMenuOpen&&<button type="button" className="ep-admin-drawer-scrim" aria-label="Close administrator menu" onClick={()=>setAdminMenuOpen(false)}/>}
@@ -953,7 +970,7 @@ export default function RoleWorkspace({portal}:{portal?:Role}={}){
     </div>)}{!tickets.length&&<p>Approved event passes will appear here with a unique encrypted QR code.</p>}</section>
  </div>}
  {role==='user'&&expandedQr&&<div className="masque-qr-modal-backdrop" role="presentation" onClick={()=>setExpandedQr(null)}>
-  <div className="masque-qr-modal" role="dialog" aria-modal="true" aria-label="Enlarged ticket QR" onClick={e=>e.stopPropagation()}>
+  <div ref={qrDialog} className="masque-qr-modal" role="dialog" aria-modal="true" aria-label="Enlarged ticket QR" onClick={e=>e.stopPropagation()}>
    <h3>{expandedQr.eventName}</h3><p>Show this secure QR to the assigned Gate Operator.</p>
    <div className="masque-expanded-code"><QRCodeSVG value={expandedQr.value} size={288} level="M" includeMargin/></div>
    {expandedQr.entryCode&&<p><strong>Manual backup code: {expandedQr.entryCode}</strong></p>}
