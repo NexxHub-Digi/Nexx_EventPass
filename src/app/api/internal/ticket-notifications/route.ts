@@ -39,19 +39,21 @@ async function dispatch(req:Request){
         and e.status='published' and e.verification_status='verified' and e.starts_at>=now()-interval '4 hours'
         and exists(select 1 from tickets t where t.order_id=o.id and t.owner_id=u.id and t.status='issued')`;
       let result:Awaited<ReturnType<typeof sendTicketNotice>>|null=null;
+      let failureReason:string|null=null;
       if(recipient){
         const to=String(recipient.email);
         const fingerprint=createHash('sha256').update(JSON.stringify(['ticket-notice-v2',from,to,template])).digest('hex');
         const bound=await sql`update ticket_email_outbox set request_fingerprint=${fingerprint}
           where order_id=${row.order_id} and claim_token=${claim} and state='sending'
           and (request_fingerprint is null or request_fingerprint=${fingerprint}) returning order_id`;
-        result=bound.length?await sendTicketNotice({apiKey,from,to,orderId:String(row.order_id),walletOrigin}):{kind:'failed'};
+        if(bound.length)result=await sendTicketNotice({apiKey,from,to,orderId:String(row.order_id),walletOrigin});
+        else{result={kind:'failed'};failureReason='content_fingerprint_changed';}
       }
       const state=!result?'skipped':result.kind==='accepted'?'accepted':result.kind==='failed'||Number(row.attempts)>=5?'failed':'pending';
       const providerId=result?.kind==='accepted'?result.id:null;
       const updated=await sql`update ticket_email_outbox set state=${state},provider_id=${providerId},
         completed_at=case when ${state}='pending' then null else now() end,
-        next_attempt_at=now()+interval '5 minutes',lease_until=null,claim_token=null,last_result=${result?.kind||'ineligible'}
+        next_attempt_at=now()+interval '5 minutes',lease_until=null,claim_token=null,last_result=${failureReason||(result?.kind==='retry'&&Number(row.attempts)>=5?'retry_attempts_exhausted':result?.kind||'ineligible')}
         where order_id=${row.order_id} and claim_token=${claim} and state='sending' returning order_id`;
       if(updated.length){if(state==='accepted')accepted++;else if(state==='skipped')skipped++;else if(state==='failed')failed++;else retry++;}
     }

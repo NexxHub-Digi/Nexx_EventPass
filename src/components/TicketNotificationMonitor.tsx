@@ -1,6 +1,7 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
-type Summary={counts:Record<string,number>;enabled:boolean;configured:boolean;health:{expired_leases:number;unmatched_events:number;last_webhook_at:string|null;oldest_pending_at:string|null}};
+type Exception={order_id:string;delivery_status:string;review_reason:string;attempts:number;created_at:string;provider_event_at:string|null};
+type Summary={exceptions:Exception[];counts:Record<string,number>;enabled:boolean;configured:boolean;health:{expired_leases:number;unmatched_events:number;last_webhook_at:string|null;oldest_pending_at:string|null}};
 const states=[['pending','Queued'],['sending','Dispatching'],['accepted','Provider accepted'],['sent','Sent'],['delivered','Delivered'],['delivery_delayed','Delayed'],['bounced','Bounced'],['complained','Complaints'],['suppressed','Suppressed'],['failed','Failed'],['skipped','Skipped']];
 export default function TicketNotificationMonitor(){
  const [data,setData]=useState<Summary|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
@@ -18,6 +19,8 @@ export default function TicketNotificationMonitor(){
   <div className="rw-stats ep-admin-kpis">{states.map(([key,label])=><div key={key} className="rw-stat ep-admin-kpi"><small>{label}</small><b>{Number(data.counts[key]??0).toLocaleString('en-NG')}</b></div>)}</div>
   <p>Expired leases: {data.health.expired_leases} · Unmatched provider events: {data.health.unmatched_events}</p>
   <p>Oldest pending: {data.health.oldest_pending_at?new Date(data.health.oldest_pending_at).toLocaleString():'None'} · Last webhook: {data.health.last_webhook_at?new Date(data.health.last_webhook_at).toLocaleString():'None received'}</p>
+  <h4>Delivery exception queue</h4><p>Latest 100 cases. Review provider and wallet status; do not resend terminal failures or reset idempotency records.</p>
+  {data.exceptions.length===0?<p>No delivery exceptions currently recorded.</p>:data.exceptions.map(item=><div className="rw-list-item" key={item.order_id}><div><strong>{item.delivery_status.replaceAll('_',' ')}</strong><p>{item.review_reason.replaceAll('_',' ')} · {item.attempts} attempts</p><small>Order {item.order_id} · {new Date(item.provider_event_at||item.created_at).toLocaleString()}</small></div><span>Review only</span></div>)}
   <small>Delivered means the receiving mail server accepted the message, not that the customer opened it.</small></>}
  </section>
 }

@@ -327,7 +327,11 @@ test('HTTP E2E: signup, approval, bank, payment evidence, QR, invitation, atomic
   assert.equal((await hook('email.bounced','msg_bounced_'+tag)).status,200);
   assert.equal(expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'bounce monitoring').counts.bounced,1);
   assert.equal((await hook('email.failed','msg_failed_'+tag,new Date(Date.now()+1000).toISOString())).status,200);
-  assert.equal(expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'failure monitoring').counts.failed,1);
+  const failureMonitor=expect(await req('/api/platform/notifications',{cookie:adminCookie}),200,'failure monitoring');
+  assert.equal(failureMonitor.counts.failed,1);
+  const exception=failureMonitor.exceptions.find(x=>x.order_id===order.id);
+  assert.ok(exception);assert.equal(exception.delivery_status,'failed');assert.equal(exception.review_reason,'provider_failed');
+  assert.ok(!('email' in exception)&&!('recipient_id' in exception)&&!('provider_id' in exception)&&!('request_fingerprint' in exception));
   assert.equal((await fetch(base+'/api/webhooks/resend',{method:'POST',body:'{}'})).status,400,'unsigned webhook denied');
 
   assert.ok(!expect(await req(inboxPath,{cookie:org.cookie}),200,'approved order leaves inbox').payments.some(item=>item.id===order.id));
