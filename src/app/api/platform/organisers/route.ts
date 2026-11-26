@@ -79,17 +79,22 @@ export async function POST(req:Request){
   });
   return result.rejected?ok({success:true,action}):fail('Organiser application is no longer pending',409);
  }
- if(action==='approve'){
-  if(record[0].requested_role!=='organiser'||record[0].role!=='user'||record[0].account_status!=='active')return fail('Not a pending organiser request',409);
-  await db()`update app_users set role='organiser',requested_role=null,account_status='active',approved_by=${admin.id},approved_at=now() where id=${id}`;
- }else if(action==='suspend'||action==='revoke'){
-  if(record[0].role!=='organiser')return fail('Not an organiser',409);
-  await db()`update app_users set account_status='suspended' where id=${id}`;
- }else{
-  if(record[0].role!=='organiser'||record[0].account_status!=='suspended')return fail('Account is not a suspended organiser',409);
-  await db()`update app_users set account_status='active',approved_by=${admin.id},approved_at=now() where id=${id}`;
- }
- await db()`insert into platform_admin_actions(admin_id,target_user_id,action) values(${admin.id},${id},${action})`;
- return ok({success:true,action});
+ const changed=await db().begin(async tx=>{
+  const [target]=await tx`select role,account_status,requested_role from app_users where id=${id} for update`;
+  if(!target)return false;
+  if(action==='approve'){
+   if(target.requested_role!=='organiser'||target.role!=='user'||target.account_status!=='active')return false;
+   await tx`update app_users set role='organiser',requested_role=null,account_status='active',approved_by=${admin.id},approved_at=now() where id=${id}`;
+  }else if(action==='suspend'||action==='revoke'){
+   if(target.role!=='organiser'||target.account_status==='suspended')return false;
+   await tx`update app_users set account_status='suspended' where id=${id}`;
+  }else{
+   if(target.role!=='organiser'||target.account_status!=='suspended')return false;
+   await tx`update app_users set account_status='active',approved_by=${admin.id},approved_at=now() where id=${id}`;
+  }
+  await tx`insert into platform_admin_actions(admin_id,target_user_id,action) values(${admin.id},${id},${action})`;
+  return true;
+ });
+ return changed?ok({success:true,action}):fail('Organiser state no longer permits this action',409);
  }catch(e){return handleError(e)}
 }

@@ -61,7 +61,7 @@ export async function PATCH(req:Request){
    const accountId=str(b.paymentAccountId,40);
    if(!uuid.test(accountId))return fail('Choose a verified bank account');
    const [event]=await db()`update events e set payment_account_id=a.id
-     from organiser_bank_accounts a where e.id=${eventId} and e.organiser_id=${u.id} and e.price_ngn>0
+     from organiser_bank_accounts a where e.id=${eventId} and e.organiser_id=${u.id} and e.price_ngn>0 and e.status<>'cancelled'
        and a.organiser_id=e.organiser_id and a.id=${accountId} and a.status='verified' returning e.id`;
    return event?ok({message:'Verified bank account assigned to event'}):fail('Choose a verified account for one of your paid events',409);
   }
@@ -69,8 +69,9 @@ export async function PATCH(req:Request){
   if(!selectedTheme[0])return fail('Invalid or inactive ticket theme');
   if(posterTemplate!=='none'&&!isMasqueradePoster(posterTemplate))return fail('Invalid poster design');
   const result=await db().begin(async tx=>{
-   const owned=await tx`select id from events where id=${eventId} and organiser_id=${u.id} for update`;
+   const owned=await tx`select id,status from events where id=${eventId} and organiser_id=${u.id} for update`;
    if(!owned[0])return fail('Event not found or not owned by you',404);
+   if(owned[0].status==='cancelled')return fail('Cancelled events cannot be edited or republished',409);
    const [usage]=await tx`select
     (exists(select 1 from tickets where event_id=${eventId}) or
      exists(select 1 from offline_tickets where event_id=${eventId} and status='issued') or

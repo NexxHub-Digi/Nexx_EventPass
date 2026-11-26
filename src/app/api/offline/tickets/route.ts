@@ -41,7 +41,8 @@ export async function PATCH(req:Request){
   const access=await offlineAccess(eventId,permission);
   if(!access)return fail('Permission denied',403);
   const label=str(b.distribution,25),amount=b.amountNgn===null||b.amountNgn===undefined||b.amountNgn===''?null:Number(b.amountNgn);
-  if(action==='distribution'&&label==='sold'&&!await offlineAccess(eventId,'sales'))return fail('Offline sales recording permission required',403);
+  const canRecordSales=action==='distribution'?Boolean(await offlineAccess(eventId,'sales')):false;
+  if(action==='distribution'&&label==='sold'&&!canRecordSales)return fail('Offline sales recording permission required',403);
   if(action==='distribution'&&(!['unassigned','sold','distributed','complimentary'].includes(label)||amount!==null&&(!Number.isSafeInteger(amount)||amount<0)||label!=='sold'&&amount!==null))return fail('Invalid distribution label or amount',400);
   const recipientName=str(b.recipientName,120)||null,contact=str(b.recipientContact,120)||null,note=str(b.note,500)||null;
   const operationId=crypto.randomUUID();
@@ -49,6 +50,7 @@ export async function PATCH(req:Request){
    if(action==='revoke')await tx`select id from events where id=${eventId} for update`;
    const locked=await tx`select id,status,active,redeemed_at,distribution,sale_amount_ngn,recipient_name,recipient_contact from offline_tickets where event_id=${eventId} and id=any(${ids}::uuid[]) order by id for update`;
    if(locked.length!==ids.length)return {error:'One or more tickets are not in this event',status:404};
+   if(action==='distribution'&&!canRecordSales&&locked.some(t=>t.distribution==='sold'||t.sale_amount_ngn!==null))return {error:'Offline sales recording permission required to change an existing sale',status:403};
    if(locked.some(t=>t.status!=='issued'||(action!=='distribution'&&t.redeemed_at)))return {error:'Selection contains tickets ineligible for this action',status:409};
    for(const t of locked){
     if(action==='distribution')await tx`update offline_tickets set distribution=${label},sale_amount_ngn=${label==='sold'?amount:null},
